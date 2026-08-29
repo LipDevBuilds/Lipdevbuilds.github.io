@@ -42,9 +42,12 @@
   --water:200 80% 55%; --over:0 72% 51%;
 }
 *{box-sizing:border-box;margin:0}
-html{background:hsl(var(--background));touch-action:manipulation;-ms-touch-action:manipulation;-webkit-touch-callout:none}
+html{height:100%;background:hsl(var(--background));touch-action:manipulation;-ms-touch-action:manipulation;-webkit-touch-callout:none}
 body{
-  height:100dvh;overflow:hidden;overscroll-behavior:none;
+  /* height:100% (not 100dvh): iOS standalone web apps report dvh short by the top
+     safe-area inset, which floated the whole shell above the screen bottom. The
+     percentage chain resolves against the real viewport box on every device. */
+  height:100%;overflow:hidden;overscroll-behavior:none;
   padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);
   background:hsl(var(--background));color:hsl(var(--foreground));
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',system-ui,sans-serif;
@@ -272,7 +275,7 @@ select.input{appearance:none;-webkit-appearance:none}
 .nf .r:last-child{border-bottom:0}
 
 /* workout (Workout.tsx exact Tailwind equivalents) */
-.wo-ov{position:fixed;inset:0;z-index:50;background:hsl(var(--background));display:flex;flex-direction:column;min-height:0;height:100dvh}
+.wo-ov{position:fixed;inset:0;z-index:50;background:hsl(var(--background));display:flex;flex-direction:column;min-height:0} /* size comes from inset:0 — a dvh height here falls short in iOS standalone */
 .wo-ov.scroll{display:block;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .wo-hd{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:56px 16px 12px}
 .wo-txtbtn{background:none;border:0;padding:0;color:hsl(var(--muted-foreground));font-size:14px;display:flex;align-items:center;text-align:left;line-height:20px}
@@ -347,7 +350,7 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .cal-mealrow+.cal-mealrow{border-top:.5px solid hsl(var(--border)/.5)}
 .modal-input:focus{outline:none;box-shadow:0 0 0 2px hsl(var(--primary))}
 /* ===== Food search full-screen overlay (FoodSearch.tsx) ===== */
-.fs-ov{position:fixed;inset:0;z-index:50;background:hsl(var(--background));display:flex;flex-direction:column;min-height:0;overflow:hidden;height:100dvh;overscroll-behavior:contain;animation:fsIn .2s ease-out}
+.fs-ov{position:fixed;inset:0;z-index:50;background:hsl(var(--background));display:flex;flex-direction:column;min-height:0;overflow:hidden;overscroll-behavior:contain;animation:fsIn .2s ease-out}
 @keyframes fsIn{from{opacity:0}}
 .fs-hd{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:16px;padding-top:calc(env(safe-area-inset-top,0px) + 16px)}
 .fs-ic{min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;background:none;border:0;color:hsl(var(--muted-foreground));padding:0}
