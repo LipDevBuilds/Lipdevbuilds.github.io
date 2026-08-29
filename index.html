@@ -922,6 +922,19 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
+const BUILD="2026-08-29.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
+  try{
+    const d=document.createElement("div");
+    d.style.cssText="position:fixed;visibility:hidden;pointer-events:none;height:100dvh;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)";
+    document.body.appendChild(d);
+    const cs=getComputedStyle(d);
+    const sa=(navigator.standalone===true)||(typeof matchMedia==="function"&&matchMedia("(display-mode: standalone)").matches);
+    let host="";try{host=new URL(sbUrl()).host.split(".")[0]}catch(e){}
+    const line=`${BUILD} · ${host} · vp ${innerWidth}×${innerHeight} · dvh ${d.offsetHeight} · inset ${Math.round(parseFloat(cs.paddingTop)||0)}/${Math.round(parseFloat(cs.paddingBottom)||0)}${sa?" · standalone":""}`;
+    d.remove();return line;
+  }catch(e){return BUILD}
+}
 function syncLine(){ // one-line status for the Settings account block
   if(!sbSess)return"";
   if(syncState.state==="syncing")return"Syncing…";
@@ -5281,6 +5294,7 @@ function settingsPage(animate=true){
   <div class="apple-card p-4">
     <button class="btn" style="width:100%;margin-bottom:8px" data-act="csv">Export food log CSV</button>
     <button class="btn danger" style="width:100%" data-act="reset">Reset all data</button></div>
+  <p class="text-muted-foreground" style="font-size:10px;margin:14px 0 2px;opacity:.55;text-align:center;line-height:14px">${esc(diagLine())}</p>
   </div>`;
 }
 
