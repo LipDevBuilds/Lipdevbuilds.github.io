@@ -59,7 +59,7 @@ img,svg,video,canvas,audio,iframe,embed,object{display:block;vertical-align:midd
 /* Apple-style scrollbar — global (index.css:97-103) */
 ::-webkit-scrollbar{width:0px;background:transparent}
 button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-.app-shell{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+.app-shell{display:flex;flex-direction:column;height:100%;overflow:hidden} /* 100% not 100dvh: body's 100dvh is border-box and includes the safe-area top padding — 100dvh here overflows by inset-top in standalone (home-screen) mode and sinks the nav */
 .app-content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:none}
 /* page container: real pages carry "px-4 pt-14 pb-4 max-w-md mx-auto" (Dashboard pb-28) */
 .page{padding:56px 16px 16px;max-width:28rem;margin:0 auto;width:100%}
