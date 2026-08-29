@@ -922,7 +922,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-08-29.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-08-29.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3139,6 +3139,9 @@ const RB_BRAND={
   noodlesandco:{extras:{cat:"extras",label:"Add-Ons"},mains:["noodles","zoodles","mac-cheese"]},
   wingstop:{wings:{cats:["classic-wings","boneless-wings"],counts:[6,8,10,15,20]},extras:{cat:"sides",label:"Add a Dip",match:"dip"},mains:["classic-wings","boneless-wings","tenders"]},
   bdubs:{wings:{cats:["traditional-wings","boneless-wings"],counts:[6,10,15,20,30]},extras:{cat:"sides",label:"Add a Dip",match:"dip"},mains:["traditional-wings","boneless-wings","burgers"]},
+  fiveguys:{cust:{burgers:"burger"}},          // all-toppings-free menu: swaps only, no combo flow (matches their app)
+  dunkin:{cust:{sandwiches:"breakfast"}},      // breakfast sandwiches customize; coffee gets the fixings layer
+  panera:{cust:{sandwiches:"sub"}},
 };
 // Order-modification catalog (typical condiment/ingredient macro deltas; removals negative).
 const RB_CUST_TYPES={
@@ -3157,6 +3160,54 @@ const RB_CUST_TYPES={
   breakfast:[["No Egg",-70,-6,0,-5],["No Cheese",-50,-3,-1,-4],["No Meat",-150,-8,-1,-12],
     ["Add Egg",70,6,0,5],["Add Cheese",50,3,1,4],["Add Bacon",90,6,0,7],["Add Sausage Patty",190,7,1,17],["Add Hash Brown",140,1,15,9]],
 };
+// ---- General additions layer (order building only): the condiments, dips, packets,
+// coffee fixings, and spreads each brand's own app / DoorDash offers on top of the
+// archetype ingredient swaps. Macros are typical published values, approximate.
+const RB_MK=o=>({name:o[0],macros:{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]}});
+const RB_FIX_DRINK=[ // coffee & tea fixings — any brand, any coffee-ish drink
+  ["Splash of Cream",50,0,1,5],["French Vanilla Creamer",35,0,5,1.5],["Half & Half",20,0,1,1.5],["Splash of Whole Milk",20,1,1.5,1],["Splash of Skim Milk",10,1,1.5,0],["Oat Milk Splash",15,0,2,0.5],["Almond Milk Splash",10,0,1,0.5],
+  ["Sugar Packet",15,0,4,0],["2 Sugar Packets",30,0,8,0],["Splenda",0,0,0,0],["Stevia",0,0,0,0],["Sweet'N Low",0,0,0,0],["Honey Packet",60,0,17,0],["Liquid Cane Sugar",25,0,6,0],["Whipped Cream",70,0,3,6],["Extra Espresso Shot",5,0,1,0]];
+const RB_FIX_BAKERY=[["Butter",60,0,0,7],["Whipped Cream Cheese",70,1,2,6],["Strawberry Jam",35,0,9,0],["Grape Jelly",35,0,9,0],["Honey Packet",60,0,17,0],["Peanut Butter",95,4,3,8]];
+const RB_FIX_GRIDDLE=[["Syrup",180,0,45,0],["Extra Syrup",90,0,23,0],["Butter",60,0,0,7]];
+const RB_COND={ // per-brand sauce/condiment roster, offered with any food item
+  mcdonalds:[["Ketchup Packet",10,0,3,0],["Mustard Packet",5,0,0,0],["Mayo Packet",90,0,0,10],["Tangy BBQ",45,0,11,0],["Sweet 'N Sour",50,0,11,0],["Honey Mustard",60,0,6,3.5],["Spicy Buffalo",30,0,1,3],["Creamy Ranch",110,0,1,12],["Honey",45,0,12,0]],
+  burgerking:[["Ketchup Packet",10,0,3,0],["Mayo Packet",80,0,1,9],["Zesty Sauce",150,0,3,15],["BBQ Dipping Sauce",40,0,10,0],["Honey Mustard Dip",90,0,8,6],["Ranch Dip",140,0,1,15],["Sweet & Sour",45,0,11,0],["Buffalo Dip",80,0,2,8]],
+  wendys:[["Ketchup Packet",10,0,3,0],["Mustard Packet",5,0,0,0],["BBQ Dipping Sauce",45,0,11,0],["Sweet & Sour",45,0,11,0],["Honey Mustard Dip",110,0,7,9],["Buttermilk Ranch",120,1,2,12],["Ghost Pepper Ranch",120,1,2,12],["Hot Honey Sauce",80,0,20,0]],
+  tacobell:[["Mild Sauce Packet",0,0,0,0],["Hot Sauce Packet",0,0,0,0],["Fire Sauce Packet",0,0,0,0],["Diablo Sauce Packet",0,0,0,0],["Creamy Jalapeño Sauce",70,0,1,7],["Spicy Ranch",70,0,1,7]],
+  chickfila:[["Chick-fil-A Sauce",140,0,6,13],["Polynesian Sauce",110,0,13,6],["Garden Herb Ranch",140,1,1,14],["Zesty Buffalo",25,0,1,2.5],["Honey Mustard",50,0,10,1],["Barbeque Sauce",45,0,11,0],["Sweet & Spicy Sriracha",45,0,10,0],["Honey Roasted BBQ",60,0,2,6]],
+  kfc:[["KFC Sauce",90,0,6,7],["Honey BBQ",40,0,10,0],["Classic Ranch",130,0,2,13],["Honey Mustard",120,0,6,11],["Buffalo Ranch",130,0,2,13],["Honey Packet",60,0,17,0],["Buttery Spread",60,0,0,7],["Hot Sauce Packet",0,0,0,0],["Ketchup Packet",10,0,3,0]],
+  popeyes:[["Blackened Ranch",120,0,1,13],["Bayou Buffalo",150,0,2,15],["Sweet Heat",80,0,19,0],["Mardi Gras Mustard",100,0,3,9],["BoldBQ",45,0,11,0],["Honey Packet",60,0,17,0],["Mayo Packet",100,0,1,11],["Hot Sauce Packet",0,0,0,0],["Ketchup Packet",10,0,3,0]],
+  culvers:[["Ketchup Packet",10,0,3,0],["Mustard Packet",5,0,0,0],["Ranch Dip",190,1,2,20],["Honey Mustard Dip",170,0,8,15],["BBQ Sauce",50,0,12,0],["Buffalo Sauce",10,0,2,0],["Tartar Sauce",210,0,4,21],["Wisconsin Cheddar Sauce",110,2,4,9]],
+  arbys:[["Arby's Sauce Packet",15,0,4,0],["Horsey Sauce Packet",110,0,3,10],["Spicy Three Pepper",60,0,5,4],["Ranch Dip",100,0,2,10],["Honey Mustard Dip",130,0,5,12],["Tangy BBQ",45,0,11,0],["Ketchup Packet",10,0,3,0]],
+  dairyqueen:[["Ketchup Packet",10,0,3,0],["Ranch Dip",130,0,2,13],["Honey Mustard Dip",110,0,9,8],["BBQ Dipping Sauce",40,0,10,0],["Sweet & Sour",45,0,11,0],["Wild Buffalo Dip",90,0,2,9],["Country Gravy",45,1,4,2.5]],
+  whitecastle:[["Ketchup Packet",10,0,3,0],["Zesty Zing Sauce",110,0,3,11],["Ranch Dip",140,0,2,14],["BBQ Sauce",45,0,11,0],["Honey Mustard Dip",110,0,6,10],["Hot Sauce Packet",0,0,0,0]],
+  freddys:[["Freddy's Fry Sauce",130,0,2,13],["Ketchup Packet",10,0,3,0],["Mustard Packet",5,0,0,0],["Ranch Dip",130,0,2,13],["BBQ Sauce",45,0,11,0],["Cheese Sauce",70,2,3,5]],
+  steaknshake:[["Ketchup Packet",10,0,3,0],["Mustard Packet",5,0,0,0],["Ranch Dip",130,0,2,13],["Cheese Sauce",80,2,4,6]],
+  portillos:[["Ketchup Packet",10,0,3,0],["Mustard Packet",5,0,0,0],["BBQ Sauce",45,0,11,0],["Ranch Dip",130,0,2,13],["Sport Peppers",5,0,1,0]],
+  jimmyjohns:[["Kickin' Ranch",180,1,2,19],["Extra Mayo",100,0,1,11],["Dijon Mustard",10,0,1,0],["Yellow Mustard",5,0,0,0]],
+  jerseymikes:[["Extra Mayo",100,0,1,11],["Yellow Mustard",5,0,0,0],["Chipotle Mayo",110,0,1,12],["Cherry Pepper Relish",10,0,2,0]],
+  firehousesubs:[["Captain Sorensen's Hot Sauce",0,0,0,0],["Ranch Dip",110,0,2,11],["Honey Mustard Dip",100,0,8,7],["Extra Mayo",100,0,1,11]],
+  potbelly:[["Potbelly Hot Peppers",15,0,2,1],["Ranch Dip",110,0,2,11],["Extra Mayo",100,0,1,11],["Yellow Mustard",5,0,0,0]],
+  raisingcanes:[["Extra Cane's Sauce",190,1,3,19]],
+  wingstop:[["Ranch Dip",190,1,3,19],["Blue Cheese Dip",220,1,2,23],["Honey Mustard Dip",150,0,8,13],["Cheese Sauce",100,2,4,8],["Hot Honey Dip",100,0,17,3]],
+  bdubs:[["Side of Ranch",200,1,2,21],["Side of Blue Cheese",190,1,2,20],["Extra Wing Sauce",50,0,6,2.5],["Carrots & Celery",25,1,5,0]],
+  noodlesandco:[["Parmesan",25,2,1,1.5]],
+  panda:[["Soy Sauce Packet",10,1,1,0],["Sweet & Sour Cup",80,0,21,0],["Teriyaki Cup",70,1,16,0],["Hot Mustard",70,1,2,6],["Chili Sauce Packet",10,0,2,0]],
+  chipotle:[["Tabasco Packet (any)",0,0,0,0],["Side of Honey Vinaigrette",220,1,12,18]],
+  qdoba:[["Side of Queso",120,5,4,9],["Salsa Packet",5,0,1,0]],
+  fiveguys:[["Ketchup Packet",15,0,4,0],["Mayo Packet",100,0,1,11],["Mustard Packet",5,0,0,0],["BBQ Sauce",60,0,15,0],["Hot Sauce",0,0,0,0],["Steak Sauce",15,0,3,0]],
+  "texas-roadhouse":[["Side of Ranch",230,1,3,24],["Honey Mustard Dressing",190,1,9,17],["Steak Sauce",25,0,6,0],["Butter",60,0,0,7]],
+};
+const RB_COND_DRINK={ // brand-signature coffee upgrades, appended after the shared fixings
+  dunkin:[["Caramel Swirl",150,1,37,0],["French Vanilla Swirl",160,1,39,0],["Mocha Swirl",150,1,35,1],["Butter Pecan Swirl",160,0,38,1],["Hazelnut Shot (unsweetened)",5,0,1,0],["Turbo Shot",5,0,1,0]],
+  starbucks:[["Vanilla Syrup (pump)",20,0,5,0],["Caramel Syrup (pump)",20,0,5,0],["Hazelnut Syrup (pump)",20,0,5,0],["Sugar-Free Vanilla (pump)",0,0,0,0],["Mocha Sauce (pump)",25,0,5,1],["Caramel Drizzle",25,0,5,1],["Vanilla Sweet Cream Cold Foam",70,1,4,5]],
+  peets:[["Vanilla Syrup (pump)",20,0,5,0],["Caramel Syrup (pump)",20,0,5,0],["Chocolate Sauce (pump)",25,0,5,1]],
+  mcdonalds:[["French Vanilla Syrup",45,0,11,0],["Caramel Syrup",45,0,11,0]],
+};
+const RB_COFFEE_CATS=new Set(["hot-coffees","cold-coffees","frappuccinos","hot-teas","cold-teas","mccafe","hot-coffee","iced-drinks","frappes","teas"]);
+const RB_COFFEE_RX=/coffee|latte|espresso|macchiato|cappuccino|americano|cold brew|chai|matcha|hot chocolate|cocoa|frapp|\btea\b/i;
+// no sauce packets with drinks, shakes, or desserts (bakery gets its spreads instead)
+const RB_NOCOND_CATS=new Set([...RB_COFFEE_CATS,"more-drinks","refreshers","drinks","shakes","custard","blizzards","treats","desserts","donuts","bakery","add-ins","dressings"]);
 const RB_FOUNTAIN={
   coke:[["Coca-Cola (Medium)",200,0,55,0],["Diet Coke (Medium)",0,0,0,0],["Coke Zero (Medium)",0,0,0,0],["Sprite (Medium)",190,0,51,0],["Dr Pepper (Medium)",200,0,54,0],["Fanta Orange (Medium)",210,0,57,0],["Sweet Tea (Medium)",140,0,36,0],["Unsweetened Iced Tea (Medium)",0,0,0,0],["Minute Maid Lemonade (Medium)",190,0,50,0],["Bottled Water",0,0,0,0]],
   pepsi:[["Pepsi (Medium)",210,0,57,0],["Diet Pepsi (Medium)",0,0,0,0],["Pepsi Zero (Medium)",0,0,0,0],["Mtn Dew (Medium)",230,0,62,0],["Starry (Medium)",190,0,51,0],["Dr Pepper (Medium)",200,0,54,0],["Sweet Tea (Medium)",140,0,36,0],["Unsweetened Iced Tea (Medium)",0,0,0,0],["Lemonade (Medium)",190,0,50,0],["Bottled Water",0,0,0,0]],
@@ -3175,12 +3226,22 @@ function rbDrinkOptions(){ // full meal-drink lineup: fountain roster + signatur
   if(cfg.drink)RB.restaurant.components.filter(c=>c.category===cfg.drink).forEach(c=>out.push({name:c.name,macros:c.macros}));
   return out;
 }
-const rbCustFor=()=>{ // options for the open item: archetype by brand+category, plus brand signatures
-  const cfg=rbBrandCfg();if(!cfg||!cfg.cust||!RB.item)return null;
-  const t=cfg.cust[RB.item.category];if(!t)return null;
-  const opts=RB_CUST_TYPES[t].map(o=>({name:o[0],macros:{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]}}));
-  if(cfg.custPlus)opts.push(...cfg.custPlus);
-  return opts;
+const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures + the general additions layer
+  const it=RB.item;if(!it||!RB.restaurant)return null;
+  const cfg=rbBrandCfg()||{};
+  const out=[],seen=new Set();
+  const push=o=>{const k=o.name.toLowerCase();if(!seen.has(k)){seen.add(k);out.push(o)}};
+  const t=cfg.cust&&cfg.cust[it.category];
+  if(t){RB_CUST_TYPES[t].forEach(o=>push(RB_MK(o)));if(cfg.custPlus)cfg.custPlus.forEach(push);}
+  const coffee=RB_COFFEE_CATS.has(it.category)||RB_COFFEE_RX.test(it.name);
+  if(coffee){
+    RB_FIX_DRINK.forEach(o=>push(RB_MK(o)));
+    (RB_COND_DRINK[RB.restaurant.id]||[]).forEach(o=>push(RB_MK(o)));
+  }
+  if(it.category==="bakery"||/bagel|croissant|biscuit|english muffin/i.test(it.name))RB_FIX_BAKERY.forEach(o=>push(RB_MK(o)));
+  if(/pancake|hotcake|french toast|waffle/i.test(it.name))RB_FIX_GRIDDLE.forEach(o=>push(RB_MK(o)));
+  if(!coffee&&!RB_NOCOND_CATS.has(it.category))(RB_COND[RB.restaurant.id]||[]).forEach(o=>push(RB_MK(o)));
+  return out.length?out:null;
 };
 const rbBrandCfg=()=>RB.restaurant&&RB_BRAND[RB.restaurant.id];
 const rbComboEligible=()=>{const c=rbBrandCfg();return c&&c.combo&&RB.item&&c.mains.includes(RB.item.category)};
