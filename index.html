@@ -798,6 +798,12 @@ let favorites=load("favorites",[]);    // food ids
 // wrapper); the claude.ai artifact viewer blocks external requests, so sync reports
 // "blocked" there and the app keeps working locally.
 let sbSess=load("sb_session",null); // NOT "session" — that name is claimed by the legacy workout-session key migration above
+// Inside the claude.ai artifact viewer the page is iframed on a claude domain and ALL
+// external fetches are CSP-blocked; a network failure elsewhere is a real outage instead.
+const sbInViewer=()=>{try{if(/claudeusercontent\.com$|claude\.ai$|claude\.com$/.test(location.hostname))return true;return window.top!==window.self}catch{return true}};
+const SB_BLOCKED_MSG=()=>sbInViewer()
+  ?"Network blocked here — sync runs when the app is opened outside the claude.ai viewer"
+  :"Can't reach the sync server — check your connection; if it persists, the backend may be paused (supabase.com/dashboard)";
 let syncState={state:sbSess?"idle":"signedout",msg:"",at:load("last_sync",0)};
 const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories"];
 function sbSetSync(state,msg){syncState.state=state;syncState.msg=msg||"";
@@ -903,7 +909,7 @@ async function sbSync(reason){
     if(reason!=="push")render();
   }catch(e){
     const blocked=(e instanceof TypeError)||/Failed to fetch|NetworkError|CSP/i.test(e&&e.message||"");
-    sbSetSync(blocked?"blocked":"error",blocked?"Network blocked here — sync runs when the app is opened outside the claude.ai viewer":String(e&&e.message||e).slice(0,140));
+    sbSetSync(blocked?"blocked":"error",blocked?SB_BLOCKED_MSG():String(e&&e.message||e).slice(0,140));
   }finally{sbSyncing=false}
 }
 async function sbSignIn(email,pw){const j=await sbAuth("token?grant_type=password",{email,password:pw});sbSaveSession(j);sbSetSync("idle");sbSync("signin")}
@@ -960,8 +966,10 @@ const allFoods=()=>REAL_FOODS.concat(custom);
 // ===== optional AI backend (Supabase edge functions; fail-soft, never a blocker) =====
 // Built-in defaults for this install; Settings values override. The publishable key is
 // safe to ship in the client — server access is gated by RLS and the edge functions.
-const BAKED_URL="https://otntbcvthprjifxonmmo.supabase.co";
-const BAKED_KEY="sb_publishable_EsoEhYl68Jq1yhZ0nYp2sw_6Sd9iwg4";
+// The real MacroMind backend (matches the app source's VITE_SUPABASE_URL/KEY —
+// the anon key is the public client key, safe to ship; data is guarded by RLS).
+const BAKED_URL="https://sjwmpeajngxyjcdfazxl.supabase.co";
+const BAKED_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqd21wZWFqbmd4eWpjZGZhenhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3MTI4MzIsImV4cCI6MjA5MDI4ODgzMn0.BrRRylSKn76GzKgd4g-bZq4PqGdJvcIBjVtrkw_5_os";
 const sbUrl=()=>profile.supabaseUrl||BAKED_URL;
 const sbKey=()=>profile.supabaseKey||BAKED_KEY;
 const aiOn=()=>!!(sbUrl()&&sbKey());
@@ -5782,7 +5790,7 @@ document.addEventListener("submit",async e=>{
     authNotice=null;tab="home";render();toast("Signed in as "+email);
   }catch(ex){
     const blocked=(ex instanceof TypeError)||/Failed to fetch|NetworkError/i.test(ex&&ex.message||"");
-    err.textContent=blocked?"Can't reach the server from inside this viewer. Open the app outside claude.ai (hosted, or saved to your device) to sign in.":(ex&&ex.message||"Sign-in failed");
+    err.textContent=blocked?(sbInViewer()?"Can't reach the server from inside this viewer. Open the app outside claude.ai (hosted, or saved to your device) to sign in.":"Can't reach the server — check your connection and try again."):(ex&&ex.message||"Sign-in failed");
     err.style.color="hsl(var(--destructive))";err.style.display="block";
     btn.textContent=idle;btn.disabled=false;btn.style.opacity="";
   }
