@@ -926,7 +926,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-08-29.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-08-29.8"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -5943,6 +5943,32 @@ setInterval(()=>{const s=session();if(s&&s.isRunning){woElapsed=Math.floor((Date
 // portal menus dismiss on outside tap and on scroll (never clipped, never stranded)
 document.addEventListener("click",e=>{if(pmenuEl&&!pmenuEl.contains(e.target)&&!e.target.closest("[data-act=emenu]"))closePMenu()},true);
 document.querySelector(".app-content").addEventListener("scroll",closePMenu,{passive:true});
+// ===== TEMP (build .8): standalone viewport probe + self-correcting bottom anchor =====
+// A red line marks the layout-viewport bottom, orange marks 100dvh — a screenshot of the
+// bottom of the screen shows exactly which box iOS is giving us. If the visual viewport
+// extends below the layout box (iOS standalone bug signature), stretch body to match.
+let vvFixApplied=0;
+function vvApplyBottomFix(){
+  const de=document.documentElement,vv=window.visualViewport;
+  const kb=isEditableElement(document.activeElement); // never fight the keyboard
+  const slack=vv&&!kb?Math.round(vv.offsetTop+vv.height-de.clientHeight):0;
+  if(slack>8&&slack<200){document.body.style.height=(de.clientHeight+slack)+"px";vvFixApplied=slack}
+  else if(vvFixApplied&&slack<=8){document.body.style.height="";vvFixApplied=0}
+  const el=document.getElementById("vpdbg");
+  if(el){const sa=(navigator.standalone===true)||(typeof matchMedia==="function"&&matchMedia("(display-mode: standalone)").matches);
+    el.textContent=`${BUILD} icb${de.clientHeight} in${innerHeight} out${outerHeight} scr${screen.height} vv${vv?Math.round(vv.height):-1}+${vv?Math.round(vv.offsetTop):-1} slack${slack} fix${vvFixApplied}${sa?" SA":""} pT${getComputedStyle(document.body).paddingTop}`}
+}
+(function(){
+  const d=document.createElement("div");d.id="vpdbg";
+  d.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:9999;pointer-events:none;font:9px/12px monospace;color:#7CFC00;background:rgba(0,0,0,.55);border-top:2px solid red;padding:1px 4px;text-align:center";
+  document.body.appendChild(d);
+  const o=document.createElement("div");
+  o.style.cssText="position:fixed;left:0;right:0;top:calc(100dvh - 2px);height:2px;background:orange;z-index:9999;pointer-events:none";
+  document.body.appendChild(o);
+  ["resize","orientationchange","focusout"].forEach(ev=>addEventListener(ev,()=>setTimeout(vvApplyBottomFix,50)));
+  if(window.visualViewport){visualViewport.addEventListener("resize",vvApplyBottomFix);visualViewport.addEventListener("scroll",vvApplyBottomFix)}
+  vvApplyBottomFix();setTimeout(vvApplyBottomFix,300);setTimeout(vvApplyBottomFix,1500);
+})();
 const bootRoute=ROUTES[location.hash.slice(1)||"/"];
 if(location.hash&&!bootRoute)tab="notfound";else if(bootRoute)tab=bootRoute;
 render();
