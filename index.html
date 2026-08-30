@@ -11,7 +11,11 @@
 <meta name="twitter:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/0e692f3a-9042-48bf-9538-fb5624acd2b5/id-preview-30380103--2ef95289-3fb2-420b-a1b4-33e4fe9fc9d5.lovable.app-1774498885367.png" />
 <meta name="twitter:site" content="@Lovable" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<!-- NOT black-translucent: iOS 26 standalone letterboxes the bottom safe area under that
+     mode (page gets top-anchored at height minus the top inset — measured icb 812 of 874
+     on-device). Opaque black looks identical on this all-black app and restores a
+     full-height, bottom-flush viewport. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
 <meta name="apple-mobile-web-app-title" content="MacroMind" />
 <link rel="apple-touch-icon" id="touchIcon">
 <meta name="theme-color" content="#000000" />
@@ -926,7 +930,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-08-29.8"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-08-29.9"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
