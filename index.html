@@ -946,7 +946,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-08-30.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-08-30.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2728,7 +2728,8 @@ function closeFS(){
 }
 function fsRender(){
   if(!fsEl)return;
-  if(FS.selected)fsEl.innerHTML=fsDetailView();
+  if(FS.view==="edit")fsEl.innerHTML=fsEditView();
+  else if(FS.selected)fsEl.innerHTML=fsDetailView();
   else if(FS.view==="search")fsEl.innerHTML=fsSearchView();
   else fsEl.innerHTML=fsMainView();
   fsWire();
@@ -2787,6 +2788,7 @@ function fsMainView(){
       <button class="fs-librow haptic" data-act="fssearchview"><span class="l">${fsStar(14,false)} Saved Items</span><span class="r"><span class="tnum">${favCount}</span>${IC_CHEVR14}</span></button>
     </div>
     <button class="fs-custom haptic" data-act="fsquickadd">${IC_PLUS16} Log custom entry</button>
+    <button class="fs-custom haptic" data-act="fenew" style="margin-top:8px">${IC_PLUS16} Add a food to my database</button>
     <div style="height:80px"></div>
   </div>
   <div class="fs-bar">
@@ -2851,6 +2853,7 @@ function fsRenderResults(){
   }
   if(q.trim()&&!FS.results.length&&!FS.online.length&&!restItems.length&&!FS.searching)
     h+=`<p class="fs-empty">No foods found</p>`;
+  h+=`<div style="padding:8px 16px 0"><button class="fs-custom haptic" data-act="fenew" style="margin:0">${IC_PLUS16} Add ${q.trim()?"“"+esc(q.trim())+"”":"a food"} to my database</button></div>`;
   el.innerHTML=h+'<div style="height:32px"></div>';
 }
 // handleSearch (FoodSearch.tsx:114-129) — 300ms debounce, filter online by local barcodes
@@ -2870,6 +2873,42 @@ function fsHandleSearch(val){
   }else FS.online=[];
   fsRenderResults();
 }
+// ===== Custom food editor (create / update / delete database entries) =====
+const P_PENCIL='<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>';
+function fsEditView(){
+  const f=FS.editing,q=(FS.prefillName||"").trim();
+  const inp="width:100%;background:hsl(var(--secondary));border:0;border-radius:12px;padding:12px 14px;font-size:16px;color:hsl(var(--foreground));outline:none;line-height:22px";
+  const lbl="display:block;font-size:12px;font-weight:500;color:hsl(var(--muted-foreground));margin:0 0 4px";
+  const field=(l,id,val,ph,mode)=>`<div><label style="${lbl}">${l}</label><input id="${id}" value="${esc(val==null?"":String(val))}" placeholder="${ph||""}" ${mode?`type="number" inputmode="decimal" step="any" min="0"`:`autocapitalize="words" autocomplete="off"`} style="${inp}"></div>`;
+  return `<div class="fs-shd" style="justify-content:space-between">
+    <button class="fs-backbtn haptic" data-act="feback">← Back</button>
+    <button class="fs-ic haptic" data-act="fsclose">${IC_X20}</button>
+  </div>
+  <div class="fsd-body">
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 2px;line-height:28px" class="text-foreground">${f?"Edit food":"New food"}</h2>
+    <p style="font-size:12px;margin:0 0 16px;line-height:16px" class="text-muted-foreground">${f?"Changes apply to your database entry — past logs keep the values they were logged with.":"Saved to your personal database and searchable like any other food. Macros are per serving."}</p>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      ${field("Name","feName",f?f.name:q,"e.g. Grandma's Chili")}
+      ${field("Brand (optional)","feBrand",f?f.brand:"","")}
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
+        ${field("Serving size","feSize",f?f.servingSize:100,"100",1)}
+        <div><label style="${lbl}">Unit</label><select id="feUnit" class="rb-select" style="margin:0">${["g","ml","oz","serving","piece","cup","tbsp"].map(u=>`<option value="${u}"${(f?f.servingUnit:"g")===u?" selected":""}>${u}</option>`).join("")}</select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${field("Calories","feCal",f?f.macros.calories:"","0",1)}
+        ${field("Protein (g)","feP",f?f.macros.protein:"","0",1)}
+        ${field("Carbs (g)","feC",f?f.macros.carbs:"","0",1)}
+        ${field("Fat (g)","feF",f?f.macros.fat:"","0",1)}
+        ${field("Fiber (g, optional)","feFib",f&&f.macros.fiber!=null?f.macros.fiber:"","",1)}
+        ${field("Sodium (mg, optional)","feSod",f&&f.macros.sodium!=null?f.macros.sodium:"","",1)}
+      </div>
+    </div>
+  </div>
+  <div class="fsd-foot" style="display:flex;gap:8px">
+    ${f?`<button class="haptic" data-act="fedel" style="padding:0 16px;border:0;border-radius:16px;background:hsl(var(--destructive)/.1);color:hsl(var(--destructive));display:flex;align-items:center">${LUCIDE(P_TRASH2,2,16)}</button>`:""}
+    <button class="fsd-log glow-primary haptic" data-act="fesave" style="flex:1">${f?"Save changes":"Add to my foods"}</button>
+  </div>`;
+}
 // DETAIL view (FoodSearch.tsx:270-488)
 function fsDetailView(){
   const f=FS.selected;
@@ -2880,6 +2919,7 @@ function fsDetailView(){
   return `<div class="fs-shd" style="justify-content:space-between">
     <button class="fs-backbtn haptic" data-act="fsback">← Back</button>
     <div style="display:flex;align-items:center;gap:12px">
+      ${f.isCustom||f.source==="custom"?`<button class="fs-ic haptic" data-act="feedit" aria-label="Edit food">${LUCIDE(P_PENCIL,2,18)}</button>`:""}
       <button class="fs-ic haptic" data-act="fsfav" data-fid="${esc(String(f.id))}" style="color:hsl(var(--${fav?"primary":"muted-foreground"}))">${fsStar(20,fav)}</button>
       <button class="fs-ic haptic" data-act="fsclose">${IC_X20}</button>
     </div>
@@ -5640,6 +5680,46 @@ document.addEventListener("click",e=>{
     FS.selected=null;FS.view="main";FS.query="";FS.results=[];FS.online=[];fsRender();
   }
   else if(act==="fsquickadd"){closeFS();openQuickAdd(activeMeal)} // FoodLog.tsx:181-184 — closes search first
+  else if(act==="fenew"){ // create a database food (prefilled from the current search)
+    FS.editing=null;FS.editReturn=FS.view;FS.prefillName=(FS.query||"").trim();FS.selected=null;FS.view="edit";fsRender();
+  }
+  else if(act==="feedit"){ // edit the open custom food
+    FS.editing=custom.find(x=>x.id===FS.selected.id)||FS.selected;FS.editReturn="detail";FS.selected=null;FS.view="edit";fsRender();
+  }
+  else if(act==="feback"){
+    if(FS.editReturn==="detail"&&FS.editing){FS.selected={...FS.editing,source:"custom"};FS.view="search"}
+    else FS.view=FS.editReturn==="main"?"main":"search";
+    FS.editing=null;fsRender();
+  }
+  else if(act==="fesave"){
+    const g=id=>{const n=fsEl&&fsEl.querySelector(id);return n?n.value.trim():""};
+    const num=(id,d)=>{const v=parseFloat(g(id));return isFinite(v)&&v>=0?v:d};
+    const name=g("#feName");if(!name){toast("Give the food a name");return}
+    const macros={calories:Math.round(num("#feCal",0)),protein:+num("#feP",0).toFixed(1),carbs:+num("#feC",0).toFixed(1),fat:+num("#feF",0).toFixed(1)};
+    const fib=num("#feFib",NaN),sod=num("#feSod",NaN);
+    if(isFinite(fib))macros.fiber=+fib.toFixed(1);
+    if(isFinite(sod))macros.sodium=Math.round(sod);
+    const base={name,brand:g("#feBrand"),servingSize:num("#feSize",100)||100,servingUnit:g("#feUnit")||"g",macros};
+    let saved;
+    if(FS.editing){ // update in place — past food-log entries keep their logged snapshots by design
+      saved=custom.find(x=>x.id===FS.editing.id);
+      if(saved)Object.assign(saved,base);else{saved={...base,id:"custom-"+Date.now().toString(36),isCustom:true};custom.push(saved)}
+      toast("Food updated");
+    }else{
+      saved={...base,id:"custom-"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),isCustom:true};
+      custom.push(saved);toast("Added to your foods");
+    }
+    save("custom",custom); // persists locally and syncs with the account
+    FS.editing=null;FS.view="search";FS.query=name;FS.results=searchFoods(name);FS.online=[];
+    FS.selected={...saved,source:"custom"};FS.amount="1";FS.unit="serving";
+    fsRender();
+  }
+  else if(act==="fedel"){
+    if(!FS.editing||!confirm("Delete this food from your database? Past log entries are unaffected."))return;
+    custom=custom.filter(x=>x.id!==FS.editing.id);save("custom",custom);
+    FS.editing=null;FS.view="search";FS.results=FS.query?searchFoods(FS.query):[];
+    toast("Food deleted");fsRender();
+  }
   else if(act==="fsscan"){closeFS();openScanner()}               // FoodLog.tsx:177-179 — closes search first
   else if(act==="fsrest"){ // FoodLog.tsx:172-176 — close search, open the restaurant builder
     const rid=el.dataset.rid;closeFS();
