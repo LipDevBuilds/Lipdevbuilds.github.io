@@ -587,9 +587,48 @@ const localDateStr=(d=new Date())=>{const p=n=>String(n).padStart(2,"0");return 
 const addDays=(ds,n)=>{const[y,m,d]=ds.split("-").map(Number);return localDateStr(new Date(y,m-1,d+n))};
 const dayDiff=(a,b)=>{const[y1,m1,d1]=a.split("-").map(Number),[y2,m2,d2]=b.split("-").map(Number);return Math.round((new Date(y2,m2-1,d2)-new Date(y1,m1-1,d1))/864e5)};
 const LS="mm2.";
+// ===== Local vault: an independent IndexedDB mirror of every stored key =====
+// localStorage can be evicted by the OS or cleared by contexts the app can't control;
+// the vault is a second physical copy that no app update ever touches. If the app
+// boots and its main storage looks factory-fresh while the vault holds data, the
+// vault restores everything and reboots. Only the user's explicit "Reset all data"
+// clears it. Together with per-account cloud sync this is the durability contract:
+// entries survive updates, storage eviction, and reinstalls.
+let vaultDB=null,vaultQ={},vaultT=null;
+function vaultOpen(){return new Promise(res=>{try{
+  const rq=indexedDB.open("mm2vault",1);
+  rq.onupgradeneeded=()=>{try{rq.result.createObjectStore("kv")}catch(e){}};
+  rq.onsuccess=()=>res(rq.result);rq.onerror=()=>res(null);rq.onblocked=()=>res(null);
+}catch(e){res(null)}})}
+function vaultPut(k,v){vaultQ[k]=v;clearTimeout(vaultT);vaultT=setTimeout(async()=>{
+  const q=vaultQ;vaultQ={};
+  if(!vaultDB)vaultDB=await vaultOpen();if(!vaultDB)return;
+  try{const st=vaultDB.transaction("kv","readwrite").objectStore("kv");
+    for(const [kk,vv] of Object.entries(q))vv==null?st.delete(kk):st.put(vv,kk);
+  }catch(e){vaultDB=null}},400)}
+async function vaultClear(){if(!vaultDB)vaultDB=await vaultOpen();
+  if(vaultDB)try{vaultDB.transaction("kv","readwrite").objectStore("kv").clear()}catch(e){}}
+(async function vaultRestore(){ // auto-heal: main storage empty + vault populated -> restore & reboot
+  try{
+    if(localStorage.getItem(LS+"migrated")||localStorage.getItem(LS+"profile"))return;
+    vaultDB=await vaultOpen();if(!vaultDB)return;
+    const items=await new Promise(res=>{try{
+      const c=vaultDB.transaction("kv","readonly").objectStore("kv").openCursor();
+      const out={};c.onsuccess=()=>{const cur=c.result;if(cur){out[cur.key]=cur.value;cur.continue()}else res(out)};
+      c.onerror=()=>res({});
+    }catch(e){res({})}});
+    const keys=Object.keys(items).filter(k=>k.startsWith(LS)&&typeof items[k]==="string");
+    if(!keys.length)return;
+    keys.forEach(k=>{try{localStorage.setItem(k,items[k])}catch(e){}});
+    location.reload();
+  }catch(e){}
+})();
+setTimeout(()=>{try{ // once per boot, mirror everything (catches writes that bypass save())
+  Object.keys(localStorage).filter(k=>k.startsWith(LS)).forEach(k=>vaultPut(k,localStorage.getItem(k)));
+}catch(e){}},2500);
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(LS+k))??d}catch{return d}};
-const save=(k,v)=>{localStorage.setItem(LS+k,JSON.stringify(v));if(typeof sbSchedulePush==="function")sbSchedulePush(k)};
-const save0=(k,v)=>localStorage.setItem(LS+k,JSON.stringify(v)); // save without scheduling a cloud push
+const save=(k,v)=>{const s=JSON.stringify(v);localStorage.setItem(LS+k,s);vaultPut(LS+k,s);if(typeof sbSchedulePush==="function")sbSchedulePush(k)};
+const save0=(k,v)=>{const s=JSON.stringify(v);localStorage.setItem(LS+k,s);vaultPut(LS+k,s)}; // save without scheduling a cloud push
 function toast(msg,kind){ // sonner-style: status icon + left-aligned text (success check by default, error !)
   document.querySelectorAll(".toast").forEach(t=>t.remove());
   const t=document.createElement("div");t.className="toast";
@@ -853,10 +892,13 @@ async function sbToken(){
 }
 async function sbRest(method,pathq,body,prefer){
   const tok=await sbToken();
-  const r=await fetch(sbUrl().replace(/\/+$/,"")+"/rest/v1/"+pathq,{method,
+  const payload=body===undefined?undefined:JSON.stringify(body);
+  // keepalive lets a push started as the app is being closed/suspended still complete
+  const ka=document.visibilityState==="hidden"&&(!payload||payload.length<50000);
+  const r=await fetch(sbUrl().replace(/\/+$/,"")+"/rest/v1/"+pathq,{method,keepalive:ka,
     headers:Object.assign({"Content-Type":"application/json",apikey:sbKey(),Authorization:"Bearer "+tok},
       prefer?{Prefer:prefer}:{}),
-    body:body===undefined?undefined:JSON.stringify(body)});
+    body:payload});
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("Sync "+r.status+(t?": "+t.slice(0,120):""))}
   if(r.status===204)return null;
   return r.json().catch(()=>null);
@@ -872,7 +914,7 @@ function sbUuidize(){ // one-time per sign-in: cloud primary keys are UUIDs
 let sbTombs=load("tombstones",{});
 function sbTomb(table,id){if(!sbSess||!sbIsUUID(id))return;(sbTombs[table]=sbTombs[table]||[]).push(id);save0("tombstones",sbTombs);sbSchedulePush("tombstone")}
 let sbPushT=null,sbSyncing=false;
-function sbSchedulePush(){if(!sbSess)return;clearTimeout(sbPushT);sbPushT=setTimeout(()=>sbSync("push"),3000)}
+function sbSchedulePush(){if(!sbSess)return;clearTimeout(sbPushT);sbPushT=setTimeout(()=>{sbPushT=null;sbSync("push")},800)} // near-immediate: an entry reaches the account within ~a second of being saved
 async function sbSync(reason){
   if(!sbSess||sbSyncing)return;
   sbSyncing=true;sbSetSync("syncing");
@@ -946,8 +988,8 @@ async function sbSignUp(email,pw){
   if(j.access_token){sbSaveSession(j);sbSetSync("idle");sbSync("signup");return"ok"}
   return"confirm"; // instance requires email confirmation
 }
-function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-09-01.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");vaultPut(LS+"sb_session",null);sbSetSync("signedout")} // local data stays on the device
+const BUILD="2026-09-01.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -6358,7 +6400,8 @@ document.addEventListener("click",e=>{
   else if(act==="restorebackup"){$("#backupIn").click()}
   else if(act==="reset"){
     if(!confirm("Erase all local data?"))return;
-    Object.keys(localStorage).filter(k=>k.startsWith(LS)).forEach(k=>localStorage.removeItem(k));location.reload();
+    Object.keys(localStorage).filter(k=>k.startsWith(LS)).forEach(k=>localStorage.removeItem(k));
+    vaultClear().then(()=>location.reload()); // the ONLY thing allowed to clear the vault is this explicit user action
   }
 });
 // Enter confirms the inline template rename (SavedMeals.tsx:104 onKeyDown)
