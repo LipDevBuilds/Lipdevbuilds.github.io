@@ -805,6 +805,7 @@ const saveEvents=()=>{events.sort((a,b)=>a.startDate<b.startDate?-1:a.startDate>
 let mealTemplates=load("mealtemplates",[]);
 let favorites=load("favorites",[]);    // food ids
 let burnCal=load("burn_cal",{});       // per-activity burn calibration {key:{n,r}} learned from the user's corrections
+let rbExtra=load("rb_extra",{});       // user menu extensions per restaurant {restId:[{id,name,category,macros,ai?}]} — seasonal drops etc.
 
 // ===== Real account + cloud sync (Supabase REST; offline-first, fail-soft) =====
 // localStorage stays the source of truth. Sign-in pulls & merges, saves push (debounced).
@@ -819,7 +820,7 @@ const SB_BLOCKED_MSG=()=>sbInViewer()
   ?"Network blocked here — sync runs when the app is opened outside the claude.ai viewer"
   :"Can't reach the sync server — check your connection; if it persists, the backend may be paused (supabase.com/dashboard)";
 let syncState={state:sbSess?"idle":"signedout",msg:"",at:load("last_sync",0)};
-const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories","burn_cal"];
+const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories","burn_cal","rb_extra"];
 function sbSetSync(state,msg){const was=syncState.state;syncState.state=state;syncState.msg=msg||"";
   if(state==="ok"){syncState.at=Date.now();save0("last_sync",syncState.at)}
   if(state==="error"&&was!=="error"&&typeof toast==="function")toast("Sync problem — see Settings"); // silent sync failure = silent data loss
@@ -917,7 +918,7 @@ async function sbSync(reason){
         profile=Object.assign({},PROFILE_DEFAULTS,load("profile",{}));
         water=load("water",{});checkIns=load("checkins",[]);favorites=load("favorites",[]);
         custom=(load("custom",[])||[]).filter(Boolean).map(f=>f.isCustom?f:{...f,isCustom:true});
-        restDays=load("rest_days",[]);burnCal=load("burn_cal",{});
+        restDays=load("rest_days",[]);burnCal=load("burn_cal",{});rbExtra=load("rb_extra",{});
         manualSteps=load("manual_steps",{});manualActiveCals=load("manual_active_calories",{});
       }
     }
@@ -946,7 +947,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-08-30.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-08-30.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3322,9 +3323,12 @@ const rbBrandCfg=()=>RB.restaurant&&RB_BRAND[RB.restaurant.id];
 const rbComboEligible=()=>{const c=rbBrandCfg();return c&&c.combo&&RB.item&&c.mains.includes(RB.item.category)};
 const rbExtrasEligible=()=>{const c=rbBrandCfg();return c&&c.extras&&RB.item&&c.mains.includes(RB.item.category)};
 const rbWingCfg=()=>{const c=rbBrandCfg();return c&&c.wings&&RB.item&&c.wings.cats.includes(RB.item.category)?c.wings:null};
-function rbEntry(id){ // duplicate ids (dunkin) resolve to the richest menu for order building
+function rbEntry(id){ // duplicate ids (dunkin) resolve to the richest menu; user menu extensions merge in
   const m=RESTAURANTS_DB.filter(r=>r.id===id);
-  return m.sort((a,b)=>b.components.length-a.components.length)[0]||null;
+  const r=m.sort((a,b)=>b.components.length-a.components.length)[0]||null;
+  if(!r)return null;
+  const ex=rbExtra[id]||[];
+  return ex.length?Object.assign({},r,{components:[...r.components,...ex]}):r;
 }
 function rbResetIS(){RB.cat=RB.restaurant?RB.restaurant.categories[0]:null;RB.subcat=null;RB.item=null;
   RB.sizeId=undefined;RB.qty=1;RB.combo=false;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];RB.cart=[];RB.showCart=false;RB._cartAnim=false}
@@ -3630,6 +3634,11 @@ function rbISBodyHTML(){
             ${RB.qty<10?`<button class="rb-step p haptic" data-act="rbqtyp">${IC_PLUS14}</button>`:`<div class="rb-step p" style="opacity:.4">${IC_PLUS14}</div>`}
           </div></div>`})()}</div>`;
     const bcfg=rbBrandCfg();
+    if(/^rbx-/.test(String(RB.item.id))){ // one of the user's own menu additions — editable in place
+      h+=`<div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="rb-chip haptic" data-act="rbxedit" style="flex:1">Edit item${RB.item.ai?" · AI est.":""}</button>
+        <button class="rb-chip haptic" data-act="rbxdel" style="color:hsl(var(--destructive))">Remove</button></div>`;
+    }
     const custOpts=rbCustFor();
     if(custOpts){
       h+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">Customize</h4><div style="display:flex;flex-direction:column;gap:4px">${custOpts.map(c=>{const on=RB.custom.some(x=>x.name===c.name);const neg=c.macros.calories<0;
@@ -3676,13 +3685,17 @@ function rbISBodyHTML(){
       const si=catItems.filter(c=>c.subcategory===sub);
       const range=si.length?`${Math.min(...si.map(i=>i.macros.calories))}–${Math.max(...si.map(i=>i.macros.calories))} cal`:"";
       return `<button class="rb-srow haptic" data-act="rbsub" data-s="${esc(sub)}"><span style="text-align:left"><span style="display:block;font-size:14px;font-weight:600;line-height:20px">${esc(sub)}</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${si.length} item${si.length!==1?"s":""} · ${range}</span></span><span style="color:hsl(var(--muted-foreground));display:flex">${IC_CHEVR16}</span></button>`;
-    }).join("")}</div>`;
+    }).join("")}
+      ${RB.xform?rbxFormHTML():`<button class="haptic" data-act="rbxopen" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:16px;border:1px dashed hsl(var(--border)/.5);background:none;font-size:13px;color:hsl(var(--muted-foreground))">${IC_PLUS16} New or seasonal item? Add it to this menu</button>`}
+    </div>`;
   }else{
     const items=RB.subcat?catItems.filter(c=>c.subcategory===RB.subcat):catItems;
     h=`<div class="rb-sy15" style="padding:16px">
       ${RB.subcat?`<button class="rb-back haptic" data-act="rbsubback" style="display:flex;align-items:center;gap:4px;margin-bottom:8px">${IC_CHEVL14} ${esc((cfg[RB.cat]&&cfg[RB.cat].displayName)||RB.cat)}</button><h3 style="font-size:16px;font-weight:700;margin:0;line-height:24px">${esc(RB.subcat)}</h3>`:""}
       ${items.map(comp=>`<button class="rb-srow it haptic" data-act="rbitem" data-c="${comp.id}"><span style="text-align:left;flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:500;line-height:20px">${esc(comp.name)}</span>${comp.sizeVariants?`<span style="display:block;font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${comp.sizeVariants.map(sv=>esc(sv.sizeName)).join(" · ")}</span>`:""}</span><span style="text-align:right;flex-shrink:0;margin-left:12px"><span style="display:block;font-size:12px;font-weight:600;line-height:16px">${comp.macros.calories} cal</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground))">P:${comp.macros.protein} C:${comp.macros.carbs} F:${comp.macros.fat}</span></span></button>`).join("")}
       ${items.length===0?`<p style="font-size:14px;color:hsl(var(--muted-foreground));text-align:center;padding:32px 0;margin:0;line-height:20px">No items in this category</p>`:""}
+      ${RB.xform?rbxFormHTML():`<button class="haptic" data-act="rbxopen" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:16px;border:1px dashed hsl(var(--border)/.5);background:none;font-size:13px;color:hsl(var(--muted-foreground))">${IC_PLUS16} New or seasonal item? Add it to this menu</button>`}
+      ${(rbExtra[RB.restaurant.id]||[]).some(x=>x.category===RB.cat)?`<p style="font-size:10px;margin:8px 0 0;line-height:14px;color:hsl(var(--muted-foreground))">Your added items appear above like any other — open one to edit or remove it.${(rbExtra[RB.restaurant.id]||[]).some(x=>x.ai&&x.category===RB.cat)?" AI macros are estimates; check against posted values when you can.":""}</p>`:""}
     </div>`;
   }
   return `<div class="rb-scroll">${h}</div>`;
@@ -3711,6 +3724,30 @@ function rbItemSelHTML(){
 }
 
 // ----- delegated actions -----
+// Add/edit form for user menu items (rendered inside the category list)
+function rbxFormHTML(){
+  const f=RB.xform||{},it=f.edit||{},m=it.macros||{};
+  const inp="width:100%;background:hsl(var(--secondary));border:0;border-radius:10px;padding:10px 12px;font-size:16px;color:hsl(var(--foreground));outline:none;line-height:22px";
+  const lbl="display:block;font-size:11px;font-weight:500;color:hsl(var(--muted-foreground));margin:0 0 3px";
+  return `<div class="rb-srow" style="display:block;margin-top:8px;padding:14px">
+    <p style="font-size:14px;font-weight:600;margin:0 0 10px;line-height:20px">${f.edit?"Edit menu item":"Add to "+esc(RB.restaurant.name)}</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div><label style="${lbl}">Item name (size &amp; options help the AI)</label><input id="rbxName" value="${esc(it.name||"")}" placeholder="e.g. Pecan Crunch Oatmilk Latte, Grande" autocapitalize="words" style="${inp}"></div>
+      <div><label style="${lbl}">Category</label><select id="rbxCat" class="rb-select" style="margin:0">${RB.restaurant.categories.map(c=>`<option value="${esc(c)}"${(it.category||RB.cat)===c?" selected":""}>${esc(c)}</option>`).join("")}</select></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        <div><label style="${lbl}">Cal</label><input id="rbxCal" type="number" inputmode="numeric" min="0" value="${m.calories!=null?m.calories:""}" style="${inp};padding:10px 8px"></div>
+        <div><label style="${lbl}">P (g)</label><input id="rbxP" type="number" inputmode="decimal" step="any" min="0" value="${m.protein!=null?m.protein:""}" style="${inp};padding:10px 8px"></div>
+        <div><label style="${lbl}">C (g)</label><input id="rbxC" type="number" inputmode="decimal" step="any" min="0" value="${m.carbs!=null?m.carbs:""}" style="${inp};padding:10px 8px"></div>
+        <div><label style="${lbl}">F (g)</label><input id="rbxF" type="number" inputmode="decimal" step="any" min="0" value="${m.fat!=null?m.fat:""}" style="${inp};padding:10px 8px"></div>
+      </div>
+      <button class="haptic" data-act="rbxai" style="width:100%;padding:11px 0;border-radius:12px;border:1px solid hsl(var(--primary)/.3);background:hsl(var(--primary)/.08);color:hsl(var(--primary));font-size:13px;font-weight:600;line-height:18px">Ask AI for the macros</button>
+      <p id="rbxNote" style="font-size:10px;margin:0;line-height:14px;color:hsl(var(--muted-foreground))">Best accuracy: type the values posted in-store or on the chain's site. AI fills them when you can't.</p>
+      <div style="display:flex;gap:8px">
+        <button class="haptic" data-act="rbxsave" style="flex:1;padding:12px 0;border-radius:12px;border:0;background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-size:14px;font-weight:600;line-height:20px">${f.edit?"Save changes":"Add to menu"}</button>
+        <button class="haptic" data-act="rbxcancel" style="padding:12px 16px;border-radius:12px;border:0;background:hsl(var(--muted));color:hsl(var(--muted-foreground));font-size:14px;line-height:20px">Cancel</button>
+      </div>
+    </div></div>`;
+}
 function rbAction(act,el){
   const R=RB.restaurant;
   switch(act){
@@ -3734,6 +3771,60 @@ function rbAction(act,el){
     case"rbcartrm":RB.cart=RB.cart.filter(c=>c.id!==el.dataset.id);rbRender(true);return;
     case"rbtab":RB.cat=el.dataset.cat;RB.subcat=null;RB.item=null;rbRender();return;
     case"rbsub":RB.subcat=el.dataset.s;RB.item=null;rbRender();return;
+    case"rbxopen":RB.xform={};RB.xformAI=false;rbRender();return;
+    case"rbxcancel":RB.xform=null;RB.xformAI=false;rbRender();return;
+    case"rbxai":{ // AI macro lookup for one named item via the existing backend (fail-soft)
+      const nm=(rbEl.querySelector("#rbxName")||{value:""}).value.trim();
+      if(!nm){toast("Type the item name first");return}
+      el.textContent="Asking AI…";el.disabled=true;
+      callFn("food-search-ai",{query:RB.restaurant.name+" "+nm+" nutrition"})
+        .then(d=>{
+          if(!d)throw 0;
+          const set=(id,v)=>{const n=rbEl.querySelector(id);if(n&&v!=null&&isFinite(v))n.value=v};
+          set("#rbxCal",Math.round(d.calories||0));set("#rbxP",Math.round((d.protein_g||0)*10)/10);
+          set("#rbxC",Math.round((d.carbs_g||0)*10)/10);set("#rbxF",Math.round((d.fat_g||0)*10)/10);
+          const note=rbEl.querySelector("#rbxNote");
+          if(note)note.textContent="AI estimate ("+(d.confidence||"medium")+" confidence)"+(d.note?" — "+d.note:"")+". Double-check against posted values when you can.";
+          RB.xformAI=true;
+        })
+        .catch(()=>toast("AI backend unreachable — enter the posted values"))
+        .finally(()=>{el.textContent="Ask AI for the macros";el.disabled=false});
+      return;
+    }
+    case"rbxsave":{
+      const g=id=>{const n=rbEl.querySelector(id);return n?n.value.trim():""};
+      const name=g("#rbxName");if(!name){toast("Item needs a name");return}
+      const num=id=>{const v=parseFloat(g(id));return isFinite(v)&&v>=0?v:0};
+      const editing=RB.xform&&RB.xform.edit;
+      const item={id:editing?editing.id:"rbx-"+Date.now().toString(36),name,category:g("#rbxCat")||RB.cat,
+        macros:{calories:Math.round(num("#rbxCal")),protein:+num("#rbxP").toFixed(1),carbs:+num("#rbxC").toFixed(1),fat:+num("#rbxF").toFixed(1)},
+        ai:RB.xformAI===true||!!(editing&&editing.ai&&!RB.xformAI)};
+      // categories that drill into subcategories need one on the item, or it would never be listed
+      if(editing&&editing.subcategory&&item.category===editing.category)item.subcategory=editing.subcategory;
+      else if(RB.subcat&&item.category===RB.cat)item.subcategory=RB.subcat;
+      else if(RB.restaurant.components.some(c=>c.category===item.category&&c.subcategory))item.subcategory="My additions";
+      const rid=RB.restaurant.id,list=rbExtra[rid]=rbExtra[rid]||[];
+      const i=list.findIndex(x=>x.id===item.id);
+      if(i>=0)list[i]=item;else list.push(item);
+      save("rb_extra",rbExtra); // persists + syncs with the account
+      RB.xform=null;RB.xformAI=false;RB.cat=item.category;RB.subcat=item.subcategory||null;
+      RB.restaurant=rbEntry(rid);
+      toast(i>=0?"Menu item updated":"Added to the "+RB.restaurant.name+" menu");
+      rbRender();return;
+    }
+    case"rbxedit":{
+      const it=(rbExtra[RB.restaurant.id]||[]).find(x=>x.id===String(RB.item&&RB.item.id));
+      if(!it)return;
+      RB.item=null;RB.xform={edit:it};RB.xformAI=false;RB.cat=it.category;RB.subcat=null;rbRender();return;
+    }
+    case"rbxdel":{
+      if(!RB.item||!confirm("Remove this item from the menu?"))return;
+      const rid=RB.restaurant.id;
+      rbExtra[rid]=(rbExtra[rid]||[]).filter(x=>x.id!==String(RB.item.id));
+      if(!rbExtra[rid].length)delete rbExtra[rid];
+      save("rb_extra",rbExtra);
+      RB.item=null;RB.restaurant=rbEntry(rid);toast("Removed from menu");rbRender();return;
+    }
     case"rbsubback":RB.subcat=null;RB.item=null;rbRender();return;
     case"rbitem":{const c=R.components.find(x=>x.id===el.dataset.c);
       if(c){RB.item=c;RB.sizeId=c.defaultSizeId||(c.sizeVariants&&((c.sizeVariants[1]&&c.sizeVariants[1].sizeId)||(c.sizeVariants[0]&&c.sizeVariants[0].sizeId)))||undefined;
