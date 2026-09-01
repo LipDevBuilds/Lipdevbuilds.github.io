@@ -947,7 +947,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-09-01.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-01.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3126,47 +3126,213 @@ const RESTAURANTS_DB = [{"id":"chipotle","name":"Chipotle","logo":"🌯","color"
 // restaurantDatabase.ts:3082
 function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
 
-// ===== Seasonal menu refresh — Starbucks Fall 2026 (launched 2026-08-25) =====
-// Full published nutrition (grande unless noted), cross-checked 2026-09-01 against the
-// official starbucks.com nutrition pages as transcribed by launch coverage and nutrition
-// databases (Healthline, Noom, drinkdigits, fastfoodnutrition, mynetdiary, fitia,
-// eatthismuch). Iced Pumpkin Cream Chai protein: transcriptions disagree 6 vs 10 g —
-// the majority value (10 g) is used. est:true would mark unpublished splits; none remain.
+// ===== Seasonal menu refresh layer (verified 2026-09-01 via live web research) =====
+// Rows: [name, category, subcategory|0, kcal, protein, carbs, fat, est?] — standard/
+// medium size. Values from published chain nutrition where available (transcribed by
+// fastfoodnutrition/fatsecret/mynetdiary/press when official pages are unreachable);
+// est:1 marks items whose full split isn't published (calories anchored to confirmed
+// figures, remainder from close comparables) — the item sheet says so. Items merge in
+// only when their category exists; drilled categories auto-group under the subcategory.
+const RB_SSN_NEW="Fall 2026 — New",RB_SSN_FAV="Fall Favorites";
+const RB_SEASONAL={
+  starbucks:[
+    ["Iced Pumpkin Cream Shaken Espresso","cold-coffees",RB_SSN_NEW,310,4,44,14],
+    ["Iced Banana Bread Latte","cold-coffees",RB_SSN_NEW,420,10,56,19],
+    ["Pumpkin Spice Chai","hot-teas",RB_SSN_NEW,260,10,45,4.5],
+    ["Iced Banana Bread Chai","cold-teas",RB_SSN_NEW,350,8,50,14],
+    ["Iced Pumpkin Cream Matcha","cold-teas",RB_SSN_NEW,350,10,41,17],
+    ["Iced Chaider","cold-teas",RB_SSN_NEW,90,0,21,0],
+    ["Pumpkin Spice Latte","hot-coffees",RB_SSN_FAV,390,14,52,14],
+    ["Iced Pumpkin Spice Latte","cold-coffees",RB_SSN_FAV,370,10,50,14],
+    ["Pumpkin Cream Cold Brew","cold-coffees",RB_SSN_FAV,250,2,31,12],
+    ["Pumpkin Spice Frappuccino","frappuccinos",RB_SSN_FAV,420,6,66,15],
+    ["Pecan Crunch Oatmilk Latte","hot-coffees",RB_SSN_FAV,270,3,47,9],
+    ["Iced Pecan Crunch Oatmilk Latte","cold-coffees",RB_SSN_FAV,350,5,51,15],
+    ["Pecan Oatmilk Cortado (Short)","hot-coffees",RB_SSN_FAV,120,1,22,3.5],
+    ["Iced Pumpkin Cream Chai","cold-teas",RB_SSN_FAV,460,10,68,17], // protein transcriptions differ 6 vs 10 g; majority used
+    ["Pumpkin Cream Cheese Muffin","bakery","Loaves & Muffins",350,5,53,14],
+    ["Chicken Bacon Protein Pocket","lunch",0,310,20,29,13],
+    ["Hedgehog Cake Pop","treats",0,160,2,21,7.5],
+  ],
+  "mcdonalds":[
+    ["Spicy Chicken McNuggets (10 pc)","chicken",0,420,24,20,27],
+    ["Caramel Apple Pie Frappe (Medium)","mccafe",0,620,8,95,22,1],
+    ["Caramel Apple Pie Latte (Medium)","mccafe",0,410,11,62,14,1],
+    ["Caramel Apple Pie Iced Latte (Medium)","mccafe",0,310,6,48,11,1],
+    ["Caramel Apple Pie Iced Coffee (Medium)","mccafe",0,290,3,42,13],
+    ["Red Bull Dragonberry Energizer (Medium)","mccafe",0,230,1,56,0,1],
+  ],
+  "burgerking":[
+    ["Chicken Nuggets (8 pc, New Recipe)","chicken-fish",0,380,16,26,22,1],
+    ["Special Savory Sauce","sides",0,140,0,2,15,1],
+    ["Super Saiyan Sauce","sides",0,45,1,10,0,1],
+    ["Dragon Ball Burst Mango Peach Lemonade (Medium)","sides",0,280,0,70,0,1],
+  ],
+  "wendys":[
+    ["Pretzel Bacon Pub Cheeseburger","burgers",0,730,37,46,44],
+    ["Pretzel Bacon Pub Chicken Sandwich","chicken",0,860,42,73,44],
+    ["Bacon Pub Fries","sides",0,460,14,43,26],
+    ["Apple Crumble Frosty Fusion (Small)","sides",0,390,9,67,10],
+  ],
+  "whitecastle":[
+    ["Southwest Veggie Slider","sliders",0,220,5,29,9,1],
+    ["Garage Beer Cheese Sausage Slider","sliders",0,300,10,22,19,1],
+    ["Garage Beer Cheese Fries","sides",0,460,8,50,24,1],
+    ["Pretzel Nibblers with Beer Cheese (6 pc)","sides",0,380,9,50,15,1],
+  ],
+  "tacobell":[
+    ["Tajin Taco","tacos",0,210,8,16,12],
+    ["Tajin Cheesy Gordita Crunch","specialties",0,460,19,45,22],
+    ["Naked Chicken Chalupa","specialties",0,430,21,30,25,1],
+    ["Meximelt","specialties",0,250,12,21,14,1],
+    ["Beefy Crunch Burrito","burritos",0,460,13,58,19],
+    ["Caramel Apple Empanada","sides",0,280,3,38,13],
+  ],
+  "chipotle":[
+    ["Carne Asada (4 oz)","protein",0,250,29,1,14],
+    ["Pollo Asado (4 oz)","protein",0,210,22,3,12,1],
+    ["Chili Lime Chips","sides",0,540,7,73,25,1],
+  ],
+  "qdoba":[
+    ["Spicy Tequila Lime Steak","protein",0,280,21,6,18,1],
+    ["Churro Chips","extras",0,480,6,62,23,1],
+  ],
+  "panda":[
+    ["Hot Orange Chicken","entrees",0,550,17,59,27],
+    ["Strawberry Dragonfruit Refresher","drinks",0,170,0,42,0,1],
+  ],
+  "chickfila":[
+    ["Chicken & Waffles Sandwich","entrees",0,690,32,66,34],
+    ["Spicy Chicken & Waffles Sandwich","entrees",0,710,31,70,35],
+    ["Grilled Chicken & Waffles Sandwich","entrees",0,540,29,55,24],
+    ["Pretzel Cheddar Club Sandwich","entrees",0,650,39,53,30],
+    ["Chicken & Waffles Breakfast Sandwich","breakfast",0,530,22,55,26],
+    ["S'mores Milkshake","drinks",0,650,12,94,25,1],
+    ["S'mores Frosted Coffee","drinks",0,400,7,73,9,1],
+    ["Cherry Berry & Sprite","drinks",0,200,0,52,0],
+  ],
+  "kfc":[
+    ["Original Recipe Tenders (3 pc)","chicken",0,510,33,60,18],
+    ["Hot Ranch Loaded Wedges","sides",0,870,10,88,54],
+    ["Kentucky Fried Pickles (8 pc)","sides",0,290,4,32,16],
+    ["Popcorn Chicken (Individual)","chicken",0,400,20,18,26,1],
+  ],
+  "popeyes":[
+    ["Honey BBQ Chicken Sandwich","sandwiches",0,630,26,78,24],
+    ["Blackened Ranch Chicken Wrap","sandwiches",0,480,20,42,26,1],
+  ],
+  "dunkin":[
+    ["Pumpkin Spice Signature Latte (Medium)","hot-coffee",0,420,11,66,14],
+    ["Pumpkin Cloud Dunkalatte (Medium)","hot-coffee",0,390,12,56,13,1],
+    ["Iced Pumpkin Patch Cloud Latte (Medium)","iced-coffee",0,360,10,52,12,1],
+    ["Pumpkin Pie Coffee Chiller (Medium)","frozen",0,630,9,105,18,1],
+    ["Tiramisu Shakin' Espresso (Medium)","espresso",0,250,6,40,7,1],
+    ["Pumpkin Donut","donuts",0,380,4,49,19],
+    ["Pumpkin Munchkin","donuts",0,70,1,8,4],
+    ["Sausage, Egg & Cheese Hash Brown Wake-Up Wrap","food",0,420,13,28,28,1],
+  ],
+  "peets":[
+    ["Pumpkin Latte (Medium)","hot-coffees",0,330,11,47,12,1],
+    ["Pumpkin Chai Latte (Medium)","teas",0,285,8,48,7,1],
+    ["Iced Pumpkin Latte (Medium)","cold-coffees",0,240,8,37,8,1],
+    ["Caramel Apple Protein Smoothie (Medium)","more-drinks",0,390,19,70,7,1],
+    ["Cold Brew Protein Smoothie (Medium)","more-drinks",0,330,19,58,7,1],
+    ["Sparkling Green Apple Energy","more-drinks",0,90,0,23,0,1],
+    ["Home Harvest Pretzwich","breakfast",0,530,26,57,23,1],
+    ["Pumpkin Bread with Cream Cheese Icing","bakery",0,430,6,60,18,1],
+  ],
+  "panera":[
+    ["Three-Cheese Lasagna Soup (Bowl)","soups",0,420,19,38,21,1],
+    ["Autumn Squash Soup (Bowl)","soups",0,360,6,40,21],
+    ["Rustic Baked Potato Soup (Bowl)","soups",0,330,9,33,20],
+    ["Chocolate Chip Bagel","bakery",0,370,11,68,6],
+    ["PB&J Cookie","bakery",0,440,9,55,21,1],
+    ["Cinnamon Croissant Bites","bakery",0,480,7,58,25,1],
+    ["Ciabatta Dippers","sides",0,200,7,38,3,1],
+  ],
+  "noodlesandco":[
+    ["Baked Cheese Tortelloni (Regular)","noodles",0,770,33,86,33,1],
+  ],
+  "culvers":[
+    ["Fried Pickle Pub Burger (Single)","burgers",0,770,27,58,49],
+    ["Fried Pickles","sides",0,350,5,38,19,1],
+    ["Peanut Butter Fudge Brownie Custard (1 scoop)","custard",0,340,6,41,17,1],
+    ["OREO Reese's Cheesecake Custard (1 scoop)","custard",0,350,7,40,18,1],
+    ["Pumpkin Spice Shake (Medium)","custard",0,700,13,76,38,1],
+    ["Salted Caramel Pumpkin Concrete Mixer (Medium)","custard",0,1010,15,124,52,1],
+    ["Pumpkin S'mores Concrete Mixer (Medium)","custard",0,1050,16,135,50,1],
+  ],
+  "dairyqueen":[
+    ["Caramel Apple Cheesecake Blizzard (Medium)","blizzards",0,820,14,130,27,1],
+    ["Brown Sugar Cookie Dough Blizzard (Medium)","blizzards",0,950,16,142,36,1],
+    ["Pumpkin Pie Blizzard (Medium)","blizzards",0,770,13,112,30],
+    ["Toasted Marshmallow Mocha Coffee Cooler","treats",0,620,12,92,22,1],
+  ],
+  "freddys":[
+    ["Smoky Bacon Cheddar Stack","steakburgers",0,1090,70,48,67],
+    ["Smoky Bacon Steakburger Taco","steakburgers",0,480,22,27,31,1],
+    ["Bacon Loaded Tots","sides",0,720,19,58,46,1],
+    ["Maple Pecan Concrete (Regular)","custard",0,1010,15,118,52,1],
+  ],
+  "steaknshake":[
+    ["Protein Steakburger (Lettuce-Wrapped)","steakburgers",0,530,31,6,42,1],
+    ["Double Steakburger Double Cheese (Grass-Fed)","steakburgers",0,690,31,38,46,1],
+    ["Patriot Milkshake","shakes",0,620,12,78,30,1],
+  ],
+  "arbys":[
+    ["Steak Nuggets (9 pc)","roast-beef",0,600,31,8,49,1],
+    ["Steak 'n Mac Bowl","roast-beef",0,880,34,52,60,1],
+    ["Steak 'n Potato Bowl","roast-beef",0,770,33,42,52,1],
+    ["Angus Cheesesteak","roast-beef",0,700,36,49,41],
+    ["Italian Beef Dip","roast-beef",0,680,35,52,37,1],
+    ["Peach Cobbler Rolls (2 pc)","sides",0,350,4,46,16],
+  ],
+  "portillos":[
+    ["Dr Pepper Shake (Regular)","shakes",0,620,12,97,20,1],
+    ["Dr Pepper Cake Shake (Regular)","shakes",0,1050,15,150,42,1],
+    ["Plant-Based Garden Dog","hot-dogs",0,320,20,40,8,1],
+    ["Spicy Chicken Chopped Salad","sides",0,1080,45,70,68],
+    ["Chicken Pecan Salad with Bacon","sides",0,910,46,23,70],
+  ],
+  "fiveguys":[
+    ["Blackberry Milkshake (Regular)","drinks",0,730,11,99,32,1],
+  ],
+  "wingstop":[
+    ["Classic Wing — Carolina Gold","classic-wings",0,130,9,5,7,1],
+    ["Classic Wing — Jamaican Jerk","classic-wings",0,115,9,2,8,1],
+    ["Boneless Wing — Carolina Gold","boneless-wings",0,115,5,10,5,1],
+    ["Boneless Wing — Jamaican Jerk","boneless-wings",0,100,5,7,6,1],
+    ["Hot Honey Mustard Dip","sides",0,180,1,12,14,1],
+  ],
+  "bdubs":[
+    ["Beef on Weck Sliders","burgers",0,640,38,52,30,1],
+    ["Buffalo Chips (Regular)","sides",0,430,5,55,21,1],
+    ["Mini Corn Dogs","sides",0,620,15,60,35,1],
+    ["Garlic Mushrooms","sides",0,540,9,45,35,1],
+    ["Traditional Wing — Hot BBQ","traditional-wings",0,83,9,3,4,1],
+  ],
+  "firehousesubs":[
+    ["Smokin' Honey Chicken Melt (Medium)","hot-subs",0,980,55,90,43,1],
+    ["Smokin' Honey Steak Melt (Medium)","hot-subs",0,930,47,90,42,1],
+  ],
+  "jimmyjohns":[
+    ["PB&J Cookie","sides",0,400,8,50,19,1],
+  ],
+};
 (function(){
-  const F=(id,name,cat,sub,kc,p,c,f,extra)=>Object.assign({id:"sbf26-"+id,name,category:cat,subcategory:sub,
-    macros:{calories:kc,protein:p,carbs:c,fat:f}},extra||{});
-  const NEW="Fall 2026 — New",FAV="Fall Favorites";
-  const items=[
-    // new for 2026 — full published nutrition
-    F(1,"Iced Pumpkin Cream Shaken Espresso","cold-coffees",NEW,310,4,44,14),
-    F(2,"Iced Banana Bread Latte","cold-coffees",NEW,420,10,56,19),
-    F(3,"Pumpkin Spice Chai","hot-teas",NEW,260,10,45,4.5),
-    F(4,"Iced Banana Bread Chai","cold-teas",NEW,350,8,50,14),
-    F(5,"Iced Pumpkin Cream Matcha","cold-teas",NEW,350,10,41,17),
-    F(6,"Iced Chaider","cold-teas",NEW,90,0,21,0),
-    // returning favorites — long-published official values
-    F(7,"Pumpkin Spice Latte","hot-coffees",FAV,390,14,52,14),
-    F(8,"Iced Pumpkin Spice Latte","cold-coffees",FAV,370,10,50,14),
-    F(9,"Pumpkin Cream Cold Brew","cold-coffees",FAV,250,2,31,12),
-    F(10,"Pumpkin Spice Frappuccino","frappuccinos",FAV,420,6,66,15),
-    F(11,"Pecan Crunch Oatmilk Latte","hot-coffees",FAV,270,3,47,9),
-    F(12,"Iced Pecan Crunch Oatmilk Latte","cold-coffees",FAV,350,5,51,15),
-    F(13,"Pecan Oatmilk Cortado (Short)","hot-coffees",FAV,120,1,22,3.5),
-    F(14,"Iced Pumpkin Cream Chai","cold-teas",FAV,460,10,68,17),
-    // food
-    F(15,"Pumpkin Cream Cheese Muffin","bakery","Loaves & Muffins",350,5,53,14),
-    F(16,"Chicken Bacon Protein Pocket","lunch",undefined,310,20,29,13),
-    F(17,"Hedgehog Cake Pop","treats",undefined,160,2,21,7.5),
-  ];
-  RESTAURANTS_DB.filter(r=>r.id==="starbucks").forEach(r=>{
-    const have=new Set(r.components.map(c=>c.name.toLowerCase()));
-    items.forEach(it=>{
-      if(have.has(it.name.toLowerCase()))return;
-      const useSubs=r.components.some(c=>c.category===it.category&&c.subcategory);
-      if(useSubs){if(!it.subcategory)it.subcategory=NEW}else delete it.subcategory; // drilled categories hide sub-less items
-      r.components.push(it);
+  for(const [rid,rows] of Object.entries(RB_SEASONAL)){
+    RESTAURANTS_DB.filter(r=>r.id===rid).forEach(r=>{
+      const have=new Set(r.components.map(c=>c.name.toLowerCase()));
+      rows.forEach((row,i)=>{
+        const [name,cat,sub,kc,p,c,f,est]=row;
+        if(have.has(name.toLowerCase())||!r.categories.includes(cat))return;
+        const it={id:"ssn-"+rid+"-"+i,name,category:cat,macros:{calories:kc,protein:p,carbs:c,fat:f}};
+        if(est)it.est=true;
+        if(r.components.some(x=>x.category===cat&&x.subcategory))it.subcategory=sub||RB_SSN_NEW;
+        r.components.push(it);
+      });
     });
-  });
+  }
 })();
 
 // restaurantDatabase.ts:3093 — light 0.5, double 2, half 0.5, regular/default 1
@@ -3259,7 +3425,7 @@ const RB_BRAND={
   wingstop:{wings:{cats:["classic-wings","boneless-wings"],counts:[6,8,10,15,20]},extras:{cat:"sides",label:"Add a Dip",match:"dip"},mains:["classic-wings","boneless-wings","tenders"]},
   bdubs:{wings:{cats:["traditional-wings","boneless-wings"],counts:[6,10,15,20,30]},extras:{cat:"sides",label:"Add a Dip",match:"dip"},mains:["traditional-wings","boneless-wings","burgers"]},
   fiveguys:{cust:{burgers:"burger"}},          // all-toppings-free menu: swaps only, no combo flow (matches their app)
-  dunkin:{cust:{sandwiches:"breakfast"}},      // breakfast sandwiches customize; coffee gets the fixings layer
+  dunkin:{cust:{sandwiches:"breakfast",food:"breakfast"}}, // both dunkin data variants; coffee gets the fixings layer
   panera:{cust:{sandwiches:"sub"}},
 };
 // Order-modification catalog (typical condiment/ingredient macro deltas; removals negative).
