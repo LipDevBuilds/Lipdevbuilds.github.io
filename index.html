@@ -819,8 +819,9 @@ const SB_BLOCKED_MSG=()=>sbInViewer()
   :"Can't reach the sync server — check your connection; if it persists, the backend may be paused (supabase.com/dashboard)";
 let syncState={state:sbSess?"idle":"signedout",msg:"",at:load("last_sync",0)};
 const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories"];
-function sbSetSync(state,msg){syncState.state=state;syncState.msg=msg||"";
+function sbSetSync(state,msg){const was=syncState.state;syncState.state=state;syncState.msg=msg||"";
   if(state==="ok"){syncState.at=Date.now();save0("last_sync",syncState.at)}
+  if(state==="error"&&was!=="error"&&typeof toast==="function")toast("Sync problem — see Settings"); // silent sync failure = silent data loss
   if(typeof tab!=="undefined"&&tab==="settings"&&typeof rerenderSettings==="function")rerenderSettings()}
 async function sbAuth(path,body){
   const r=await fetch(sbUrl().replace(/\/+$/,"")+"/auth/v1/"+path,{method:"POST",
@@ -838,8 +839,15 @@ function sbSaveSession(j){
 async function sbToken(){
   if(!sbSess)throw new Error("Not signed in");
   if(Date.now()<sbSess.expires_at)return sbSess.access_token;
-  const j=await sbAuth("token?grant_type=refresh_token",{refresh_token:sbSess.refresh_token});
-  sbSaveSession(j);return sbSess.access_token;
+  try{
+    const j=await sbAuth("token?grant_type=refresh_token",{refresh_token:sbSess.refresh_token});
+    sbSaveSession(j);return sbSess.access_token;
+  }catch(e){ // definitively dead refresh token -> clean sign-out (transient network errors keep the session)
+    if(!(e instanceof TypeError)&&/invalid|expired|revoked|\(40[013]\)/i.test(String(e&&e.message||e))){
+      sbSignOut();if(typeof toast==="function")toast("Session expired — sign in again");
+    }
+    throw e;
+  }
 }
 async function sbRest(method,pathq,body,prefer){
   const tok=await sbToken();
@@ -869,11 +877,13 @@ async function sbSync(reason){
   try{
     sbUuidize();
     const uid=sbSess.user.id;
-    for(const [tbl,ids] of Object.entries(sbTombs)){ // deletions first
+    const keptTombs={}; // deletions first; a failed table keeps its tombstones for the next sync
+    for(const [tbl,ids] of Object.entries(sbTombs)){
       const valid=(ids||[]).filter(sbIsUUID);
-      if(valid.length)await sbRest("DELETE",`${tbl}?id=in.(${valid.join(",")})`);
+      if(!valid.length)continue;
+      try{await sbRest("DELETE",`${tbl}?id=in.(${valid.join(",")})`)}catch(e){keptTombs[tbl]=valid}
     }
-    save0("tombstones",sbTombs={});
+    save0("tombstones",sbTombs=keptTombs);
     if(reason!=="push"){ // full pull + merge on sign-in / boot
       const [rlog,rw,rwo,rev,rtpl,rset]=await Promise.all([
         sbRest("GET","food_log?select=*"),sbRest("GET","weight_log?select=*"),
@@ -910,15 +920,18 @@ async function sbSync(reason){
         manualSteps=load("manual_steps",{});manualActiveCals=load("manual_active_calories",{});
       }
     }
-    const uidRow=r=>Object.assign({user_id:uid},r); // push everything as upserts
-    if(foodLog.length)await sbRest("POST","food_log?on_conflict=id",foodLog.map(e=>uidRow({id:e.id,food_id:e.foodId,name:e.name,servings:e.sv,serving_unit:e.servingUnit,macros:e.macros,meal:e.meal,date:e.date,timestamp:e.ts})),"resolution=merge-duplicates");
-    if(weights.length)await sbRest("POST","weight_log?on_conflict=user_id,date",weights.map(w=>uidRow({date:w.date,weight:w.weight})),"resolution=merge-duplicates");
-    if(workouts.length)await sbRest("POST","workout_log?on_conflict=id",workouts.map(w=>uidRow({id:w.id,date:w.date,name:w.name,start_time:w.startTime,end_time:w.endTime,duration:w.duration,exercises:w.exercises,total_calories_burned:w.totalCaloriesBurned,category:w.category,muscle_groups:w.muscleGroups,notes:w.notes||null})),"resolution=merge-duplicates");
-    if(events.length)await sbRest("POST","calendar_events?on_conflict=id",events.map(e=>uidRow({id:e.id,type:e.type,title:e.title,description:e.description||null,start_date:e.startDate,end_date:e.endDate||null,color:e.color||null,macro_targets:e.macroTargets||null})),"resolution=merge-duplicates");
-    if(mealTemplates.length)await sbRest("POST","meal_templates?on_conflict=id",mealTemplates.map(t=>uidRow({id:t.id,name:t.name,entries:t.entries})),"resolution=merge-duplicates");
-    const jsonKeys={};for(const k of SYNC_JSON_KEYS)jsonKeys[k]=load(k,null);
-    await sbRest("POST","user_settings?on_conflict=user_id",[{user_id:uid,settings:{jsonKeys,v:1}}],"resolution=merge-duplicates");
-    sbSetSync("ok");
+    const uidRow=r=>Object.assign({user_id:uid},r); // push every table as isolated upserts — one failure never blocks the rest
+    const fails=[];
+    const attempt=async(label,fn)=>{try{await fn()}catch(e){fails.push(label)}};
+    await attempt("food",()=>foodLog.length?sbRest("POST","food_log?on_conflict=id",foodLog.map(e=>uidRow({id:e.id,food_id:e.foodId,name:e.name,servings:e.sv,serving_unit:e.servingUnit,macros:e.macros,meal:e.meal,date:e.date,timestamp:e.ts})),"resolution=merge-duplicates"):null);
+    await attempt("weight",()=>weights.length?sbRest("POST","weight_log?on_conflict=user_id,date",weights.map(w=>uidRow({date:w.date,weight:w.weight})),"resolution=merge-duplicates"):null);
+    await attempt("workouts",()=>workouts.length?sbRest("POST","workout_log?on_conflict=id",workouts.map(w=>uidRow({id:w.id,date:w.date,name:w.name,start_time:w.startTime,end_time:w.endTime,duration:w.duration,exercises:w.exercises,total_calories_burned:w.totalCaloriesBurned,category:w.category,muscle_groups:w.muscleGroups,notes:w.notes||null})),"resolution=merge-duplicates"):null);
+    await attempt("calendar",()=>events.length?sbRest("POST","calendar_events?on_conflict=id",events.map(e=>uidRow({id:e.id,type:e.type,title:e.title,description:e.description||null,start_date:e.startDate,end_date:e.endDate||null,color:e.color||null,macro_targets:e.macroTargets||null})),"resolution=merge-duplicates"):null);
+    await attempt("templates",()=>mealTemplates.length?sbRest("POST","meal_templates?on_conflict=id",mealTemplates.map(t=>uidRow({id:t.id,name:t.name,entries:t.entries})),"resolution=merge-duplicates"):null);
+    await attempt("settings",()=>{const jsonKeys={};for(const k of SYNC_JSON_KEYS)jsonKeys[k]=load(k,null);
+      return sbRest("POST","user_settings?on_conflict=user_id",[{user_id:uid,settings:{jsonKeys,v:1}}],"resolution=merge-duplicates")});
+    if(fails.length)sbSetSync("error","Didn't sync: "+fails.join(", ")+" — will retry on next save or Sync now");
+    else sbSetSync("ok");
     if(reason!=="push")render();
   }catch(e){
     const blocked=(e instanceof TypeError)||/Failed to fetch|NetworkError|CSP/i.test(e&&e.message||"");
@@ -932,7 +945,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-08-30.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-08-30.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -5364,6 +5377,9 @@ function settingsPage(animate=true){
   <div class="apple-section" style="margin:18px 4px 8px">Data</div>
   <div class="apple-card p-4">
     <button class="btn" style="width:100%;margin-bottom:8px" data-act="csv">Export food log CSV</button>
+    <button class="btn" style="width:100%;margin-bottom:8px" data-act="backup">Back up all data (file)</button>
+    <button class="btn" style="width:100%;margin-bottom:8px" data-act="restorebackup">Restore from backup…</button>
+    <input type="file" id="backupIn" accept="application/json,.json" style="display:none">
     <button class="btn danger" style="width:100%" data-act="reset">Reset all data</button></div>
   <p class="text-muted-foreground" style="font-size:10px;margin:14px 0 2px;opacity:.55;text-align:center;line-height:14px">${esc(diagLine())}</p>
   </div>`;
@@ -5802,6 +5818,18 @@ document.addEventListener("click",e=>{
       a.download="macromind-log.csv";a.click();
     }
   }
+  else if(act==="backup"){ // full-state snapshot (everything except the auth session) — survives icon deletion, device loss, anything
+    const dump={};Object.keys(localStorage).filter(k=>k.startsWith(LS)&&k!==LS+"sb_session").forEach(k=>dump[k]=localStorage.getItem(k));
+    const json=JSON.stringify({app:"MacroMind",v:1,at:new Date().toISOString(),data:dump});
+    const fn="macromind-backup-"+localDateStr()+".json";
+    if(window.claude&&window.claude.downloads){
+      window.claude.downloads.save({filename:fn,data:json}).then(()=>toast("Backup saved"),e=>{if(!e||e.code!=="declined")toast("Backup failed")});
+    }else{
+      const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([json],{type:"application/json"}));
+      a.download=fn;document.body.appendChild(a);a.click();a.remove();toast("Backup file created");
+    }
+  }
+  else if(act==="restorebackup"){$("#backupIn").click()}
   else if(act==="reset"){
     if(!confirm("Erase all local data?"))return;
     Object.keys(localStorage).filter(k=>k.startsWith(LS)).forEach(k=>localStorage.removeItem(k));location.reload();
@@ -5884,6 +5912,28 @@ document.addEventListener("submit",async e=>{
   }
 });
 if(sbSess)setTimeout(()=>sbSync("boot"),800); // signed in from a previous visit: pull-merge after first paint
+// iOS can suspend/kill the app before the 3s debounce fires — flush the pending push the moment we're hidden
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="hidden"&&sbPushT){clearTimeout(sbPushT);sbPushT=null;sbSync("push")}
+});
+// Restore-from-backup file picker (keeps the current sign-in; boot sync then pushes the restored data up)
+document.addEventListener("change",e=>{
+  if(!(e.target&&e.target.id==="backupIn"))return;
+  const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const j=JSON.parse(rd.result);
+      if(!j||j.app!=="MacroMind"||!j.data||typeof j.data!=="object")throw 0;
+      const keys=Object.keys(j.data).filter(k=>k.startsWith(LS)&&k!==LS+"sb_session");
+      if(!keys.length)throw 0;
+      if(!confirm("Restore backup from "+String(j.at||"unknown date").slice(0,10)+"? This replaces the data on this device."))return;
+      keys.forEach(k=>localStorage.setItem(k,j.data[k]));
+      location.reload();
+    }catch(_){toast("That file isn't a MacroMind backup")}
+  };
+  rd.readAsText(f);
+});
 // bottom nav can never be dragged / rubber-banded (BottomNav.tsx:58-62)
 ["touchmove","wheel"].forEach(ev=>$("#nav").addEventListener(ev,e=>e.preventDefault(),{passive:false}));
 // ===== keyboard guard — exact port of BottomNav.tsx:13-149 =====
