@@ -947,7 +947,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-08-30.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-01.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3126,6 +3126,49 @@ const RESTAURANTS_DB = [{"id":"chipotle","name":"Chipotle","logo":"🌯","color"
 // restaurantDatabase.ts:3082
 function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
 
+// ===== Seasonal menu refresh — Starbucks Fall 2026 (launched 2026-08-25) =====
+// Values verified against launch coverage (Starbucks announcement, Healthline, Noom,
+// Food Republic, drinkdigits) on 2026-09-01, grande unless noted; est:true marks items
+// whose full macros weren't yet published — calories/protein anchored to confirmed
+// figures, remainder derived from comparable official items. Shown as an estimate in-app.
+(function(){
+  const F=(id,name,cat,sub,kc,p,c,f,extra)=>Object.assign({id:"sbf26-"+id,name,category:cat,subcategory:sub,
+    macros:{calories:kc,protein:p,carbs:c,fat:f}},extra||{});
+  const NEW="Fall 2026 — New",FAV="Fall Favorites";
+  const items=[
+    // new for 2026 — full published nutrition
+    F(1,"Iced Pumpkin Cream Shaken Espresso","cold-coffees",NEW,310,4,44,14),
+    F(2,"Iced Banana Bread Latte","cold-coffees",NEW,420,10,56,19),
+    F(3,"Pumpkin Spice Chai","hot-teas",NEW,260,10,45,4.5),
+    F(4,"Iced Banana Bread Chai","cold-teas",NEW,350,8,50,14),
+    F(5,"Iced Pumpkin Cream Matcha","cold-teas",NEW,350,10,41,17),
+    F(6,"Iced Chaider","cold-teas",NEW,90,0,21,0),
+    // returning favorites — long-published official values
+    F(7,"Pumpkin Spice Latte","hot-coffees",FAV,390,14,52,14),
+    F(8,"Iced Pumpkin Spice Latte","cold-coffees",FAV,370,12,49,15),
+    F(9,"Pumpkin Cream Cold Brew","cold-coffees",FAV,250,2,31,12),
+    F(10,"Pumpkin Spice Frappuccino","frappuccinos",FAV,420,6,66,15),
+    // returning — 2026 calories confirmed, macro split estimated
+    F(11,"Pecan Crunch Oatmilk Latte","hot-coffees",FAV,270,6,40,9,{est:true}),
+    F(12,"Iced Pecan Crunch Oatmilk Latte","cold-coffees",FAV,290,5,42,11,{est:true}),
+    F(13,"Pecan Oatmilk Cortado (Short)","hot-coffees",FAV,120,3,16,4,{est:true}),
+    F(14,"Iced Pumpkin Cream Chai","cold-teas",FAV,450,8,68,15,{est:true}), // 66 g sugar confirmed
+    // food
+    F(15,"Pumpkin Cream Cheese Muffin","bakery","Loaves & Muffins",350,5,53,14),
+    F(16,"Chicken Bacon Protein Pocket","lunch",undefined,360,20,34,15,{est:true}), // 20 g protein confirmed
+    F(17,"Hedgehog Cake Pop","treats",undefined,170,2,23,8,{est:true}),
+  ];
+  RESTAURANTS_DB.filter(r=>r.id==="starbucks").forEach(r=>{
+    const have=new Set(r.components.map(c=>c.name.toLowerCase()));
+    items.forEach(it=>{
+      if(have.has(it.name.toLowerCase()))return;
+      const useSubs=r.components.some(c=>c.category===it.category&&c.subcategory);
+      if(useSubs){if(!it.subcategory)it.subcategory=NEW}else delete it.subcategory; // drilled categories hide sub-less items
+      r.components.push(it);
+    });
+  });
+})();
+
 // restaurantDatabase.ts:3093 — light 0.5, double 2, half 0.5, regular/default 1
 function getPortionMultiplier(portion){
   switch(portion){ case 'light': return 0.5; case 'double': return 2; case 'half': return 0.5; default: return 1; }
@@ -3638,6 +3681,8 @@ function rbISBodyHTML(){
       h+=`<div style="display:flex;gap:8px;margin-bottom:16px">
         <button class="rb-chip haptic" data-act="rbxedit" style="flex:1">Edit item${RB.item.ai?" · AI est.":""}</button>
         <button class="rb-chip haptic" data-act="rbxdel" style="color:hsl(var(--destructive))">Remove</button></div>`;
+    }else if(RB.item.est){
+      h+=`<p style="font-size:10px;margin:-6px 0 14px;line-height:14px;color:hsl(var(--muted-foreground))">Partly estimated — the chain hasn't published full macros for this item yet; confirmed figures are used where available.</p>`;
     }
     const custOpts=rbCustFor();
     if(custOpts){
