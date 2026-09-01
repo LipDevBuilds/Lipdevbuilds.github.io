@@ -804,6 +804,7 @@ const saveEvents=()=>{events.sort((a,b)=>a.startDate<b.startDate?-1:a.startDate>
 // MealTemplate[] (useMealTemplates.ts): {id,name,createdAt(ms),entries:[{foodId,name,sv,servingUnit,macros{calories,protein,carbs,fat},meal}]} — newest-first
 let mealTemplates=load("mealtemplates",[]);
 let favorites=load("favorites",[]);    // food ids
+let burnCal=load("burn_cal",{});       // per-activity burn calibration {key:{n,r}} learned from the user's corrections
 
 // ===== Real account + cloud sync (Supabase REST; offline-first, fail-soft) =====
 // localStorage stays the source of truth. Sign-in pulls & merges, saves push (debounced).
@@ -818,7 +819,7 @@ const SB_BLOCKED_MSG=()=>sbInViewer()
   ?"Network blocked here — sync runs when the app is opened outside the claude.ai viewer"
   :"Can't reach the sync server — check your connection; if it persists, the backend may be paused (supabase.com/dashboard)";
 let syncState={state:sbSess?"idle":"signedout",msg:"",at:load("last_sync",0)};
-const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories"];
+const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories","burn_cal"];
 function sbSetSync(state,msg){const was=syncState.state;syncState.state=state;syncState.msg=msg||"";
   if(state==="ok"){syncState.at=Date.now();save0("last_sync",syncState.at)}
   if(state==="error"&&was!=="error"&&typeof toast==="function")toast("Sync problem — see Settings"); // silent sync failure = silent data loss
@@ -916,7 +917,7 @@ async function sbSync(reason){
         profile=Object.assign({},PROFILE_DEFAULTS,load("profile",{}));
         water=load("water",{});checkIns=load("checkins",[]);favorites=load("favorites",[]);
         custom=(load("custom",[])||[]).filter(Boolean).map(f=>f.isCustom?f:{...f,isCustom:true});
-        restDays=load("rest_days",[]);
+        restDays=load("rest_days",[]);burnCal=load("burn_cal",{});
         manualSteps=load("manual_steps",{});manualActiveCals=load("manual_active_calories",{});
       }
     }
@@ -945,7 +946,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-08-30.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-08-30.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -997,6 +998,7 @@ function addDietBreak(startDate,durationDays,tdee){
   });
 }
 let tab="home", selDate=localDateStr(), woView="dashboard", pendingWorkout=null, woElapsed=0, woError=null, woShowHistory=false; // routing is URL-driven only (App.tsx) — no persisted last-tab
+let qlogPending=null, qlogText="", qlogRec=null; // AI quick-log: draft text, preview object, live speech-recognition handle
 // Dashboard page state (Index.tsx:40-42 + WaterTracker unit) — resets when Home remounts
 let viewMode="consumed", showInsights=false, waterUnit="ml";
 const MEALS=["breakfast","lunch","dinner","snack"];
@@ -1755,8 +1757,18 @@ function workoutCalories(elapsedSeconds) {
 
 // ----- src/hooks/useCoaching.ts:101-106 — avg workout cal/day over 30 days -----
 // Fixed divisor 30 (not days-with-data). 0 when no workout days at all.
+// Extension: quick-log estimates the user has NOT verified count at 85% here (the
+// grain-of-salt discount) — machine consoles and MET math are routinely ±100+ cal.
+// Once the user confirms/edits a value it counts in full. Displays elsewhere show
+// the full stored number; the discount applies only where burns feed the coach.
 function workoutCalsBurnedPerDay(workouts) {
-  const daily = getDailyCaloriesBurned(workouts, 30);
+  const start=new Date();start.setDate(start.getDate()-30);
+  const startStr=localDateStr(start);
+  const daily={};
+  workouts.filter(w=>w.date>=startStr).forEach(w=>{
+    const c=w.aiEstimated?Math.round(w.totalCaloriesBurned*0.85):w.totalCaloriesBurned;
+    daily[w.date]=(daily[w.date]||0)+c;
+  });
   const vals = Object.values(daily);
   if (vals.length === 0) return 0;
   return Math.round(vals.reduce((a, b) => a + b, 0) / 30);
@@ -3841,6 +3853,58 @@ function parseWorkoutLocal(notes,elapsedSeconds){
     totalSets,totalVolume,duration:formatTime(elapsedSeconds),summary};
 }
 
+// ===== Quick-log expenditure estimator =====
+// MET-based (kcal = MET × kg × hours), personalized three ways: the user's current
+// trended body weight; a lean-mass factor when body fat is known (MET tables assume
+// ~20% BF); and the user's measured metabolism (adaptive TDEE ÷ formula TDEE, applied
+// only at medium/high confidence). A per-activity calibration ratio learned from the
+// user's own corrections is applied last. Every factor is clamped: gym-console readouts
+// and MET tables are both routinely ±100+ cal, so unverified estimates also get a
+// grain-of-salt discount where they feed the coach (see workoutCalsBurnedPerDay).
+const BURN_ACTS=[
+  {key:"bike",rx:/stationary bike|spin\b|cycling|\bcycle\b|\bbike\b|peloton|airdyne|assault bike/i,met:6.8,label:"Cycling",
+    cues:[[/(?:gear|level|resistance)\s*(\d+)/i,n=>n<=4?4.8:n<=8?6.8:n<=12?8.5:10.5],[/\b(?:easy|light|casual)\b/i,()=>4.8],[/\b(?:hard|intense|sprint|hiit)\b/i,()=>9.5]]},
+  {key:"run",rx:/\brun(?:ning)?\b|\bjog|treadmill|\bsprints?\b/i,met:8.8,label:"Running",
+    cues:[[/(\d+(?:\.\d+)?)\s*mph/i,n=>Math.max(4.5,Math.min(14,n*1.55))],[/\b(?:easy|light)\b/i,()=>7],[/\b(?:hard|intense|tempo)\b/i,()=>11]]},
+  {key:"walk",rx:/\bwalk(?:ing)?\b/i,met:3.4,label:"Walking",cues:[[/incline|hill|uphill/i,()=>5.2],[/\b(?:brisk|fast)\b/i,()=>4.3]]},
+  {key:"row",rx:/\brow(?:ing|er)?\b|\berg\b/i,met:7,label:"Rowing",cues:[[/\b(?:hard|intense)\b/i,()=>8.5]]},
+  {key:"elliptical",rx:/elliptical/i,met:5.5,label:"Elliptical",cues:[[/(?:level|resistance)\s*(\d+)/i,n=>n<=5?5:n<=10?6.3:7.5]]},
+  {key:"stairs",rx:/stair|stepmill|step mill|stairmaster/i,met:9,label:"Stairs"},
+  {key:"swim",rx:/\bswim|\blaps\b/i,met:6.5,label:"Swimming"},
+  {key:"hiit",rx:/\bhiit\b|crossfit|circuit|metcon/i,met:8,label:"HIIT"},
+  {key:"jumprope",rx:/jump ?rope|skipping/i,met:11,label:"Jump Rope"},
+  {key:"hike",rx:/\bhik(?:e|ing)\b|\bruck/i,met:6,label:"Hiking"},
+  {key:"sport",rx:/basketball|soccer|tennis|boxing|pickleball|volleyball|football/i,met:7,label:"Sport"},
+  {key:"yoga",rx:/yoga|stretch|pilates|mobility/i,met:2.8,label:"Yoga / Mobility"},
+  {key:"lift",rx:/\blift|weights?\b|strength|bench|squat|deadlift|press\b|curl|\bgym\b/i,met:4.2,label:"Strength",cues:[[/\b(?:heavy|intense|superset)\b/i,()=>5.5]]},
+];
+function estimateBurn(text,minutes){
+  const act=BURN_ACTS.find(a=>a.rx.test(text))||{key:"general",met:5,label:"Workout"};
+  let met=act.met;
+  (act.cues||[]).forEach(([rx,f])=>{const m=text.match(rx);if(m)met=f(m[1]!=null?+m[1]:0)});
+  const tr=trended();
+  const wRaw=(tr.length?tr[tr.length-1].weight:0)||+profile.startWeight||165;
+  const kg=profile.weightUnit==="kg"?wRaw:wRaw*0.45359;
+  const bf=+profile.bodyFatEstimate||0;
+  const leanF=bf?Math.min(1.1,Math.max(0.9,(1-bf/100)/0.8)):1;
+  let metaF=1;
+  try{const ex=expenditure(),f=calculateInitialTDEE(engineProfile());
+    if(ex.confidence!=="low"&&f>0)metaF=Math.min(1.15,Math.max(0.85,ex.tdee/f));}catch(e){}
+  const raw=Math.max(1,Math.round(met*kg*(minutes/60)*leanF*metaF));
+  const c=burnCal[act.key];
+  const calF=c&&c.n>=1?Math.min(1.6,Math.max(0.5,c.r)):1;
+  return{kcal:Math.max(1,Math.round(raw*calF)),raw,met:+met.toFixed(1),key:act.key,label:act.label,
+    kg:Math.round(kg),metaF:+metaF.toFixed(2),calF:+calF.toFixed(2)};
+}
+function learnBurn(key,rawEst,userVal){ // EWMA of (user value ÷ uncalibrated estimate) — learns the true burn per activity
+  if(!(rawEst>0&&userVal>0))return;
+  const r=Math.min(3,Math.max(0.3,userVal/rawEst));
+  const c=burnCal[key]||{n:0,r:1};
+  c.r=c.n?+(c.r+(r-c.r)*0.35).toFixed(3):r;c.n++;
+  burnCal[key]=c;save("burn_cal",burnCal);
+}
+const P_MIC='<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="11" rx="3"/>';
+
 function session(){return sload("active_workout_session")}
 const saveSession=x=>localStorage.setItem("active_workout_session",JSON.stringify(x));
 const WO_MONO='ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace';
@@ -3951,6 +4015,25 @@ function workoutPage(){
     ${isRestDay?`<div style="margin-top:12px;background:hsl(var(--muted));border-radius:12px;border:1px solid hsl(var(--border));padding:12px;animation:fadeUp .25s ease both">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${LUCIDE_C(P_MOON,2,14,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Rest Day</p></div>
       <p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Expenditure set to sedentary.${shiftOn?` Target: <span style="font-weight:600" class="text-foreground">${restCals} cal</span>`:""}</p></div>`:""}
+    ${qlogPending?`<div class="anim apple-card" style="padding:12px;margin-top:16px;animation-delay:.03s">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">${esc(qlogPending.name)}</p></div>
+      <p style="font-size:11px;margin:0 0 10px;line-height:15px" class="text-muted-foreground">${qlogPending.mins} min • MET ${qlogPending.est.met} • your ${qlogPending.est.kg} kg${qlogPending.est.metaF!==1?` • metabolism ×${qlogPending.est.metaF}`:""}${qlogPending.est.calF!==1?` • learned ×${qlogPending.est.calF}`:""}</p>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:13px" class="text-muted-foreground">Estimated burn</span>
+        <input id="qlogCal" type="number" inputmode="numeric" value="${qlogPending.est.kcal}" style="width:88px;background:hsl(var(--secondary));border:0;border-radius:10px;padding:8px 10px;font-size:16px;font-weight:700;color:hsl(var(--foreground));outline:none;text-align:center">
+        <span style="font-size:13px" class="text-muted-foreground">cal</span></div>
+      <p style="font-size:10px;margin:0 0 10px;line-height:14px" class="text-muted-foreground">Machine readouts are often off by 100+ cal. Edit this if you know better — your corrections teach the app your real burn for next time.</p>
+      <div style="display:flex;gap:8px">
+        <button class="wo-primarybtn haptic" data-act="qlogsave" style="flex:1;padding:10px 0;font-size:14px;line-height:20px;justify-content:center">Save workout</button>
+        <button class="haptic bg-muted" data-act="qlogcancel" style="padding:10px 16px;border-radius:12px;border:0;font-size:14px;line-height:20px;color:hsl(var(--muted-foreground))">Cancel</button></div>
+    </div>`
+    :`<div class="anim apple-card" style="padding:12px;margin-top:16px;animation-delay:.03s">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${LUCIDE_C(NAV_PATHS.coach,2,14,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Quick log</p>
+        <span style="font-size:10px;flex:1" class="text-muted-foreground">type or dictate</span>
+        <button class="haptic text-muted-foreground" data-act="qlogmic" style="background:none;border:0;padding:2px;display:flex" aria-label="Dictate workout">${LUCIDE(P_MIC,2,16)}</button></div>
+      <textarea id="qlogIn" rows="2" placeholder="e.g. &quot;Bike 34 min on gear 9, Schwinn 170&quot; — burn is estimated from your body &amp; metabolism" autocapitalize="sentences" autocomplete="off" spellcheck="false" style="width:100%;background:hsl(var(--secondary));border:0;border-radius:10px;padding:10px 12px;font-size:16px;line-height:22px;color:hsl(var(--foreground));outline:none;resize:none;font-family:inherit">${esc(qlogText)}</textarea>
+      <button class="wo-primarybtn haptic" data-act="qlog" style="width:100%;margin-top:8px;padding:10px 0;font-size:14px;line-height:20px;justify-content:center">Estimate &amp; log</button>
+    </div>`}
     <div class="anim" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:16px;animation-delay:.05s">
       <div class="apple-card" style="padding:12px;text-align:center">${LUCIDE_C(P_FLAME,2,16,'text-warning','display:block;margin:0 auto 4px')}<p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;line-height:28px" class="text-foreground">${todayKcal}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">cal burned today</p></div>
       <div class="apple-card" style="padding:12px;text-align:center">${LUCIDE_C(P_WO_ZAP,2,16,'text-primary','display:block;margin:0 auto 4px')}<p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;line-height:28px" class="text-primary">${st.wo}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">workout streak</p></div></div>
@@ -3962,7 +4045,7 @@ function workoutPage(){
       <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;line-height:16px" class="text-muted-foreground">Today</p>
       ${todayWos.map(w=>`<div class="apple-card" style="padding:12px;margin-bottom:8px"><div style="display:flex;align-items:center;justify-content:space-between">
         <div><p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">${esc(w.name)}</p>
-        <p style="font-size:10px;margin:0" class="text-muted-foreground">${w.duration}min • ${(w.exercises||[]).length} exercises • ${w.totalCaloriesBurned} cal</p></div>
+        <button class="text-muted-foreground" data-act="woeditcal" data-id="${w.id}" style="background:none;border:0;padding:0;font-size:10px;line-height:14px;text-decoration:underline;text-underline-offset:2px">${w.duration}min • ${(w.exercises||[]).length} exercises • ${w.totalCaloriesBurned} cal${w.aiEstimated?" (est.)":""}</button></div>
         <button class="text-muted-foreground" data-act="wodel" data-id="${w.id}" style="background:none;border:0;padding:0;display:flex" aria-label="Delete workout">${LUCIDE(P_TRASH2,2,14)}</button></div></div>`).join("")}</div>`:""}
     <div class="anim" style="margin-top:16px;animation-delay:.2s">
       <button class="apple-card haptic" data-act="wohist" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px;color:inherit;font:inherit">
@@ -3971,7 +4054,7 @@ function workoutPage(){
       ${woShowHistory?`<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;max-height:256px;overflow-y:auto;animation:fadeUp .2s ease both">
         ${workouts.slice().reverse().slice(0,30).map(w=>`<div class="bg-muted" style="border-radius:12px;padding:10px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto">
           <div><p style="font-size:12px;font-weight:600;margin:0;line-height:16px" class="text-foreground">${esc(w.name)}</p>
-          <p style="font-size:10px;margin:0" class="text-muted-foreground">${w.date} • ${w.duration}min • ${w.totalCaloriesBurned} cal</p></div>
+          <button class="text-muted-foreground" data-act="woeditcal" data-id="${w.id}" style="background:none;border:0;padding:0;font-size:10px;line-height:14px;text-decoration:underline;text-underline-offset:2px">${w.date} • ${w.duration}min • ${w.totalCaloriesBurned} cal${w.aiEstimated?" (est.)":""}</button></div>
           <button class="text-muted-foreground" data-act="wodel" data-id="${w.id}" style="background:none;border:0;padding:4px;display:flex" aria-label="Delete workout">${LUCIDE(P_TRASH2,2,12)}</button></div>`).join("")}
         ${workouts.length===0?`<p style="font-size:12px;text-align:center;padding:16px 0;margin:0;line-height:16px" class="text-muted-foreground">No workouts logged yet</p>`:""}</div>`:""}</div></div>`;
 }
@@ -5723,6 +5806,67 @@ document.addEventListener("click",e=>{
     if(i>=0){sbTomb("workout_log",el.dataset.id);workouts.splice(i,1);save("workouts",workouts);render()}
   }
   else if(act==="wohist"){woShowHistory=!woShowHistory;render()}
+  else if(act==="qlog"){ // quick log: parse the description, estimate a personalized burn, show editable preview
+    const ta=$("#qlogIn");const text=(ta&&ta.value||"").trim();
+    if(!text){toast("Describe the workout first");return}
+    qlogText=text;
+    let mins=0,m;
+    if(m=text.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/i))mins+=Math.round(+m[1]*60);
+    if(m=text.match(/(\d+)\s*(?:minutes?|mins?|m)\b/i))mins+=+m[1];
+    if(!mins)mins=30;
+    const est=estimateBurn(text,mins);
+    const a=parseWorkoutLocal(text,mins*60); // structured lifting notes -> exercises; cardio one-liners -> null
+    const mg=a&&a.muscleGroups&&a.muscleGroups.length?a.muscleGroups:(est.key==="lift"?["full_body"]:["cardio"]);
+    const category=mg.includes("cardio")||est.key!=="lift"&&!a?"cardio":"strength";
+    const name=est.label!=="Workout"?`${est.label} — ${mins} min`
+      :(mg.length&&mg[0]!=="cardio"?mg.map(x=>MUSCLE_LABELS[x]||x).join(" + ")+" Workout":`Workout — ${mins} min`);
+    qlogPending={name,text,mins,est,category,muscleGroups:mg,
+      exercises:a?(a.exercises||[])
+        .filter((ex,_,arr)=>ex.reps&&ex.reps.length||!arr.some(x=>x.reps&&x.reps.length)) // drop set-less lines (e.g. "45 min lifting") when real sets exist
+        .map(ex=>({id:newId(),exerciseName:ex.name,muscleGroup:mg[0]||"full_body",category,
+        sets:(ex.reps||[]).map(r=>({id:newId(),weight:ex.weight,reps:r})),caloriesBurned:0}))
+      :[{id:newId(),exerciseName:est.label,muscleGroup:"cardio",category:"cardio",sets:[],caloriesBurned:0}]};
+    render();
+  }
+  else if(act==="qlogsave"){
+    const q=qlogPending;if(!q)return;
+    const inp=$("#qlogCal");const val=Math.round(+(inp&&inp.value)||0);
+    if(!(val>0)){toast("Enter a calorie estimate");return}
+    const edited=val!==q.est.kcal;
+    if(edited)learnBurn(q.est.key,q.est.raw,val); // correction teaches the real burn for this activity
+    workouts.push({id:newId(),date:localDateStr(),name:q.name,
+      startTime:Date.now()-q.mins*60000,endTime:Date.now(),duration:q.mins,
+      exercises:q.exercises,totalCaloriesBurned:val,category:q.category,muscleGroups:q.muscleGroups,
+      notes:q.text,aiEstimated:!edited,estBase:q.est.raw});
+    save("workouts",workouts);
+    qlogPending=null;qlogText="";toast("Logged — "+val+" cal"+(edited?" (learned)":""));render();
+  }
+  else if(act==="qlogcancel"){qlogPending=null;render()}
+  else if(act==="qlogmic"){ // in-page dictation when the engine exists; otherwise the keyboard mic works in the textarea
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){toast("Tap the textbox and use the keyboard mic");return}
+    if(qlogRec){try{qlogRec.stop()}catch(e){}qlogRec=null;return}
+    const r=new SR();qlogRec=r;r.lang=navigator.language||"en-US";r.interimResults=false;
+    el.style.color="hsl(var(--primary))";
+    r.onresult=ev=>{const t=Array.from(ev.results).map(x=>x[0].transcript).join(" ").trim();
+      const ta=$("#qlogIn");if(ta&&t){ta.value=(ta.value?ta.value+" ":"")+t;qlogText=ta.value}};
+    r.onend=()=>{qlogRec=null;const b=document.querySelector('[data-act=qlogmic]');if(b)b.style.color=""};
+    r.onerror=r.onend;
+    try{r.start();toast("Listening…")}catch(e){qlogRec=null}
+  }
+  else if(act==="woeditcal"){ // user overrides any workout's burn; corrections on estimates feed calibration
+    const w=workouts.find(x=>x.id===el.dataset.id);if(!w)return;
+    const v=prompt("Calories burned for “"+w.name+"”:",w.totalCaloriesBurned);
+    if(v==null)return;
+    const n=Math.round(+v);
+    if(!(n>0)){toast("Enter a number");return}
+    if(n!==w.totalCaloriesBurned&&w.estBase){
+      const hit=BURN_ACTS.find(x=>x.rx.test(w.notes||w.name));
+      if(hit)learnBurn(hit.key,w.estBase,n);
+    }
+    w.totalCaloriesBurned=n;w.aiEstimated=false;
+    save("workouts",workouts);toast("Updated to "+n+" cal");render();
+  }
   else if(act==="goprog"){tab="progress";render()}
   else if(act==="restday"){ // Workout.tsx:207-215 markRestDay — toggles TODAY, with toasts
     const td=localDateStr(),i=restDays.indexOf(td);
