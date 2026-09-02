@@ -1029,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-02.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-02.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3018,6 +3018,7 @@ function fsGroupOnline(){ // FoodSearch.tsx:255-263 — group online results by 
   for(const item of FS.online){const s=item.source||"off";(groups[s]=groups[s]||[]).push(item)}
   return groups;
 }
+let fsLastRenderedQ=null; // last query the results were rendered for — gates the scroll reset below
 function fsRenderResults(){
   const el=fsEl&&fsEl.querySelector("#fsResults");
   if(!el)return;
@@ -3054,6 +3055,15 @@ function fsRenderResults(){
     h+=`<p class="fs-empty">No foods found</p>`;
   h+=`<div style="padding:8px 16px 0"><button class="fs-custom haptic" data-act="fenew" style="margin:0">${IC_PLUS16} Add ${q.trim()?"“"+esc(q.trim())+"”":"a food"} to my database</button></div>`;
   el.innerHTML=h+'<div style="height:32px"></div>';
+  // Each NEW query snaps the list back to the top, where the Restaurants section renders —
+  // with the keyboard up only a small strip is visible, and a stale scroll position left the
+  // "Browse menu" button stranded above the fold. Async online appends (same query) never
+  // reset, so a user already scrolling the results isn't yanked back up.
+  if(q!==fsLastRenderedQ){
+    fsLastRenderedQ=q;
+    const sc=el.classList.contains("fs-scroll")?el:el.closest(".fs-scroll");
+    if(sc)sc.scrollTop=0;
+  }
 }
 // handleSearch (FoodSearch.tsx:114-129) — 300ms debounce, filter online by local barcodes
 function fsHandleSearch(val){
