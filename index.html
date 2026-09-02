@@ -1017,7 +1017,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-02.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-02.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2110,7 +2110,7 @@ function calorieProgress(current,target,note){
     <div style="height:5px;border-radius:9999px;overflow:hidden" class="bg-muted">
       <div class="bar-anim ${isOver?'bg-over':'bg-primary'}" style="height:100%;border-radius:9999px;width:${displayPct}%"></div>
     </div>
-    <p style="font-size:11px;margin:8px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} kcal${note?` · ${note}${tipI("You earned extra calories from today's workouts, but only a discounted share is added back — machine burn readouts run high, and eating back every burned calorie usually stalls the plan. The discount depends on your goal (stricter on a cut).")}`:""}</p>
+    <p style="font-size:11px;margin:8px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${note?` · ${note}${tipI("You earned extra calories from today's workouts, but only a discounted share is added back — machine burn readouts run high, and eating back every burned calorie usually stalls the plan. The discount depends on your goal (stricter on a cut).")}`:""}</p>
   </div>`;
 }
 // DeficitVisual.tsx — Target header + confidence chip, gauge with TDEE/Target markers, three pills
@@ -2135,7 +2135,7 @@ function deficitVisual(consumed,target,tdee,confidence){
   const fillCls = consumed>tdee?'bg-warning':consumed>target?'bg-over':'bg-success';
   return `<div class="apple-card" style="padding:16px;margin-top:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_TARGET,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Deficit Tracker</p>${tipI("Your deficit is the gap between what you burn (TDEE) and what you eat. Eating under your burn loses weight; over it gains. Green means you're near YOUR plan — not just any loss.")}</div>
+      <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_TARGET,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Deficit Tracker</p>${tipI("Your deficit is the gap between what you burn in a day and what you eat. Eating under your burn loses weight; over it gains. Green means you're near YOUR plan — not just any loss.")}</div>
       <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:9999px;${chip}" data-tip="How well the app knows your true daily burn. It starts from a formula and learns from your actual weigh-ins and food logs — confidence rises with consistent logging.">${confidence} confidence</span>
     </div>
     <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px">
@@ -2155,7 +2155,7 @@ function deficitVisual(consumed,target,tdee,confidence){
     <div style="position:relative;height:6px;border-radius:9999px;overflow:visible;margin-bottom:32px" class="bg-muted">
       <div style="position:absolute;top:-3px;display:flex;flex-direction:column;align-items:center;left:${Math.min(tdeePos,100)}%;transform:translateX(-50%)">
         <div style="height:12px;width:2px;border-radius:9999px;background:hsl(var(--muted-foreground)/.5)"></div>
-        <span style="font-size:8px;margin-top:4px;white-space:nowrap" class="text-muted-foreground">TDEE</span>
+        <span style="font-size:8px;margin-top:4px;white-space:nowrap" class="text-muted-foreground">Burn</span>
       </div>
       <div style="position:absolute;top:-4px;display:flex;flex-direction:column;align-items:center;left:${Math.min(targetPos,100)}%;transform:translateX(-50%)">
         <div style="height:14px;width:2px;border-radius:9999px" class="bg-primary"></div>
@@ -2233,16 +2233,16 @@ function waterTracker(currentMl,goalMl,canAdd,canUndo){   // canAdd/canUndo = is
 function buildMessage(goal,weeklyChange,adherence,rate,mode){
   if(mode==='manual')return 'Manual mode — targets are in your control. Adjust as needed.';
   if(goal==='cut'){
-    if(weeklyChange<-0.3&&adherence>=80)return "Excellent progress. You're losing weight consistently with strong adherence. Keep this up — the algorithm has a solid read on your expenditure.";
+    if(weeklyChange<-0.3&&adherence>=80)return "Excellent progress. You're losing weight consistently with strong adherence. Keep this up — the app has a solid read on your daily burn.";
     if(weeklyChange<-1.0)return "You're losing weight quite fast. Consider a smaller deficit to preserve muscle mass and avoid metabolic slowdown. Sustainability matters more than speed.";
-    if(weeklyChange>0.1)return "Weight is trending up despite a cut goal. Double-check your logging accuracy — partial logging is the most common cause. Your expenditure estimate may need a few more days to stabilize.";
-    if(adherence<60)return "Intake is inconsistent relative to targets. The expenditure algorithm works best with consistent logging. Even imperfect days should be logged for better coaching.";
-    return "Steady progress on your cut. The algorithm is adapting to your data — stay patient and keep logging.";
+    if(weeklyChange>0.1)return "Weight is trending up despite a cut goal. Double-check your logging accuracy — partial logging is the most common cause. Your daily-burn estimate may need a few more days to settle.";
+    if(adherence<60)return "Your eating swings a lot day to day. The burn estimate works best with consistent logging. Even imperfect days should be logged for better coaching.";
+    return "Steady progress on your cut. The app is adapting to your data — stay patient and keep logging.";
   }
   if(goal==='bulk'){
     if(weeklyChange>0.2&&weeklyChange<0.7)return "Great lean gaining pace. At this rate, you're maximizing muscle gain while minimizing unnecessary fat accumulation.";
     if(weeklyChange>1.0)return "You're gaining quickly — most evidence suggests gains above 0.5-1% body weight per week involve significant fat gain. Consider a smaller surplus.";
-    if(weeklyChange<=0)return "Not gaining weight. Your expenditure may be higher than expected. The algorithm will adjust upward — give it a week, or manually increase intake by 100-200 cal.";
+    if(weeklyChange<=0)return "Not gaining weight. You likely burn more than expected. The app will adjust your target upward — give it a week, or manually increase intake by 100-200 cal.";
     return "Bulk is progressing. Monitor body composition alongside weight — the scale alone doesn't tell the whole story.";
   }
   if(goal==='recomp'){
@@ -2252,8 +2252,8 @@ function buildMessage(goal,weeklyChange,adherence,rate,mode){
     if(adherence<60)return "Recomp requires high consistency — small, sustained deficits with high protein and progressive training. Focus on hitting protein targets and logging consistently.";
     return "Recomp is progressing. Track body measurements and strength alongside weight — the scale may not move much, but body composition should improve over 8-12 weeks.";
   }
-  if(Math.abs(weeklyChange)<0.2)return "Weight is stable — your intake matches your expenditure well. The algorithm has a high-confidence read on your TDEE.";
-  if(weeklyChange>0.3)return "Slight upward drift. Your expenditure estimate suggests trimming about 100-150 cal to maintain. This is normal seasonal variation.";
+  if(Math.abs(weeklyChange)<0.2)return "Weight is stable — you're eating almost exactly what you burn, and the app now knows your daily burn with high confidence.";
+  if(weeklyChange>0.3)return "Slight upward drift. Your daily-burn estimate suggests trimming about 100-150 cal to maintain. This is normal seasonal variation.";
   if(weeklyChange<-0.3)return "Weight is drifting down. Consider adding 100-150 cal if true maintenance is your goal.";
   return "Close to maintenance. Minor weekly fluctuations are completely normal and expected.";
 }
@@ -2282,7 +2282,7 @@ function insightsSection(){
     ${showInsights?`<div style="display:flex;flex-direction:column;gap:12px">
       <div class="bg-card" style="border-radius:16px;padding:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_FLAME,2,16,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Expenditure</p></div>
+          <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_FLAME,2,16,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Daily burn</p></div>
           <span style="font-size:10px;font-weight:600" class="${confCls}">${ex.confidence}</span>
         </div>
         <p style="font-size:24px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:32px" class="text-foreground">${ex.tdee} <span style="font-size:14px;font-weight:400;line-height:20px" class="text-muted-foreground">cal/day</span></p>
@@ -2294,6 +2294,7 @@ function insightsSection(){
           <p style="font-size:20px;font-weight:700;margin:0;line-height:28px" class="${eb.dailyBalance>0?'text-warning':eb.dailyBalance<0?'text-primary':'text-foreground'}">${eb.dailyBalance>0?'+':''}${eb.dailyBalance}</p>
           <span style="font-size:12px;line-height:16px" class="text-muted-foreground">cal/day avg</span>
         </div>
+        <p style="font-size:10px;margin:4px 0 0;line-height:14px" class="text-muted-foreground">${eb.dailyBalance>0?'eating over':eb.dailyBalance<0?'eating under':'eating right at'} what you burn, on average</p>
       </div>`:''}
       <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px">
         <div class="bg-card" style="border-radius:16px;padding:12px;text-align:center">
@@ -2317,7 +2318,7 @@ function insightsSection(){
       </div>`:''}
       ${msg?`<button data-act="tab" data-t="coach" class="bg-card" style="width:100%;border-radius:16px;padding:16px;text-align:left;border:0">
         <div style="display:flex;align-items:center;justify-content:space-between">
-          <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.coach,2,16,'text-primary')}<h3 style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Strategy</h3></div>
+          <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.coach,2,16,'text-primary')}<h3 style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Coach</h3></div>
           ${LUCIDE_C(P_CHEVRIGHT,2,16,'text-muted-foreground')}
         </div>
         <p style="font-size:12px;margin:8px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:16px" class="text-muted-foreground">${esc(msg)}</p>
@@ -4553,18 +4554,20 @@ function workoutPage(){
   const shiftOn=profile.calorieShifting===true||profile.calorieShifting==="on";
   const restCals=(+profile.targetKcal||0)-(+profile.restDayCalorieReduction||0);
   return `<div class="page">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;animation:enterDown .3s ease both">
-      <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.workout,2,22,'text-primary')}<h1 class="apple-title text-foreground" style="margin:0">Workout<span class="text-primary">.</span></h1></div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <button class="haptic bg-muted" data-act="restday" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;${isRestDay?"border:1px solid hsl(var(--primary)/.3);":""}color:hsl(var(--${isRestDay?"foreground":"muted-foreground"}))">${LUCIDE(P_MOON,2,14)} ${isRestDay?"Rest ✓":"Rest"}</button>
+    <div style="animation:enterDown .3s ease both">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.workout,2,22,'text-primary')}<h1 class="apple-title text-foreground" style="margin:0">Workout<span class="text-primary">.</span></h1></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:4px">
+        <button class="haptic bg-muted" data-act="restday" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;${isRestDay?"border:1px solid hsl(var(--primary)/.3);":""}color:hsl(var(--${isRestDay?"foreground":"muted-foreground"}))">${LUCIDE(P_MOON,2,14)} ${isRestDay?"Rest day ✓":"Rest day"}</button>
         <button class="haptic wo-primarybtn" data-act="wostart" style="padding:8px 16px;font-size:14px;gap:6px;line-height:20px;white-space:nowrap">${LUCIDE(P_WO_PLAY,2,16)} Start Log</button>
       </div></div>
     ${isRestDay?`<div style="margin-top:12px;background:hsl(var(--muted));border-radius:12px;border:1px solid hsl(var(--border));padding:12px;animation:fadeUp .25s ease both">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${LUCIDE_C(P_MOON,2,14,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Rest Day</p></div>
-      <p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Expenditure set to sedentary.${shiftOn?` Target: <span style="font-weight:600" class="text-foreground">${restCals} cal</span>`:""}</p></div>`:""}
+      <p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Daily burn counted as resting-level today.${shiftOn?` Target: <span style="font-weight:600" class="text-foreground">${restCals} cal</span>`:""}</p></div>`:""}
     ${qlogPending?`<div class="anim apple-card" style="padding:12px;margin-top:16px;animation-delay:.03s">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">${esc(qlogPending.name)}</p></div>
-      <p style="font-size:11px;margin:0 0 10px;line-height:15px" class="text-muted-foreground">intensity ${qlogPending.est.met} MET${tipI("MET is workout intensity: 1 is sitting still, 3–4 a brisk walk, 8–9 vigorous cycling. Burn = intensity × your body weight × time, then adjusted for your measured metabolism and any corrections you've made before.")} • at your ${profile.weightUnit==='kg'?`${qlogPending.est.kg} kg`:`${Math.round(qlogPending.est.kg*2.20462)} lb`}${qlogPending.est.metaF!==1?` • metabolism ×${qlogPending.est.metaF}`:""}${qlogPending.est.calF!==1?` • learned ×${qlogPending.est.calF}${tipI("You've corrected this activity's estimate before, so the app scales new estimates by what it learned from you.")}`:""}</p>
+      <p style="font-size:11px;margin:0 0 10px;line-height:15px" class="text-muted-foreground">${(m=>m<3?"light":m<6?"moderate":m<9?"vigorous":"all-out")(qlogPending.est.met)} effort (MET ${qlogPending.est.met})${tipI("MET is a standard effort scale: 1 is sitting still, 3–4 a brisk walk, 8–9 hard cycling. Your burn = effort × your body weight × time.")} • at your ${profile.weightUnit==='kg'?`${qlogPending.est.kg} kg`:`${Math.round(qlogPending.est.kg*2.20462)} lb`}${qlogPending.est.metaF!==1?` • ${qlogPending.est.metaF>1?"+":"−"}${Math.abs(Math.round((qlogPending.est.metaF-1)*100))}% for your metabolism`:""}${qlogPending.est.calF!==1?` • ${qlogPending.est.calF>1?"+":"−"}${Math.abs(Math.round((qlogPending.est.calF-1)*100))}% from your past corrections`:""}</p>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <span style="font-size:13px" class="text-muted-foreground">Estimated burn</span>
         <input id="qlogCal" type="number" inputmode="numeric" value="${qlogPending.est.kcal}" style="width:88px;background:hsl(var(--secondary));border:0;border-radius:10px;padding:8px 10px;font-size:16px;font-weight:700;color:hsl(var(--foreground));outline:none;text-align:center">
@@ -4840,7 +4843,8 @@ function progressPage(){
     ${rcChart({labels:wd.map(e=>e.label),series:[
       {name:"weight",vals:wd.map(e=>e.weight),stroke:"hsl(220, 10%, 50%)",w:1,dotR:2},
       {name:"trend",vals:wd.map(e=>e.trend),stroke:"hsl(110, 100%, 55%)",w:2,dotR:0}],
-      yMin,yMax,yTicks,yFmt:String})}</div>`;
+      yMin,yMax,yTicks,yFmt:String})}
+    <p class="text-muted-foreground" style="font-size:10px;margin:8px 0 0;line-height:14px;text-align:center">Dots: what the scale said · <span style="color:hsl(110, 100%, 55%)">green line</span>: your real weight underneath the daily ups and downs</p></div>`;
   }
   // Calorie History — last 14 calendar days (Progress.tsx:24-34); `|| undefined` makes
   // unlogged AND zero-calorie days a gap (connectNulls=false breaks the green line)
@@ -4871,7 +4875,8 @@ function progressPage(){
   ${weightCard}
   <div class="enter-up apple-card" style="animation-delay:.2s;padding:16px">
     <h3 class="text-foreground" style="font-size:14px;font-weight:600;margin:0 0 12px;line-height:20px">Calorie History (14d)</h3>
-    ${calChart}</div>
+    ${calChart}
+    <p class="text-muted-foreground" style="font-size:10px;margin:8px 0 0;line-height:14px;text-align:center"><span style="color:hsl(110, 100%, 55%)">Green</span>: what you ate each day · dashed line: your daily target${target?` (${target} cal)`:""}</p></div>
 </div>`;
 }
 
@@ -4888,15 +4893,15 @@ const P_ZOOMOUT='<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21"
 function buildInsights(weeklyChange,weeklyAvg,profile,adherence,expenditure,energyBalance,workoutCalsBurned,weeklyWorkouts,avgCalsBurnedPerSession){
   const insights=[];
   const confidenceLabels={initial:'Formula-based estimate',low:'Limited data',medium:'Moderate confidence',high:'High confidence'};
-  insights.push(`Expenditure: ${expenditure.currentTDEE} cal/day (${confidenceLabels[expenditure.confidence]}). ${
+  insights.push(`Daily burn: ${expenditure.currentTDEE} cal/day (${confidenceLabels[expenditure.confidence]}). ${
     expenditure.confidence==='initial'||expenditure.confidence==='low'
       ?'Keep logging weight and food — accuracy improves with more data.'
       :'Algorithm has a solid read on your metabolism.'
   }`);
   if(workoutCalsBurned>0){
-    insights.push(`Exercise activity: ~${workoutCalsBurned} cal/day from workouts (${weeklyWorkouts} sessions this week, avg ${avgCalsBurnedPerSession} cal/session). This is factored into your expenditure estimate.`);
+    insights.push(`Exercise activity: ~${workoutCalsBurned} cal/day from workouts (${weeklyWorkouts} sessions this week, avg ${avgCalsBurnedPerSession} cal/session). This is counted in your daily-burn estimate.`);
   }else{
-    insights.push("No workout data logged yet. Logging workouts improves expenditure accuracy and helps the coach give better recommendations.");
+    insights.push("No workout data logged yet. Logging workouts sharpens the daily-burn estimate and helps the coach give better recommendations.");
   }
   if(energyBalance.daysLogged>7){
     const direction=energyBalance.dailyBalance>0?'surplus':energyBalance.dailyBalance<0?'deficit':'balance';
@@ -4917,7 +4922,7 @@ function buildInsights(weeklyChange,weeklyAvg,profile,adherence,expenditure,ener
   if(profile.goal==='cut'&&weeklyChange<-1.5)insights.push("Rate of loss exceeds evidence-based recommendations. This increases risk of muscle loss, metabolic adaptation, and adherence fatigue.");
   if(profile.goal==='bulk'&&weeklyChange>1.0)insights.push("Gaining faster than optimal for lean mass. Research suggests 0.25-0.5% of body weight per week maximizes the muscle-to-fat ratio of weight gained.");
   if(profile.goal==='recomp'){
-    insights.push("Recomp strategy: eat at or slightly below TDEE with high protein (1g/lb lean mass). Focus on progressive overload — strength gains are your primary indicator of muscle growth during recomp.");
+    insights.push("Recomp strategy: eat at or slightly under what you burn, with high protein (1g/lb lean mass). Focus on progressive overload — strength gains are your primary indicator of muscle growth during recomp.");
     if(Math.abs(weeklyChange)>0.3)insights.push(`Weight is shifting ${weeklyChange>0?'up':'down'} — for recomp, aim for stable weight. Adjust intake to stay within ±0.2 ${profile.weightUnit==='lbs'?'lbs':'kg'}/week.`);
   }
   if(weeklyWorkouts>0&&weeklyWorkouts<3&&profile.goal!=='maintain')insights.push(`Training frequency (${weeklyWorkouts}x/week) is below optimal for your goal. Aim for 3-5 sessions per week for best results.`);
@@ -4999,7 +5004,7 @@ function generateWeightPlan(props){
     priority:'high',action:{type:'adjust_calories',calorieChange:Math.round(bmrEstimate)-targetCalories}});
   if(exerciseFrequency<3){
     const activityMsg=isCut
-      ?`Training ${exerciseFrequency}x/week. Adding 1-2 resistance sessions would preserve muscle, increase expenditure by ~200-400 cal/day, and allow more food while still losing fat.`
+      ?`Training ${exerciseFrequency}x/week. Adding 1-2 resistance sessions would preserve muscle, raise your daily burn by ~200-400 cal, and allow more food while still losing fat.`
       :isBulk
         ?`Training ${exerciseFrequency}x/week. For optimal muscle gain, aim for 3-5 resistance sessions per week to maximize the stimulus for growth.`
         :`Training ${exerciseFrequency}x/week. Regular resistance training helps maintain muscle mass and body composition during maintenance.`;
@@ -5020,7 +5025,7 @@ function generateWeightPlan(props){
       message:`Your surplus is ~${surplus} cal/day. Research suggests 200-400 cal surplus maximizes the muscle-to-fat ratio. Consider reducing by ${surplus-300} cal.`,
       priority:'high',action:{type:'adjust_calories',calorieChange:-(surplus-300)}});
     else if(surplus<100&&surplus>=0)recommendations.push({type:'macro',icon:P_WO_ZAP,title:'Increase Surplus',
-      message:`Your surplus is only ~${surplus} cal/day. For reliable muscle gain, aim for 200-400 cal above TDEE.`,
+      message:`Your surplus is only ~${surplus} cal/day. For reliable muscle gain, aim for 200-400 cal above your daily burn.`,
       priority:'medium',action:{type:'adjust_calories',calorieChange:250}});
   }
   if(isMaintain){
@@ -5038,7 +5043,7 @@ function generateWeightPlan(props){
       priority:'high',action:{type:'go_workout'}});
     const smallDeficit=tdee-targetCalories;
     if(smallDeficit<-100)recommendations.push({type:'warning',icon:P_ALERTTRI,title:'Surplus Too High for Recomp',
-      message:`You're eating ${Math.abs(smallDeficit)} cal above TDEE. For recomp, eat at maintenance or a slight deficit (0-200 cal below TDEE). A surplus will add fat faster than you lose it.`,
+      message:`You're eating ${Math.abs(smallDeficit)} cal over what you burn. For recomp, eat right at your burn or slightly under it (0-200 cal). A surplus will add fat faster than you lose it.`,
       priority:'high',action:{type:'adjust_calories',calorieChange:-(Math.abs(smallDeficit)+100)}});
     else if(smallDeficit>300)recommendations.push({type:'warning',icon:P_ALERTTRI,title:'Deficit Too Large for Recomp',
       message:`Your ${smallDeficit} cal deficit is too aggressive for recomp. Muscle gain requires adequate energy. Move closer to maintenance (0-200 cal deficit).`,
@@ -5298,7 +5303,7 @@ function coachPage(){
       <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:700;margin:0" class="text-foreground">${wf}</p><p style="margin:0" class="text-muted-foreground">sessions/wk</p></div>
       <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:700;margin:0" class="text-warning">${wcb}</p><p style="margin:0" class="text-muted-foreground">cal/day avg</p></div>
       <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:700;margin:0" class="text-foreground">${acb}</p><p style="margin:0" class="text-muted-foreground">cal/session</p></div></div>
-    ${wcb>0?`<p style="font-size:10px;margin:8px 0 0" class="text-muted-foreground">Exercise burn is factored into your expenditure estimate and coaching recommendations.</p>`:''}</div>`;
+    ${wcb>0?`<p style="font-size:10px;margin:8px 0 0" class="text-muted-foreground">Exercise burn is counted in your daily-burn estimate and coaching recommendations.</p>`:''}</div>`;
   const trendIcon=weeklyChange>0.1?LUCIDE(P_TRENDUP,2,16):weeklyChange<-0.1?LUCIDE(P_TRENDDOWN,2,16):LUCIDE(P_MINUS,2,16);
   const wcs=weightChanges(tr);
   const chips=(wcs.length>0&&tr.length>2)?`<div style="margin-top:12px;display:flex;gap:6px;overflow-x:auto">${wcs.map(wc=>`<div class="bg-muted" style="border-radius:8px;padding:6px 10px;text-align:center;flex-shrink:0"><p style="font-size:12px;font-weight:700;margin:0;line-height:16px" class="${wc.change>0?'text-warning':wc.change<0?'text-success':'text-foreground'}">${wc.change>0?'+':''}${wc.change}</p><p style="font-size:9px;margin:0" class="text-muted-foreground">${wc.days}d</p></div>`).join('')}</div>`:'';
@@ -5322,11 +5327,11 @@ function coachPage(){
     const tds=coaching.targetDeficitSurplus;
     const exGrid=`<div class="enter-up" style="animation-delay:.25s;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:16px">
       <div class="apple-card" style="padding:16px">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Expenditure${tipI("Calories you burn per day (TDEE), measured from your own weigh-ins and food logs rather than a formula. Eat under it to lose, over it to gain. It shifts as your body and activity change.")}</p></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Daily burn${tipI("The calories your body uses in a day — measured from your own weigh-ins and food logs, not just a formula. Eat under it to lose weight, over it to gain. It shifts as your body and activity change.")}</p></div>
         <p style="font-size:24px;font-weight:700;margin:0;line-height:32px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="text-foreground">${coaching.currentTDEE}</p>
         <p style="font-size:10px;margin:0" class="${confColors[coaching.confidence]}" data-tip="How solid the expenditure number is. It starts as a formula guess and firms up as consistent weigh-ins and food logs come in — usually 1–2 weeks to reach medium, longer for high.">${coaching.confidence} confidence</p></div>
       <div class="bg-card" style="border-radius:12px;border:1px solid hsl(var(--primary)/.2);padding:16px">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${LUCIDE_C(P_TARGET,2,14,'text-primary')}<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Suggested${tipI("The daily calories the coach recommends right now: your measured expenditure plus or minus your goal's planned gap.")}</p></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${LUCIDE_C(P_TARGET,2,14,'text-primary')}<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Suggested</p></div>
         <p style="font-size:24px;font-weight:700;margin:0;line-height:32px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="text-primary">${coaching.suggestedCalories}</p>
         <p style="font-size:10px;margin:0" class="text-muted-foreground">${tds>0?'+':''}${tds} ${tds<0?'deficit':tds>0?'surplus':''}</p></div></div>`;
     const eb=coaching.energyBalance;
@@ -5337,7 +5342,8 @@ function coachPage(){
         <div style="position:absolute;top:0;bottom:0;height:100%;border-radius:9999px;width:${Math.min(50,Math.abs(eb.dailyBalance)/20)}%;${eb.dailyBalance>0?'left:50%;background:hsl(var(--warning)/.6)':'right:50%;background:hsl(var(--primary)/.6)'}"></div></div>
       <div style="display:flex;justify-content:space-between;font-size:12px;line-height:16px">
         <span class="text-muted-foreground">Avg: ${eb.avgIntake} cal</span>
-        <span class="${eb.dailyBalance>0?'text-warning':eb.dailyBalance<0?'text-primary':'text-muted-foreground'}" style="${eb.dailyBalance!==0?'font-weight:600':''}">${eb.dailyBalance>0?'+':''}${eb.dailyBalance} cal/day</span></div></div>`:'';
+        <span class="${eb.dailyBalance>0?'text-warning':eb.dailyBalance<0?'text-primary':'text-muted-foreground'}" style="${eb.dailyBalance!==0?'font-weight:600':''}">${eb.dailyBalance>0?'+':''}${eb.dailyBalance} cal/day</span></div>
+      <p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">${eb.dailyBalance>0?'You eat over':eb.dailyBalance<0?'You eat under':'You eat right at'} what you burn, on average — that's what ${eb.dailyBalance>0?'gains':eb.dailyBalance<0?'loses':'holds'} weight.</p></div>`:'';
     // Recommended Targets — hidden in manual mode AND once all four suggested values equal current targets
     const applied=coaching.suggestedCalories===ep.targetCalories&&coaching.suggestedProtein===ep.targetProtein&&coaching.suggestedCarbs===ep.targetCarbs&&coaching.suggestedFat===ep.targetFat;
     let targetsCard='';
@@ -5386,15 +5392,15 @@ function coachPage(){
       <div style="display:flex;flex-direction:column;gap:8px;max-height:192px;overflow-y:auto">
         ${[...checkIns].reverse().slice(0,8).map((ci,i)=>`<div class="bg-muted" style="display:flex;align-items:center;justify-content:space-between;border-radius:8px;padding:10px">
           <div><p style="font-size:12px;font-weight:600;margin:0;line-height:16px" class="text-foreground">${fmtDate(ci.date)}</p>
-          <p style="font-size:10px;margin:0" class="text-muted-foreground">TDEE: ${ci.expenditureEstimate} • ${ci.suggestedCalories} cal</p></div>
+          <p style="font-size:10px;margin:0" class="text-muted-foreground">Burn ${ci.expenditureEstimate} · target ${ci.suggestedCalories} cal</p></div>
           ${ci.applied?`<span style="font-size:10px;display:flex;align-items:center;gap:2px" class="text-primary">${LUCIDE(P_CHECK,2,10)} Applied</span>`
             :`<button data-act="applycirow" data-i="${checkIns.length-1-i}" class="haptic text-primary" style="font-size:10px;font-weight:600;background:none;border:0;padding:0">Apply</button>`}</div>`).join('')}</div></div>`:'';
     lower=coachSays+exGrid+ebCard+targetsCard+adhCard+insightsCard+avgCard+histCard;
   }else{
     lower=`<div class="apple-card enter-up" style="animation-delay:.2s;padding:24px;margin-bottom:16px;text-align:center">
       <div style="display:flex;justify-content:center;margin-bottom:12px">${LUCIDE_C(P_SCALE,2,32,'text-muted-foreground')}</div>
-      <p style="font-size:14px;font-weight:600;margin:0 0 4px;line-height:20px" class="text-foreground">Building your expenditure estimate</p>
-      <p style="font-size:12px;margin:0 0 12px;line-height:16px" class="text-muted-foreground">Log your weight and food intake daily. After about 7-14 days of consistent data, the algorithm will have a solid estimate of your metabolism.</p>
+      <p style="font-size:14px;font-weight:600;margin:0 0 4px;line-height:20px" class="text-foreground">Learning your daily burn</p>
+      <p style="font-size:12px;margin:0 0 12px;line-height:16px" class="text-muted-foreground">Log your weight and food daily. After about 7–14 days of consistent data, the app will have a solid read on how much you burn.</p>
       <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;font-size:12px;line-height:16px">
         <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:600;margin:0" class="text-foreground">${tr.length}</p><p style="margin:0" class="text-muted-foreground">weigh-ins</p></div>
         <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:600;margin:0" class="text-foreground">${st.f}</p><p style="margin:0" class="text-muted-foreground">day streak</p></div></div></div>`;
@@ -5942,8 +5948,8 @@ function setsTargets(){
     keto:"Remaining calories split 75% fat / 25% carbs (ketogenic, very low carb)",
     high_protein:"Remaining calories split 40% fat / 60% carbs (protein already maximized)"};
   const goalExplanations={
-    cut:{slow:"10% deficit (~250 cal/day below TDEE)",moderate:"20% deficit (~500 cal/day below TDEE)",fast:"25% deficit (~750 cal/day below TDEE)"}[profile.rate]||"",
-    bulk:{slow:"5% surplus (~150 cal/day above TDEE)",moderate:"10% surplus (~300 cal/day above TDEE)",fast:"15% surplus (~500 cal/day above TDEE)"}[profile.rate]||"",
+    cut:{slow:"10% deficit (~250 cal/day under your burn)",moderate:"20% deficit (~500 cal/day under your burn)",fast:"25% deficit (~750 cal/day under your burn)"}[profile.rate]||"",
+    bulk:{slow:"5% surplus (~150 cal/day over your burn)",moderate:"10% surplus (~300 cal/day over your burn)",fast:"15% surplus (~500 cal/day over your burn)"}[profile.rate]||"",
     maintain:"No adjustment — eating at estimated TDEE"};
   const floorValues={standard:profile.gender==="male"?1500:1200,low:profile.gender==="male"?1300:1000,aggressive:profile.gender==="male"?1200:900};
   const appliedFloor=profile.goal==="cut"?floorValues[profile.calFloor]||1200:null; // real quirk: warning renders for 'cut' only
