@@ -32,7 +32,7 @@
   --background:0 0% 0%; --foreground:0 0% 98%;
   --card:240 6% 10%; --popover:240 5% 12%;
   --primary:211 100% 50%; --secondary:240 4% 16%; --muted:240 5% 12%;
-  --muted-foreground:0 0% 55%; --border:240 4% 16%;
+  --muted-foreground:0 0% 64%; --border:240 4% 16%; /* 55%→64%: ~4.5:1 gray-on-card contrast (was ≈3.4:1, under WCAG AA for small text) */
   --destructive:0 72% 51%; --radius:.75rem;
   --primary-foreground:0 0% 100%;
   --card-foreground:0 0% 98%; --popover-foreground:0 0% 98%;
@@ -70,6 +70,7 @@ button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inh
 .app-content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:none}
 /* page container: real pages carry "px-4 pt-14 pb-4 max-w-md mx-auto" (Dashboard pb-28) */
 .page{padding:56px 16px 16px;max-width:28rem;margin:0 auto;width:100%}
+.page.fab-room{padding-bottom:112px} /* pages with the floating + button need scroll room so it never hides content */
 .apple-title{font-size:34px;font-weight:700;letter-spacing:-.025em;line-height:1.12}
 .apple-section{font-size:13px;font-weight:600;letter-spacing:-.01em;text-transform:uppercase;color:hsl(var(--muted-foreground))}
 .glass{background:hsl(240 6% 7% / 0.92);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);border-top:0.5px solid hsl(0 0% 100% / 0.08)}
@@ -266,6 +267,23 @@ select.input{appearance:none;-webkit-appearance:none}
 .sheet-h b{font-size:17px}
 .xbtn{width:44px;height:44px;border-radius:22px;border:0;background:hsl(var(--secondary));color:hsl(var(--muted-foreground));font-size:16px;line-height:24px}
 .sheet-b{overflow-y:auto;min-height:0;padding:0 16px 14px;-webkit-overflow-scrolling:touch}
+
+/* tap-tooltips: ⓘ chips that explain any indicator; tap opens a bubble, tap anywhere closes */
+.tip-i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin:-2px 0 -2px 2px;padding:0;border:0;border-radius:9px;background:hsl(var(--secondary));color:hsl(var(--muted-foreground));font-size:11px;font-weight:700;font-style:normal;line-height:1;vertical-align:middle;flex-shrink:0}
+.tip-bub{position:fixed;z-index:70;max-width:min(320px,calc(100vw - 32px));background:hsl(var(--card));border:.5px solid hsl(var(--border));border-radius:12px;padding:10px 12px;font-size:12px;line-height:17px;color:hsl(var(--foreground));box-shadow:0 8px 30px rgb(0 0 0/.5);animation:fadein .15s}
+.tip-bub b{color:hsl(var(--primary))}
+
+/* in-app confirm/prompt dialog (replaces system confirm()/prompt() which look non-native on iOS) */
+.scrim.dlg-top{z-index:55} /* above the fs/rb/wo overlays (50), below toasts (60) */
+.dlg-wrap{padding:20px 20px 8px}
+.dlg-wrap h3{font-size:17px;font-weight:700;margin:0 0 6px;line-height:24px}
+.dlg-wrap p{font-size:13px;line-height:19px;margin:0 0 16px;color:hsl(var(--muted-foreground))}
+.dlg-row{display:flex;gap:8px;margin-top:4px}
+.dlg-btn{flex:1;padding:13px 0;border-radius:14px;border:0;font-size:15px;font-weight:600;line-height:20px}
+.dlg-btn.pr{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+.dlg-btn.dn{background:hsl(var(--destructive));color:hsl(var(--destructive-foreground))}
+.dlg-btn.sec{background:hsl(var(--secondary));color:hsl(var(--foreground))}
+.dlg-in{width:100%;background:hsl(var(--secondary));border:0;border-radius:12px;padding:12px 14px;font-size:16px;color:hsl(var(--foreground));outline:none;margin-bottom:12px}
 
 /* search results */
 .food{display:flex;align-items:center;gap:10px;padding:10px 2px;min-height:52px;border:0;background:none;width:100%;text-align:left;color:hsl(var(--foreground))}
@@ -583,6 +601,10 @@ const MUSCLE_LABELS={"chest":"Chest","back":"Back","shoulders":"Shoulders","bice
 const $=s=>document.querySelector(s);
 const r1=x=>Math.round(x*10)/10;
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// human date for UI copy ("Aug 26", with the year only when it isn't this year) — raw ISO stays storage-only
+const fmtDate=d=>{try{const dt=new Date(String(d).slice(0,10)+'T12:00:00');if(isNaN(dt))return String(d);
+  const o={month:'short',day:'numeric'};if(dt.getFullYear()!==new Date().getFullYear())o.year='numeric';
+  return dt.toLocaleDateString('en-US',o)}catch(_){return String(d)}};
 const localDateStr=(d=new Date())=>{const p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())};
 const addDays=(ds,n)=>{const[y,m,d]=ds.split("-").map(Number);return localDateStr(new Date(y,m-1,d+n))};
 const dayDiff=(a,b)=>{const[y1,m1,d1]=a.split("-").map(Number),[y2,m2,d2]=b.split("-").map(Number);return Math.round((new Date(y2,m2-1,d2)-new Date(y1,m1-1,d1))/864e5)};
@@ -990,7 +1012,12 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");vaultPut(LS+"sb_session",null);sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-09-01.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+// password recovery: GoTrue emails a reset link that lands back on this app with recovery tokens in the hash
+async function sbRecover(email){
+  const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
+  return sbAuth("recover"+redir,{email});
+}
+const BUILD="2026-09-02.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2083,7 +2110,7 @@ function calorieProgress(current,target,note){
     <div style="height:5px;border-radius:9999px;overflow:hidden" class="bg-muted">
       <div class="bar-anim ${isOver?'bg-over':'bg-primary'}" style="height:100%;border-radius:9999px;width:${displayPct}%"></div>
     </div>
-    <p style="font-size:11px;margin:8px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} kcal${note?` · ${note}`:""}</p>
+    <p style="font-size:11px;margin:8px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} kcal${note?` · ${note}${tipI("You earned extra calories from today's workouts, but only a discounted share is added back — machine burn readouts run high, and eating back every burned calorie usually stalls the plan. The discount depends on your goal (stricter on a cut).")}`:""}</p>
   </div>`;
 }
 // DeficitVisual.tsx — Target header + confidence chip, gauge with TDEE/Target markers, three pills
@@ -2096,25 +2123,33 @@ function deficitVisual(consumed,target,tdee,confidence){
   const chip = confidence==='high'?'color:hsl(var(--success));background:hsl(var(--success)/.1)':
                confidence==='medium'?'color:hsl(var(--primary));background:hsl(var(--primary)/.1)':
                'color:hsl(var(--muted-foreground));background:hsl(var(--muted))';
-  const trendIco = isDeficit?LUCIDE_C(P_TRENDDOWN,2,18,'text-success'):isSurplus?LUCIDE_C(P_TRENDUP,2,18,'text-warning'):LUCIDE_C(P_MINUS,2,18,'text-muted-foreground');
+  // pace-aware color: green means ON PLAN, not merely "number went down". A cut that's
+  // running far past its planned deficit is a warning (muscle loss / rebound territory),
+  // and the same logic mirrors for a surplus vs a planned surplus (bulk).
+  const paceCls=(()=>{
+    if(Math.abs(plannedDeficit)<50)return Math.abs(weeklyChange)<0.35?'text-success':'text-warning'; // maintenance-ish plan
+    const r=currentDeficit/plannedDeficit;                          // 1 = exactly on plan (sign-aware)
+    return r>=0.4&&r<=1.6?'text-success':'text-warning';
+  })();
+  const trendIco = LUCIDE_C(isDeficit?P_TRENDDOWN:isSurplus?P_TRENDUP:P_MINUS,2,18,paceCls);
   const fillCls = consumed>tdee?'bg-warning':consumed>target?'bg-over':'bg-success';
   return `<div class="apple-card" style="padding:16px;margin-top:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_TARGET,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Deficit Tracker</p></div>
-      <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:9999px;${chip}">${confidence} confidence</span>
+      <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_TARGET,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Deficit Tracker</p>${tipI("Your deficit is the gap between what you burn (TDEE) and what you eat. Eating under your burn loses weight; over it gains. Green means you're near YOUR plan — not just any loss.")}</div>
+      <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:9999px;${chip}" data-tip="How well the app knows your true daily burn. It starts from a formula and learns from your actual weigh-ins and food logs — confidence rises with consistent logging.">${confidence} confidence</span>
     </div>
     <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px">
       <div>
-        <p style="font-size:11px;margin:0 0 2px" class="text-muted-foreground">${onTrack?'Projected deficit':isDeficit?'Current deficit':'Current surplus'}</p>
+        <p style="font-size:11px;margin:0 0 2px" class="text-muted-foreground">${onTrack?'Deficit if you finish on target':isDeficit?'Deficit so far today':'Surplus so far today'}</p>
         <div style="display:flex;align-items:center;gap:8px">
           ${trendIco}
-          <p style="font-size:32px;font-weight:700;letter-spacing:-.05em;line-height:1;margin:0;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="${isDeficit?'text-success':isSurplus?'text-warning':'text-foreground'}">${Math.abs(Math.round(onTrack?plannedDeficit:currentDeficit))}</p>
+          <p style="font-size:32px;font-weight:700;letter-spacing:-.05em;line-height:1;margin:0;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="${paceCls}">${Math.abs(Math.round(onTrack?plannedDeficit:currentDeficit))}</p>
           <span style="font-size:13px;font-weight:500" class="text-muted-foreground">cal</span>
         </div>
       </div>
       <div style="text-align:right">
-        <p style="font-size:10px;margin:0 0 2px" class="text-muted-foreground">Weekly projection</p>
-        <p style="font-size:18px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:1.5" class="${weeklyChange>0?'text-success':weeklyChange<0?'text-warning':'text-foreground'}">${weeklyChange>0?'-':'+'}${Math.abs(weeklyChange).toFixed(1)}<span style="font-size:11px;font-weight:500;margin-left:2px" class="text-muted-foreground">lb/wk</span></p>
+        <p style="font-size:10px;margin:0 0 2px" class="text-muted-foreground">If every day looked like today${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
+        <p style="font-size:18px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:1.5" class="${paceCls}">${weeklyChange>0?'-':'+'}${Math.abs(weeklyChange).toFixed(1)}<span style="font-size:11px;font-weight:500;margin-left:2px" class="text-muted-foreground">lb/wk</span></p>
       </div>
     </div>
     <div style="position:relative;height:6px;border-radius:9999px;overflow:visible;margin-bottom:32px" class="bg-muted">
@@ -2128,17 +2163,17 @@ function deficitVisual(consumed,target,tdee,confidence){
       </div>
       <div class="bar-anim ${fillCls}" style="position:absolute;top:0;left:0;height:100%;border-radius:9999px;width:${Math.min(consumedPos,100)}%"></div>
     </div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px" data-tip="Planned deficit: the gap your targets are built around. On pace for: the gap today's eating actually creates so far. Left to eat: calories until you hit today's target. All in calories — no plus/minus signs needed, the labels say which way.">
       <div style="flex:1;background:hsl(var(--muted)/.5);border-radius:12px;padding:8px 12px;text-align:center">
-        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">Planned</p>
-        <p style="font-size:14px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:21px" class="text-primary">-${Math.round(Math.max(0,plannedDeficit))}</p>
+        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">Planned deficit</p>
+        <p style="font-size:14px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:21px" class="text-primary">${Math.round(Math.max(0,plannedDeficit))}</p>
       </div>
       <div style="flex:1;background:hsl(var(--muted)/.5);border-radius:12px;padding:8px 12px;text-align:center">
-        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">Actual</p>
-        <p style="font-size:14px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:21px" class="${isDeficit?'text-success':'text-warning'}">${isDeficit?'-':'+'}${Math.abs(Math.round(currentDeficit))}</p>
+        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">On pace for</p>
+        <p style="font-size:14px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:21px" class="${paceCls}">${Math.abs(Math.round(currentDeficit))}${isSurplus?' over':''}</p>
       </div>
       <div style="flex:1;background:hsl(var(--muted)/.5);border-radius:12px;padding:8px 12px;text-align:center">
-        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">Remaining</p>
+        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">Left to eat</p>
         <p style="font-size:14px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:21px" class="${remaining>0?'text-foreground':'text-over'}">${remaining>0?Math.round(remaining):'Done'}</p>
       </div>
     </div>
@@ -2164,7 +2199,7 @@ function macroRing(current,target,label,color){
 }
 // WaterTracker.tsx — unit toggle (ml / fl oz / cups), undo of last add, quick-add grid (today only)
 const WATER_UNITS={ml:{factor:1,label:'ml',decimals:0},oz:{factor:29.5735,label:'fl oz',decimals:1},cups:{factor:236.588,label:'cups',decimals:1}};
-const WATER_QUICK={ml:[{ml:50,label:'50'},{ml:100,label:'100'},{ml:500,label:'500'}],
+const WATER_QUICK={ml:[{ml:250,label:'250'},{ml:500,label:'500'},{ml:750,label:'750'}], // glass / bottle / large bottle
                    oz:[{ml:237,label:'8'},{ml:355,label:'12'},{ml:473,label:'16'}],
                    cups:[{ml:237,label:'1'},{ml:473,label:'2'},{ml:710,label:'3'}]};
 const waterConvert=(ml,u)=>(ml/WATER_UNITS[u].factor).toFixed(WATER_UNITS[u].decimals);
@@ -2241,6 +2276,9 @@ function insightsSection(){
       <p class="apple-section" style="margin:0">Insights</p>
       ${LUCIDE_C(P_CHEVDOWN,2,16,'text-muted-foreground',`transition:transform .2s;${showInsights?'':'transform:rotate(-90deg)'}`)}
     </button>
+    ${showInsights?'':`<button data-act="insights" style="width:100%;text-align:left;background:none;border:0;padding:0 0 4px">
+      <p style="font-size:12px;margin:0;line-height:17px" class="text-muted-foreground">Burning ~${ex.tdee} cal/day (${ex.confidence} confidence) · ${getLoggingStreak(foodLog)}-day logging streak — tap for more</p>
+    </button>`}
     ${showInsights?`<div style="display:flex;flex-direction:column;gap:12px">
       <div class="bg-card" style="border-radius:16px;padding:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -2327,9 +2365,14 @@ function homePage(){
   <div class="anim">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
       <h1 class="apple-title text-foreground" style="margin:0">Dashboard<span class="text-primary">.</span></h1>
-      <button data-act="tab" data-t="calendar" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${LUCIDE_C(P_CALDAYS,2,14)} Calendar</button>
     </div>
-    <p style="font-size:13px;margin:0 0 12px;font-weight:500" class="text-muted-foreground">${subtitle}</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px">
+      <p style="font-size:13px;margin:0;font-weight:500" class="text-muted-foreground">${subtitle}</p>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button data-act="goprog" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${LUCIDE_C(P_TRENDDOWN,2,14)} Trends</button>
+        <button data-act="tab" data-t="calendar" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${LUCIDE_C(P_CALDAYS,2,14)} Calendar</button>
+      </div>
+    </div>
   </div>
   <div class="anim" style="animation-delay:.05s">${dayStrip({hasFoodLog:d=>entriesFor(d).length>0,hasWeighIn:d=>weightOn(d)!=null,
     hasWorkout:d=>workouts.some(w=>w.date===d),hasEvent:d=>eventsOn(d).length>0})}</div>
@@ -2358,11 +2401,6 @@ function homePage(){
     ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
   </div>
-  <div class="anim" style="animation-delay:.15s;display:flex;justify-content:space-around;margin-top:20px">
-    ${macroRing(totals.protein,targets.protein,'Protein','hsl(340, 82%, 52%)')}
-    ${macroRing(totals.carbs,targets.carbs,'Carbs','hsl(45, 93%, 47%)')}
-    ${macroRing(totals.fat,targets.fat,'Fat','hsl(200, 80%, 50%)')}
-  </div>
   <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),isToday,isToday)}</div>
   ${isToday?`<div class="anim apple-card" style="animation-delay:.2s;margin-top:16px;padding:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -2372,9 +2410,9 @@ function homePage(){
     ${latest?`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div>
         <p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;letter-spacing:-.025em;margin:0;line-height:28px" class="text-foreground">${latest.weight} ${profile.weightUnit}</p>
-        ${latest.trend?`<p style="font-size:10px;margin:0" class="text-muted-foreground">Trend: ${latest.trend} ${profile.weightUnit}</p>`:''}
+        ${latest.trend?`<p style="font-size:10px;margin:0" class="text-muted-foreground">Trend: ${latest.trend} ${profile.weightUnit}${tipI("A smoothed average of your recent weigh-ins. Day-to-day scale readings swing with water and food in transit — the trend line is your real weight moving underneath that noise, so the coach uses it instead of single readings.")}</p>`:''}
       </div>
-      <p style="font-size:10px;margin:0" class="text-muted-foreground">${latest.date}</p>
+      <p style="font-size:10px;margin:0" class="text-muted-foreground">${fmtDate(latest.date)}</p>
     </div>`:''}
     <div style="display:flex;gap:8px">
       <input id="wIn" type="number" placeholder="Today's weight (${profile.weightUnit})" class="bg-muted text-foreground" style="flex:1;border-radius:12px;padding:10px 12px;font-size:16px;border:0;outline:none;line-height:24px">
@@ -2435,6 +2473,10 @@ const IC_X20=LUCIDE(P_X,2,20);
 const IC_ZAP14=LUCIDE('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',2,14);
 // MealSection.tsx:142-263 — header (label + count + "cal" totals line), rows with inline calories,
 // "Add Food" inside the expanded block, Plus header icon + open-search on empty meals.
+// serving label with the REAL unit: "6 oz ·", "1.5 cup ·" — "6×" only when the unit is a bare serving
+const svLabel=e=>{const u=String(e.servingUnit||"").trim();
+  if(!u||/^servings?$/i.test(u))return e.sv!==1?`${e.sv}× · `:"";
+  return `${e.sv} ${esc(u)} · `};
 function mealSection(m){
   const items=entriesFor(selDate).filter(e=>e.meal===m);
   const n=items.length;
@@ -2458,17 +2500,21 @@ function mealSection(m){
       <div class="mrows">${items.map(e=>`<div class="mrow">
         <div class="mrow-l">
           <p class="mrow-name">${esc(e.name)}</p>
-          <p class="mrow-sub tnum">${e.sv!==1?`${e.sv}× · `:""}${e.macros.calories} cal · ${e.macros.protein}P · ${e.macros.carbs}C · ${e.macros.fat}F</p>
+          <p class="mrow-sub tnum">${svLabel(e)}${e.macros.calories} cal · ${e.macros.protein}P · ${e.macros.carbs}C · ${e.macros.fat}F</p>
         </div>
         <button class="mrow-menu haptic" data-act="emenu" data-id="${e.id}">${IC_MORE18}</button>
       </div>`).join("")}</div>
-      <button class="madd haptic" data-act="search" data-meal="${m}">${IC_PLUS14} Add Food</button>
+      <div style="display:flex;gap:0">
+        <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}">${IC_PLUS14} Add Food</button>
+        <button class="madd haptic" style="flex:1" data-act="tplsavemeal" data-meal="${m}">${IC_COPY14} Save as meal</button>
+      </div>
     </div></div>`:""}
   </div></div>`;
 }
 function foodPage(){
-  return `<div class="page">
-    <div class="fl-head"><h1 class="apple-title text-foreground">Food Log<span class="text-primary">.</span></h1></div>
+  return `<div class="page fab-room">
+    <div class="fl-head" style="display:flex;align-items:center;justify-content:space-between"><h1 class="apple-title text-foreground" style="margin:0">Food Log<span class="text-primary">.</span></h1>
+      <button data-act="tab" data-t="saved" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${IC_COPY14} Saved Meals</button></div>
     ${dayStrip({hasFoodLog:d=>entriesFor(d).length>0})}
     ${MEALS.map(mealSection).join("")}
     <button class="cfd-trigger haptic" data-act="copydaysheet">${IC_COPY14} Copy from another day</button>
@@ -2528,6 +2574,53 @@ function openSheet(html){closeSheet();closePMenu();sheetEl=document.createElemen
   sheetEl.innerHTML=`<div class="sheet glass-sheet">${html}</div>`;
   sheetEl.addEventListener("click",e=>{if(e.target===sheetEl)closeSheet()});
   document.body.appendChild(sheetEl)}
+
+// ===== tap tooltips — every non-obvious indicator gets a ⓘ that explains itself =====
+// tipI(text) renders the chip; tapping it opens a bubble anchored to the chip,
+// tapping anywhere else (or scrolling) dismisses. Pure display — touches no data.
+const tipI=t=>`<button class="tip-i" data-tip="${esc(t)}" aria-label="What is this?">i</button>`;
+let tipEl=null;
+function closeTip(){if(tipEl){tipEl.remove();tipEl=null}}
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-tip]");
+  if(!t){closeTip();return}
+  e.preventDefault();e.stopPropagation();
+  const txt=t.dataset.tip,again=tipEl&&tipEl.dataset.for===txt;
+  closeTip();if(again)return;                       // second tap on the same chip toggles off
+  tipEl=document.createElement("div");tipEl.className="tip-bub";tipEl.dataset.for=txt;tipEl.textContent=txt;
+  document.body.appendChild(tipEl);
+  const r=t.getBoundingClientRect(),bw=tipEl.offsetWidth,bh=tipEl.offsetHeight;
+  const x=Math.min(Math.max(8,r.left+r.width/2-bw/2),window.innerWidth-bw-8);
+  let y=r.top-bh-8;if(y<8)y=r.bottom+8;             // flip below when there's no room above
+  tipEl.style.left=x+"px";tipEl.style.top=y+"px";
+},true);
+document.addEventListener("scroll",closeTip,true);
+
+// ===== in-app confirm / prompt (system confirm()/prompt() render as unstyled
+// white boxes in iOS standalone mode — everything else in the app uses sheets) =====
+let dlgPending=null; // {res, input}
+function dlgOpen(html,res,input){
+  openSheet(html);dlgPending={res,input};
+  sheetEl.classList.add("dlg-top");
+  sheetEl.addEventListener("click",e=>{if(e.target===sheetEl&&dlgPending){const d=dlgPending;dlgPending=null;d.res(d.input?null:false)}});
+  if(input){const el=$("#dlgIn");if(el){el.focus();try{el.select()}catch(_){}
+    el.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();dlgOk()}})}}
+}
+function dlgOk(){if(!dlgPending)return;const d=dlgPending;dlgPending=null;
+  const v=d.input?($("#dlgIn")?$("#dlgIn").value:null):true;closeSheet();d.res(v)}
+function dlgNo(){if(!dlgPending)return;const d=dlgPending;dlgPending=null;closeSheet();d.res(d.input?null:false)}
+function uiConfirm(title,body,opts){opts=opts||{};
+  return new Promise(res=>dlgOpen(`<div class="dlg-wrap"><h3>${esc(title)}</h3>${body?`<p>${esc(body)}</p>`:""}
+    <div class="dlg-row"><button class="dlg-btn sec haptic" data-act="dlgno">Cancel</button>
+    <button class="dlg-btn ${opts.danger?"dn":"pr"} haptic" data-act="dlgok">${esc(opts.ok||"Confirm")}</button></div></div>`,res,false));
+}
+function uiPrompt(title,body,value,opts){opts=opts||{};
+  return new Promise(res=>dlgOpen(`<div class="dlg-wrap"><h3>${esc(title)}</h3>${body?`<p>${esc(body)}</p>`:""}
+    <input class="dlg-in" id="dlgIn" type="${opts.type||"text"}"${opts.type==="number"?' inputmode="numeric"':""} value="${esc(value==null?"":String(value))}">
+    <div class="dlg-row"><button class="dlg-btn sec haptic" data-act="dlgno">Cancel</button>
+    <button class="dlg-btn pr haptic" data-act="dlgok">${esc(opts.ok||"Save")}</button></div></div>`,res,true));
+}
+
 function mealByTime(){const h=new Date().getHours();return h<11?"breakfast":h<15?"lunch":h<21?"dinner":"snack"}
 // FoodLog page state (FoodLog.tsx:49): seeded by meal-by-time, updated by openSearch
 let activeMeal=mealByTime();
@@ -2836,7 +2929,7 @@ function fsCard(food,opts){
   return `<div class="fcard${isAI?" ai":""}">
     <button class="fcard-tap haptic" data-act="fstap" data-fid="${esc(fid)}">
       <div class="fcard-nm"><p>${esc(food.name)}</p>${opts.fav?`<span class="st">${fsStar(10,true)}</span>`:""}</div>
-      <p class="fcard-sub">${food.brand?esc(food.brand)+" · ":""}${food.servingSize}${esc(food.servingUnit)}</p>
+      <p class="fcard-sub">${food.brand?esc(food.brand)+" · ":""}${food.servingSize} ${esc(food.servingUnit)}</p>
       <div class="fcard-mac"><span class="cal tnum">${food.macros.calories} cal</span><span class="pcf tnum">${food.macros.protein}P · ${food.macros.carbs}C · ${food.macros.fat}F</span></div>
       <div class="fcard-bdg">${badge}${customBadge}</div>
     </button>
@@ -2872,12 +2965,12 @@ function fsMainView(){
     ${freq.length?`<p class="fs-sech shelf" style="margin-top:8px">${IC_TREND13} Frequently Eaten</p>`
       +freq.map(f=>fsCard(f,{fav:favorites.includes(f.id)})).join(""):""}
     <p class="fs-lib">Library</p>
-    <div class="fs-libcard">
-      <button class="fs-librow haptic" data-act="fssearchview"><span class="l">${IC_CLOCK14} Recents</span><span class="r"><span class="tnum">${rc.length}</span>${IC_CHEVR14}</span></button>
-      <button class="fs-librow haptic" data-act="fssearchview"><span class="l">${fsStar(14,false)} Saved Items</span><span class="r"><span class="tnum">${favCount}</span>${IC_CHEVR14}</span></button>
-    </div>
-    <button class="fs-custom haptic" data-act="fsquickadd">${IC_PLUS16} Log custom entry</button>
-    <button class="fs-custom haptic" data-act="fenew" style="margin-top:8px">${IC_PLUS16} Add a food to my database</button>
+    ${(rc.length||favCount)?`<div class="fs-libcard">
+      ${rc.length?`<button class="fs-librow haptic" data-act="fssearchview"><span class="l">${IC_CLOCK14} Recents</span><span class="r"><span class="tnum">${rc.length}</span>${IC_CHEVR14}</span></button>`:""}
+      ${favCount?`<button class="fs-librow haptic" data-act="fssearchview"><span class="l">${fsStar(14,false)} Saved Items</span><span class="r"><span class="tnum">${favCount}</span>${IC_CHEVR14}</span></button>`:""}
+    </div>`:`<div class="fs-libcard" style="padding:14px 16px"><p style="font-size:12px;margin:0;line-height:17px" class="text-muted-foreground">Foods you log and save land here for one-tap re-adding. Search below to log your first.</p></div>`}
+    <button class="fs-custom haptic" data-act="fsquickadd" style="text-align:left">${IC_PLUS16} <span><span style="display:block">Log custom entry</span><span style="display:block;font-size:11px;font-weight:400;line-height:15px;color:hsl(var(--muted-foreground))">One-off — type the macros, not saved for reuse</span></span></button>
+    <button class="fs-custom haptic" data-act="fenew" style="margin-top:8px;text-align:left">${IC_PLUS16} <span><span style="display:block">New food in my database</span><span style="display:block;font-size:11px;font-weight:400;line-height:15px;color:hsl(var(--muted-foreground))">Saved & searchable for every future log</span></span></button>
     </div>
     <div id="fsResults" style="display:none"></div>
     <div style="height:80px"></div>
@@ -3021,7 +3114,7 @@ function fsDetailView(){
     ${f.source==="ai"?`<div class="fs-aiwarn">${IC_ALERT14}<div class="t"><b>AI Estimate</b> — ${esc(f.aiConfidence||"medium")} confidence${f.aiNote?`<p>${esc(f.aiNote)}</p>`:""}</div></div>`:""}
     <div class="fda">
       <div class="fda-t"><h3>Nutrition Facts</h3><div class="fda-r8"></div></div>
-      <div class="fda-sv"><p>Serving size ${f.servingSize}${esc(f.servingUnit)}</p><div class="fda-r4"></div></div>
+      <div class="fda-sv"><p>Serving size ${f.servingSize} ${esc(f.servingUnit)}</p><div class="fda-r4"></div></div>
       <div class="fda-m">
         <div class="fda-cal"><span>Calories</span><span class="tnum" id="fdaCal">${m.calories}</span></div>
         <p class="fda-dvh">% Daily Value*</p>
@@ -3660,7 +3753,15 @@ function rbRender(keep){
   if(!rbEl)return;
   const panel=rbEl.querySelector("#rbPanel");if(!panel)return;
   const sc=keep?panel.querySelector(".rb-scroll"):null;const top=sc?sc.scrollTop:0;
-  if(!RB.restaurant){RB._foot=false;panel.innerHTML=rbBrandsHTML()}
+  if(!RB.restaurant){RB._foot=false;panel.innerHTML=rbBrandsHTML();
+    // chain finder: filter rows in place — no re-render while typing, so the iOS keyboard stays up
+    const f=panel.querySelector("#rbFind");
+    if(f)f.addEventListener("input",()=>{
+      const q=f.value.trim().toLowerCase();let hits=0;
+      panel.querySelectorAll(".rb-brand").forEach(b=>{const on=!q||(b.dataset.name||"").includes(q);b.style.display=on?"":"none";if(on)hits++});
+      const none=panel.querySelector("#rbFindNone");if(none)none.style.display=hits?"none":"";
+    });
+  }
   else if(RB.restaurant.menuStyle==="item-select"||!RB.restaurant.modular)panel.innerHTML=rbItemSelHTML(); // DoorDash default: store -> item -> bag
   else panel.innerHTML=rbBuilderHTML();
   if(keep){const s2=panel.querySelector(".rb-scroll");if(s2)s2.scrollTop=top}
@@ -3689,14 +3790,15 @@ const rbModSub=comp=>{const c=comp.macros.calories;
 // ----- brand list (RestaurantMealBuilder.tsx:226-258) -----
 function rbBrandsHTML(){
   return rbHeaderHTML()+`<div class="rb-scroll"><div style="padding:20px">
-    <p style="font-size:14px;color:hsl(var(--muted-foreground));margin:0 0 16px;line-height:20px">Choose a restaurant to build your meal:</p>
-    <div style="display:flex;flex-direction:column;gap:12px">
+    <div class="fs-searchpill" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;background:hsl(var(--secondary));border-radius:9999px;padding:10px 14px">${IC_SEARCH16}<input id="rbFind" placeholder="Find a restaurant…" autocomplete="off" style="background:none;border:0;outline:none;flex:1;min-width:0;font:inherit;font-size:15px;color:hsl(var(--foreground))"></div>
+    <div id="rbBrandList" style="display:flex;flex-direction:column;gap:12px">
     ${(()=>{const seen=new Set();const rows=[];
       const one=r=>{if(seen.has(r.id))return;seen.add(r.id);const e=rbEntry(r.id);
-        rows.push(`<button class="rb-brand haptic" data-act="rbpick" data-r="${e.id}"><span style="font-size:30px;line-height:36px">${e.logo}</span><span style="text-align:left"><span style="display:block;font-weight:600">${esc(e.name)}</span><span style="display:block;font-size:12px;color:hsl(var(--muted-foreground));line-height:16px">${e.modular?`${e.components.length} items · Build your meal`:`${e.components.length} menu items · Browse menu`}</span></span></button>`)};
+        rows.push(`<button class="rb-brand haptic" data-act="rbpick" data-r="${e.id}" data-name="${esc(e.name.toLowerCase())}"><span style="font-size:30px;line-height:36px">${e.logo}</span><span style="text-align:left"><span style="display:block;font-weight:600">${esc(e.name)}</span><span style="display:block;font-size:12px;color:hsl(var(--muted-foreground));line-height:16px">${e.components.length} items · ${e.modular?'Build your meal':'Browse menu'}</span></span></button>`)};
       RESTAURANTS_DB.filter(r=>r.modular).forEach(one);
       RESTAURANTS_DB.filter(r=>!r.modular).forEach(one);
       return rows.join("")})()}
+    <p id="rbFindNone" style="display:none;font-size:13px;text-align:center;margin:8px 0;color:hsl(var(--muted-foreground))">No chain by that name — you can still log its food via search or a custom entry.</p>
     </div></div></div>`;
 }
 
@@ -3791,7 +3893,7 @@ function rbCategoryHTML(cat){
     if(selected&&selCount===1&&pi.autoMultiplier==null&&portion!=="regular")suffix+=`<span class="rb-sfx">(${portion==="double"?"2x":portion==="half"?"½":"light"})</span>`;
     h+=`<div><button class="rb-row${selected?" on":""} haptic" data-act="rbtoggle" data-c="${comp.id}">
       <span style="display:flex;align-items:center;gap:8px"><span class="rb-circ${selected?" on":""}">${selected&&selCount>1?`<span style="font-size:10px;font-weight:700">${selCount}</span>`:selected?IC_CHECK12:IC_PLUS12}</span><span style="text-align:left"><span style="font-size:14px;line-height:20px${selected?";font-weight:500":""}">${esc(comp.name)}</span>${suffix}</span></span>
-      <span style="text-align:right"><span style="display:block;font-size:12px;color:hsl(var(--muted-foreground));line-height:16px">${selCount>1?m.calories*selCount:m.calories} cal</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground))">P:${Math.round(m.protein*mult)} C:${Math.round(m.carbs*mult)} F:${Math.round(m.fat*mult)}</span></span></button>`;
+      <span style="text-align:right"><span style="display:block;font-size:12px;color:hsl(var(--muted-foreground));line-height:16px">${selCount>1?m.calories*selCount:m.calories} cal</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground))">${Math.round(m.protein*mult)}P · ${Math.round(m.carbs*mult)}C · ${Math.round(m.fat*mult)}F</span></span></button>`;
     if(selected&&comp.sizeVariants&&comp.sizeVariants.length)
       h+=`<div style="display:flex;gap:6px;margin:6px 0 4px 28px;flex-wrap:wrap">${comp.sizeVariants.map(sv=>`<button class="rb-chip${pi.selectedSizeId===sv.sizeId?" pr":""} haptic" data-act="rbsize" data-c="${comp.id}" data-s="${sv.sizeId}" style="padding:4px 10px">${esc(sv.sizeName)}</button>`).join("")}</div>`;
     if(selected&&hasPortion)
@@ -3894,7 +3996,7 @@ function rbCartHTML(){
     <h3 style="font-size:14px;font-weight:700;margin:0 0 8px;line-height:20px">Your Order (${n} item${n!==1?"s":""})</h3>
     ${n===0?`<p style="font-size:12px;color:hsl(var(--muted-foreground));padding:8px 0;margin:0;line-height:16px">No items yet — browse the menu and add items</p>`
     :`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">${RB.cart.map(it=>{const q=it.qty||1,qm=rbQx(it.macros,q);
-      return `<div class="rb-cartrow"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:20px">${esc(it.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${qm.calories} cal · P:${qm.protein} C:${qm.carbs} F:${qm.fat}</p></div>
+      return `<div class="rb-cartrow"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:20px">${esc(it.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${qm.calories} cal · ${qm.protein}P · ${qm.carbs}C · ${qm.fat}F</p></div>
       <div style="display:flex;align-items:center;gap:6px;margin-right:4px">${q>1?`<button class="rb-step m haptic" data-act="rblinem" data-id="${it.id}">${IC_MINUS14}</button>`:""}<span class="rb-count">${q}</span>${q<10?`<button class="rb-step p haptic" data-act="rblinep" data-id="${it.id}">${IC_PLUS14}</button>`:""}</div>
       <button class="rb-x haptic" style="padding:6px" data-act="rbcartrm" data-id="${it.id}">${IC_TRASH14}</button></div>`}).join("")}</div>`}
     ${n>0?rbMealSelHTML()+`<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${RB.cart.reduce((s,c)=>s+(c.qty||1),0)} item${RB.cart.reduce((s,c)=>s+(c.qty||1),0)!==1?"s":""} · ${RB.cart.reduce((s,c)=>s+c.macros.calories*(c.qty||1),0)} cal</button>`:""}
@@ -3972,7 +4074,7 @@ function rbISBodyHTML(){
       const maxReached=RB.sides.length>=(it.includedSides||0);
       h+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">🥗 Choose Your Sides (${RB.sides.length}/${it.includedSides})</h4><div style="display:flex;flex-direction:column;gap:4px">${sideItems.map(side=>{
         const count=RB.sides.filter(s=>s.id===side.id).length;
-        const sub=`${side.macros.calories} cal · P:${side.macros.protein} C:${side.macros.carbs} F:${side.macros.fat}`;
+        const sub=`${side.macros.calories} cal · ${side.macros.protein}P · ${side.macros.carbs}C · ${side.macros.fat}F`;
         return rbStepRow(side,count,sub,"rbsidep","rbsidem",maxReached&&count===0,false);
       }).join("")}</div></div>`;
     }
@@ -3985,7 +4087,8 @@ function rbISBodyHTML(){
   }else if(hasSubs&&!RB.subcat){
     h=`<div style="padding:16px;display:flex;flex-direction:column;gap:6px">${subs.map(sub=>{
       const si=catItems.filter(c=>c.subcategory===sub);
-      const range=si.length?`${Math.min(...si.map(i=>i.macros.calories))}–${Math.max(...si.map(i=>i.macros.calories))} cal`:"";
+      const lo=si.length?Math.min(...si.map(i=>i.macros.calories)):0,hi=si.length?Math.max(...si.map(i=>i.macros.calories)):0;
+      const range=si.length?(lo===hi?`${lo} cal`:`${lo}–${hi} cal`):"";
       return `<button class="rb-srow haptic" data-act="rbsub" data-s="${esc(sub)}"><span style="text-align:left"><span style="display:block;font-size:14px;font-weight:600;line-height:20px">${esc(sub)}</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${si.length} item${si.length!==1?"s":""} · ${range}</span></span><span style="color:hsl(var(--muted-foreground));display:flex">${IC_CHEVR16}</span></button>`;
     }).join("")}
       ${RB.xform?rbxFormHTML():`<button class="haptic" data-act="rbxopen" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:16px;border:1px dashed hsl(var(--border)/.5);background:none;font-size:13px;color:hsl(var(--muted-foreground))">${IC_PLUS16} New or seasonal item? Add it to this menu</button>`}
@@ -3994,7 +4097,7 @@ function rbISBodyHTML(){
     const items=RB.subcat?catItems.filter(c=>c.subcategory===RB.subcat):catItems;
     h=`<div class="rb-sy15" style="padding:16px">
       ${RB.subcat?`<button class="rb-back haptic" data-act="rbsubback" style="display:flex;align-items:center;gap:4px;margin-bottom:8px">${IC_CHEVL14} ${esc((cfg[RB.cat]&&cfg[RB.cat].displayName)||RB.cat)}</button><h3 style="font-size:16px;font-weight:700;margin:0;line-height:24px">${esc(RB.subcat)}</h3>`:""}
-      ${items.map(comp=>`<button class="rb-srow it haptic" data-act="rbitem" data-c="${comp.id}"><span style="text-align:left;flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:500;line-height:20px">${esc(comp.name)}</span>${comp.sizeVariants?`<span style="display:block;font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${comp.sizeVariants.map(sv=>esc(sv.sizeName)).join(" · ")}</span>`:""}</span><span style="text-align:right;flex-shrink:0;margin-left:12px"><span style="display:block;font-size:12px;font-weight:600;line-height:16px">${comp.macros.calories} cal</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground))">P:${comp.macros.protein} C:${comp.macros.carbs} F:${comp.macros.fat}</span></span></button>`).join("")}
+      ${items.map(comp=>`<button class="rb-srow it haptic" data-act="rbitem" data-c="${comp.id}"><span style="text-align:left;flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:500;line-height:20px">${esc(comp.name)}</span>${comp.sizeVariants?`<span style="display:block;font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${comp.sizeVariants.map(sv=>esc(sv.sizeName)).join(" · ")}</span>`:""}</span><span style="text-align:right;flex-shrink:0;margin-left:12px"><span style="display:block;font-size:12px;font-weight:600;line-height:16px">${comp.macros.calories} cal</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground))">${comp.macros.protein}P · ${comp.macros.carbs}C · ${comp.macros.fat}F</span></span></button>`).join("")}
       ${items.length===0?`<p style="font-size:14px;color:hsl(var(--muted-foreground));text-align:center;padding:32px 0;margin:0;line-height:20px">No items in this category</p>`:""}
       ${RB.xform?rbxFormHTML():`<button class="haptic" data-act="rbxopen" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:16px;border:1px dashed hsl(var(--border)/.5);background:none;font-size:13px;color:hsl(var(--muted-foreground))">${IC_PLUS16} New or seasonal item? Add it to this menu</button>`}
       ${(rbExtra[RB.restaurant.id]||[]).some(x=>x.category===RB.cat)?`<p style="font-size:10px;margin:8px 0 0;line-height:14px;color:hsl(var(--muted-foreground))">Your added items appear above like any other — open one to edit or remove it.${(rbExtra[RB.restaurant.id]||[]).some(x=>x.ai&&x.category===RB.cat)?" AI macros are estimates; check against posted values when you can.":""}</p>`:""}
@@ -4072,7 +4175,14 @@ function rbAction(act,el){
     case"rbcart":RB.showCart=!RB.showCart;RB._cartAnim=RB.showCart;rbRender(true);return;
     case"rbcartrm":RB.cart=RB.cart.filter(c=>c.id!==el.dataset.id);rbRender(true);return;
     case"rbtab":RB.cat=el.dataset.cat;RB.subcat=null;RB.item=null;rbRender();return;
-    case"rbsub":RB.subcat=el.dataset.s;RB.item=null;rbRender();return;
+    case"rbsub":{RB.subcat=el.dataset.s;RB.item=null;
+      // a one-item group ("Americano · 1 item") opens the item directly — no page holding a single row
+      const si=R.components.filter(c=>c.category===RB.cat&&c.subcategory===RB.subcat);
+      if(si.length===1){const c=si[0];
+        RB.item=c;RB.sizeId=c.defaultSizeId||(c.sizeVariants&&((c.sizeVariants[1]&&c.sizeVariants[1].sizeId)||(c.sizeVariants[0]&&c.sizeVariants[0].sizeId)))||undefined;
+        RB.combo=false;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];
+        const w=rbWingCfg();RB.qty=w?(w.counts[1]||w.counts[0]):1}
+      rbRender();return}
     case"rbxopen":RB.xform={};RB.xformAI=false;rbRender();return;
     case"rbxcancel":RB.xform=null;RB.xformAI=false;rbRender();return;
     case"rbxai":{ // AI macro lookup for one named item via the existing backend (fail-soft)
@@ -4120,12 +4230,16 @@ function rbAction(act,el){
       RB.item=null;RB.xform={edit:it};RB.xformAI=false;RB.cat=it.category;RB.subcat=null;rbRender();return;
     }
     case"rbxdel":{
-      if(!RB.item||!confirm("Remove this item from the menu?"))return;
-      const rid=RB.restaurant.id;
-      rbExtra[rid]=(rbExtra[rid]||[]).filter(x=>x.id!==String(RB.item.id));
-      if(!rbExtra[rid].length)delete rbExtra[rid];
-      save("rb_extra",rbExtra);
-      RB.item=null;RB.restaurant=rbEntry(rid);toast("Removed from menu");rbRender();return;
+      if(!RB.item)return;
+      const iid=String(RB.item.id),rid=RB.restaurant.id;
+      uiConfirm("Remove this item?","It comes off this menu on your device. Anything you already logged stays logged.",{danger:true,ok:"Remove"}).then(ok=>{
+        if(!ok||!RB.restaurant||RB.restaurant.id!==rid)return;
+        rbExtra[rid]=(rbExtra[rid]||[]).filter(x=>x.id!==iid);
+        if(!rbExtra[rid].length)delete rbExtra[rid];
+        save("rb_extra",rbExtra);
+        RB.item=null;RB.restaurant=rbEntry(rid);toast("Removed from menu");rbRender();
+      });
+      return;
     }
     case"rbsubback":RB.subcat=null;RB.item=null;rbRender();return;
     case"rbitem":{const c=R.components.find(x=>x.id===el.dataset.c);
@@ -4443,14 +4557,14 @@ function workoutPage(){
       <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.workout,2,22,'text-primary')}<h1 class="apple-title text-foreground" style="margin:0">Workout<span class="text-primary">.</span></h1></div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="haptic bg-muted" data-act="restday" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;${isRestDay?"border:1px solid hsl(var(--primary)/.3);":""}color:hsl(var(--${isRestDay?"foreground":"muted-foreground"}))">${LUCIDE(P_MOON,2,14)} ${isRestDay?"Rest ✓":"Rest"}</button>
-        <button class="haptic wo-primarybtn" data-act="wostart" style="padding:8px 16px;font-size:14px;gap:6px;line-height:20px">${LUCIDE(P_WO_PLAY,2,16)} Start Log</button>
+        <button class="haptic wo-primarybtn" data-act="wostart" style="padding:8px 16px;font-size:14px;gap:6px;line-height:20px;white-space:nowrap">${LUCIDE(P_WO_PLAY,2,16)} Start Log</button>
       </div></div>
     ${isRestDay?`<div style="margin-top:12px;background:hsl(var(--muted));border-radius:12px;border:1px solid hsl(var(--border));padding:12px;animation:fadeUp .25s ease both">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${LUCIDE_C(P_MOON,2,14,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Rest Day</p></div>
       <p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Expenditure set to sedentary.${shiftOn?` Target: <span style="font-weight:600" class="text-foreground">${restCals} cal</span>`:""}</p></div>`:""}
     ${qlogPending?`<div class="anim apple-card" style="padding:12px;margin-top:16px;animation-delay:.03s">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">${esc(qlogPending.name)}</p></div>
-      <p style="font-size:11px;margin:0 0 10px;line-height:15px" class="text-muted-foreground">${qlogPending.mins} min • MET ${qlogPending.est.met} • your ${qlogPending.est.kg} kg${qlogPending.est.metaF!==1?` • metabolism ×${qlogPending.est.metaF}`:""}${qlogPending.est.calF!==1?` • learned ×${qlogPending.est.calF}`:""}</p>
+      <p style="font-size:11px;margin:0 0 10px;line-height:15px" class="text-muted-foreground">intensity ${qlogPending.est.met} MET${tipI("MET is workout intensity: 1 is sitting still, 3–4 a brisk walk, 8–9 vigorous cycling. Burn = intensity × your body weight × time, then adjusted for your measured metabolism and any corrections you've made before.")} • at your ${profile.weightUnit==='kg'?`${qlogPending.est.kg} kg`:`${Math.round(qlogPending.est.kg*2.20462)} lb`}${qlogPending.est.metaF!==1?` • metabolism ×${qlogPending.est.metaF}`:""}${qlogPending.est.calF!==1?` • learned ×${qlogPending.est.calF}${tipI("You've corrected this activity's estimate before, so the app scales new estimates by what it learned from you.")}`:""}</p>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <span style="font-size:13px" class="text-muted-foreground">Estimated burn</span>
         <input id="qlogCal" type="number" inputmode="numeric" value="${qlogPending.est.kcal}" style="width:88px;background:hsl(var(--secondary));border:0;border-radius:10px;padding:8px 10px;font-size:16px;font-weight:700;color:hsl(var(--foreground));outline:none;text-align:center">
@@ -4464,16 +4578,16 @@ function workoutPage(){
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${LUCIDE_C(NAV_PATHS.coach,2,14,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Quick log</p>
         <span style="font-size:10px;flex:1" class="text-muted-foreground">type or dictate</span>
         <button class="haptic text-muted-foreground" data-act="qlogmic" style="background:none;border:0;padding:2px;display:flex" aria-label="Dictate workout">${LUCIDE(P_MIC,2,16)}</button></div>
-      <textarea id="qlogIn" rows="2" placeholder="e.g. &quot;Bike 34 min on gear 9, Schwinn 170&quot; — burn is estimated from your body &amp; metabolism" autocapitalize="sentences" autocomplete="off" spellcheck="false" style="width:100%;background:hsl(var(--secondary));border:0;border-radius:10px;padding:10px 12px;font-size:16px;line-height:22px;color:hsl(var(--foreground));outline:none;resize:none;font-family:inherit">${esc(qlogText)}</textarea>
+      <textarea id="qlogIn" rows="2" placeholder="e.g. &quot;Bike 34 min, gear 9&quot; or &quot;Ran 5k easy&quot;" autocapitalize="sentences" autocomplete="off" spellcheck="false" style="width:100%;background:hsl(var(--secondary));border:0;border-radius:10px;padding:10px 12px;font-size:16px;line-height:22px;color:hsl(var(--foreground));outline:none;resize:none;font-family:inherit">${esc(qlogText)}</textarea>
       <button class="wo-primarybtn haptic" data-act="qlog" style="width:100%;margin-top:8px;padding:10px 0;font-size:14px;line-height:20px;justify-content:center">Estimate &amp; log</button>
     </div>`}
     <div class="anim" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:16px;animation-delay:.05s">
       <div class="apple-card" style="padding:12px;text-align:center">${LUCIDE_C(P_FLAME,2,16,'text-warning','display:block;margin:0 auto 4px')}<p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;line-height:28px" class="text-foreground">${todayKcal}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">cal burned today</p></div>
-      <div class="apple-card" style="padding:12px;text-align:center">${LUCIDE_C(P_WO_ZAP,2,16,'text-primary','display:block;margin:0 auto 4px')}<p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;line-height:28px" class="text-primary">${st.wo}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">workout streak</p></div></div>
+      <div class="apple-card" style="padding:12px;text-align:center">${LUCIDE_C(P_WO_ZAP,2,16,'text-primary','display:block;margin:0 auto 4px')}<p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;line-height:28px" class="text-primary">${st.wo}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">day workout streak</p></div></div>
     <div class="anim" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;animation-delay:.1s">
       <div class="apple-card" style="padding:10px;text-align:center"><p style="font-size:18px;font-weight:700;margin:0;line-height:28px" class="text-foreground">${wkFreq}</p><p style="font-size:9px;margin:0" class="text-muted-foreground">sessions/wk</p></div>
       <div class="apple-card" style="padding:10px;text-align:center"><p style="font-size:18px;font-weight:700;margin:0;line-height:28px" class="text-foreground">${avgKcal}</p><p style="font-size:9px;margin:0" class="text-muted-foreground">avg cal/session</p></div>
-      <div class="apple-card" style="padding:10px;text-align:center"><p style="font-size:18px;font-weight:700;margin:0;line-height:28px" class="text-foreground">${Math.round(weekVol/1000)}k</p><p style="font-size:9px;margin:0" class="text-muted-foreground">wk volume (lbs)</p></div></div>
+      <div class="apple-card" style="padding:10px;text-align:center" data-tip="Weekly training volume: every set's weight × reps, summed over the last week. The classic gauge of how much total work your muscles did — watch it trend up over months, not day to day."><p style="font-size:18px;font-weight:700;margin:0;line-height:28px" class="text-foreground">${Math.round(weekVol/1000)}k</p><p style="font-size:9px;margin:0" class="text-muted-foreground">wk volume (${profile.weightUnit==='kg'?'kg':'lbs'})</p></div></div>
     ${todayWos.length?`<div class="anim" style="margin-top:16px;animation-delay:.15s">
       <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;line-height:16px" class="text-muted-foreground">Today</p>
       ${todayWos.map(w=>`<div class="apple-card" style="padding:12px;margin-bottom:8px"><div style="display:flex;align-items:center;justify-content:space-between">
@@ -4503,6 +4617,17 @@ const RC_W=326,RC_H=200,RC_PL=65,RC_PR=RC_W-5,RC_PT=5,RC_PB=RC_H-5-30; // 326x20
 // recharts-scale getTickValuesFixedDomain: nice step from (max-min)/(count-1), mantissa
 // snapped UP on a 0.05 grid (0.1 when the mantissa has one digit), ticks stepped from the
 // domain min while < max-0.99*step, then the exact domain max appended.
+// Proper chart ticks: evenly spaced round numbers (1/2/2.5/5 × 10^k), domain padded
+// outward onto the grid — replaces recharts' append-the-exact-max walk, which produced
+// uneven axis labels like 206.9 / 208.9 / 210.9 / 214.2.
+function niceTicks(min,max,count=5){
+  if(!(max>min))return{ticks:[min],lo:min,hi:max};
+  const step0=(max-min)/(count-1),mag=Math.pow(10,Math.floor(Math.log10(step0)));
+  const step=[1,2,2.5,5,10].map(m=>m*mag).find(s=>s>=step0-1e-9)||10*mag;
+  const lo=Math.floor(min/step+1e-9)*step,ticks=[];
+  for(let v=lo,i=0;i<40;v+=step,i++){ticks.push(+v.toFixed(6));if(v>=max-1e-9)break}
+  return{ticks,lo,hi:ticks[ticks.length-1]};
+}
 function rcNiceTicks(min,max,count=5){
   if(!(max>min))return[min];
   const step0=(max-min)/(count-1);
@@ -4708,8 +4833,8 @@ function progressPage(){
   let weightCard="";
   if(wd.length>1){                                             // Progress.tsx:81 — card omitted entirely when <2 entries
     const vals=wd.flatMap(e=>[e.weight,e.trend]);
-    const yMin=Math.min(...vals)-2,yMax=Math.max(...vals)+2;   // YAxis domain ['dataMin - 2','dataMax + 2']
-    const yTicks=rcNiceTicks(yMin,yMax,5);                      // recharts-scale nice ticks, unrounded labels
+    const nt=niceTicks(Math.min(...vals)-2,Math.max(...vals)+2,5); // round, evenly spaced axis labels
+    const yMin=nt.lo,yMax=nt.hi,yTicks=nt.ticks;
     weightCard=`<div class="enter-up apple-card" style="animation-delay:.1s;padding:16px;margin-bottom:20px">
     <h3 class="text-foreground" style="font-size:14px;font-weight:600;margin:0 0 12px;line-height:20px">Weight Trend</h3>
     ${rcChart({labels:wd.map(e=>e.label),series:[
@@ -4987,7 +5112,8 @@ function wpChartSVG(data,mode,zoomed,goalWeight){
     if(data.length-1-labelIdx[labelIdx.length-1]<showEvery/2)labelIdx[labelIdx.length-1]=data.length-1;
     else labelIdx.push(data.length-1);
   }
-  const yTicks=rcNiceTicks(min,max,5); // recharts-scale nice ticks (fixed domain, max appended)
+  const nt=niceTicks(min,max,5);min=nt.lo;max=nt.hi; // round, evenly spaced ticks; domain snaps to the grid
+  const yTicks=nt.ticks;
   const pth=pts=>pts.map((p,j)=>(j?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join('');
   // recharts ComposedChart tooltip payload: Area emits upperBound+lowerBound, the two Lines
   // repeat them, then Projected (+ Actual when present) — reproduce the duplication verbatim.
@@ -5072,14 +5198,15 @@ function weightPlanSection(){
     mData.push({label:w===0?'Now':`Wk ${w}`,date:dateStr,target:targetCals,actual:actualCals});
   }
   const mView=wpZoomed?mData.slice(Math.max(0,wpZoomOffset),Math.min(mData.length,Math.max(0,wpZoomOffset)+ZW+1)):mData.slice(0,13);
-  // Plan Summary card — title is ALWAYS "Weight Loss Plan" regardless of goal
+  // Plan Summary card — titled by goal, and explicitly THE PLAN (schedule), not the current pace
+  const planTitle=ep.goal==='bulk'?'Weight Gain Plan':ep.goal==='cut'?'Weight Loss Plan':'Weight Plan';
   const summary=`<div class="bg-card" style="border-radius:12px;border:1px solid hsl(var(--primary)/.2);padding:16px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${LUCIDE_C(P_TRENDDOWN,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Weight Loss Plan</p></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${LUCIDE_C(ep.goal==='bulk'?P_TRENDUP:P_TRENDDOWN,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">${planTitle}</p>${tipI("The schedule your targets are built for — the pace and finish date if you hit your calories every day. It is not your measured pace; that lives on the goal card above. Big gap between the two? The weekly check-in re-plans.")}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:12px">
-      <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-size:16px;font-weight:700;margin:0;line-height:24px" class="text-foreground">${Math.abs(plan.expectedWeeklyChange)} <span style="font-size:10px;font-weight:400">${ep.weightUnit}/wk</span></p><p style="font-size:10px;margin:0" class="text-muted-foreground">rate</p></div>
-      <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-size:16px;font-weight:700;margin:0;line-height:24px" class="text-primary">${plan.weeksToGoal} <span style="font-size:10px;font-weight:400">wks</span></p><p style="font-size:10px;margin:0" class="text-muted-foreground">to goal</p></div>
-      <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-size:16px;font-weight:700;margin:0;line-height:24px" class="text-foreground">${plan.deficit} <span style="font-size:10px;font-weight:400">cal</span></p><p style="font-size:10px;margin:0" class="text-muted-foreground">deficit/day</p></div></div>
-    <p style="font-size:10px;text-align:center;margin:0" class="text-muted-foreground">Est. goal date: <span style="font-weight:600" class="text-foreground">${plan.goalDate.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></p></div>`;
+      <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-size:16px;font-weight:700;margin:0;line-height:24px" class="text-foreground">${Math.abs(plan.expectedWeeklyChange)} <span style="font-size:10px;font-weight:400">${ep.weightUnit}/wk</span></p><p style="font-size:10px;margin:0" class="text-muted-foreground">planned rate</p></div>
+      <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-size:16px;font-weight:700;margin:0;line-height:24px" class="text-primary">${plan.weeksToGoal} <span style="font-size:10px;font-weight:400">wks</span></p><p style="font-size:10px;margin:0" class="text-muted-foreground">to goal on plan</p></div>
+      <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-size:16px;font-weight:700;margin:0;line-height:24px" class="text-foreground">${Math.abs(plan.deficit)} <span style="font-size:10px;font-weight:400">cal</span></p><p style="font-size:10px;margin:0" class="text-muted-foreground">${plan.deficit<0?'surplus':'deficit'}/day</p></div></div>
+    <p style="font-size:10px;text-align:center;margin:0" class="text-muted-foreground">Goal date on plan: <span style="font-weight:600" class="text-foreground">${plan.goalDate.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></p></div>`;
   const modeBtn=(m,l)=>`<button data-act="wpmode" data-m="${m}" class="haptic" style="font-size:10px;font-weight:500;padding:4px 10px;border-radius:6px;border:0;${wpChartMode===m?'background:hsl(var(--primary));color:hsl(var(--primary-foreground))':'background:none;color:hsl(var(--muted-foreground))'}">${l}</button>`;
   const zoomNav=wpZoomed?`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <button data-act="wpnav" data-dir="-1" ${wpZoomOffset<=0?'disabled':''} class="haptic" style="padding:4px;border-radius:6px;border:0;background:none;color:hsl(var(--muted-foreground));${wpZoomOffset<=0?'opacity:.3':''}">${LUCIDE(P_CHEVLEFT,2,16)}</button>
@@ -5148,11 +5275,13 @@ function coachPage(){
   if(ep.goalWeight&&ep.startWeight&&latest){
     const raw=((ep.startWeight-latest.weight)/(ep.startWeight-ep.goalWeight))*100;
     const dash=Math.min(100,Math.max(0,raw))*0.942;
-    ring=`<div style="position:relative;width:40px;height:40px">
+    ring=`<div style="display:flex;align-items:center;gap:6px" data-tip="Goal progress: you're ${Math.round(Math.max(0,Math.min(100,raw)))}% of the way from your start weight (${ep.startWeight} ${ep.weightUnit}) to your goal (${ep.goalWeight} ${ep.weightUnit}).">
+      <span style="font-size:9px;line-height:12px;text-align:right" class="text-muted-foreground">goal<br>progress</span>
+      <div style="position:relative;width:40px;height:40px">
       <svg viewBox="0 0 36 36" style="width:100%;height:100%;transform:rotate(-90deg)">
         <circle cx="18" cy="18" r="15" fill="none" stroke="hsl(var(--muted))" stroke-width="3"/>
         <circle cx="18" cy="18" r="15" fill="none" stroke="hsl(var(--primary))" stroke-width="3" stroke-dasharray="${dash} 94.2" stroke-linecap="round"/></svg>
-      <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700" class="text-foreground">${Math.round(Math.max(0,Math.min(100,raw)))}%</span></div>`;
+      <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700" class="text-foreground">${Math.round(Math.max(0,Math.min(100,raw)))}%</span></div></div>`;
   }
   const ciPanel=`<div class="${can?'':'apple-card '}enter-up" style="animation-delay:.05s;padding:16px;margin-bottom:16px;${can?'border-radius:16px;background:hsl(var(--primary)/.05);border:1px solid hsl(var(--primary)/.2)':''}">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -5160,9 +5289,9 @@ function coachPage(){
       ${ring}</div>
     ${can
       ?`<button data-act="performcheckin" class="haptic glow-primary" style="width:100%;background:hsl(var(--primary));color:hsl(var(--primary-foreground));padding:10px 0;border-radius:12px;border:0;font-size:14px;font-weight:600;line-height:20px">Perform Check-In</button>`
-      :`<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">${checkIns.length>0?`Last check-in: ${checkIns[checkIns.length-1].date}`:'No check-ins yet. Log food and weight daily for best results.'}</p>`}</div>`;
-  const streaksRow=`<div class="enter-up" style="animation-delay:.1s;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
-    ${[[st.f,'food streak'],[st.w,'weigh streak'],[st.wo,'workout streak']].map(([n,l])=>`<div class="apple-card" style="padding:12px;text-align:center"><p style="font-size:20px;font-weight:700;margin:0;line-height:28px" class="text-primary">${n}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">${l}</p></div>`).join('')}</div>`;
+      :`<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">${checkIns.length>0?`Last check-in: ${fmtDate(checkIns[checkIns.length-1].date)}`:'No check-ins yet. Log food and weight daily for best results.'}</p>`}</div>`;
+  const streaksRow=`<div class="enter-up" style="animation-delay:.1s;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px" data-tip="Consecutive days in a row: logging food, weighing in, and working out. Streaks matter because the coach reads your metabolism from daily data — gaps blur its picture.">
+    ${[[st.f,'day food streak'],[st.w,'day weigh-in streak'],[st.wo,'day workout streak']].map(([n,l])=>`<div class="apple-card" style="padding:12px;text-align:center"><p style="font-size:20px;font-weight:700;margin:0;line-height:28px" class="text-primary">${n}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">${l}</p></div>`).join('')}</div>`;
   const woCard=`<div class="apple-card enter-up" style="animation-delay:.12s;padding:16px;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Workout Activity</p></div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;font-size:12px;line-height:16px">
@@ -5173,7 +5302,7 @@ function coachPage(){
   const trendIcon=weeklyChange>0.1?LUCIDE(P_TRENDUP,2,16):weeklyChange<-0.1?LUCIDE(P_TRENDDOWN,2,16):LUCIDE(P_MINUS,2,16);
   const wcs=weightChanges(tr);
   const chips=(wcs.length>0&&tr.length>2)?`<div style="margin-top:12px;display:flex;gap:6px;overflow-x:auto">${wcs.map(wc=>`<div class="bg-muted" style="border-radius:8px;padding:6px 10px;text-align:center;flex-shrink:0"><p style="font-size:12px;font-weight:700;margin:0;line-height:16px" class="${wc.change>0?'text-warning':wc.change<0?'text-success':'text-foreground'}">${wc.change>0?'+':''}${wc.change}</p><p style="font-size:9px;margin:0" class="text-muted-foreground">${wc.days}d</p></div>`).join('')}</div>`:'';
-  const eta=(coaching&&coaching.estimatedWeeksToGoal&&ep.goalWeight)?`<p style="font-size:10px;margin:8px 0 0" class="text-muted-foreground">~${coaching.estimatedWeeksToGoal} weeks to ${ep.goalWeight} ${ep.weightUnit} at current rate</p>`:'';
+  const eta=(coaching&&coaching.estimatedWeeksToGoal&&ep.goalWeight)?`<p style="font-size:10px;margin:8px 0 0" class="text-muted-foreground">~${coaching.estimatedWeeksToGoal} weeks to ${ep.goalWeight} ${ep.weightUnit} at your <b style="font-weight:600" class="text-foreground">actual</b> pace${tipI("This card is what's really happening: your measured trend and where it lands if nothing changes. The plan card below shows the schedule instead — the pace and date your targets are designed for. When the two disagree, the check-in narrows the gap.")}</p>`:'';
   const goalCardHtml=`<div class="apple-card enter-up" style="animation-delay:.15s;padding:16px;margin-bottom:16px">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:12px">
@@ -5193,11 +5322,11 @@ function coachPage(){
     const tds=coaching.targetDeficitSurplus;
     const exGrid=`<div class="enter-up" style="animation-delay:.25s;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:16px">
       <div class="apple-card" style="padding:16px">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Expenditure</p></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Expenditure${tipI("Calories you burn per day (TDEE), measured from your own weigh-ins and food logs rather than a formula. Eat under it to lose, over it to gain. It shifts as your body and activity change.")}</p></div>
         <p style="font-size:24px;font-weight:700;margin:0;line-height:32px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="text-foreground">${coaching.currentTDEE}</p>
-        <p style="font-size:10px;margin:0" class="${confColors[coaching.confidence]}">${coaching.confidence} confidence</p></div>
+        <p style="font-size:10px;margin:0" class="${confColors[coaching.confidence]}" data-tip="How solid the expenditure number is. It starts as a formula guess and firms up as consistent weigh-ins and food logs come in — usually 1–2 weeks to reach medium, longer for high.">${coaching.confidence} confidence</p></div>
       <div class="bg-card" style="border-radius:12px;border:1px solid hsl(var(--primary)/.2);padding:16px">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${LUCIDE_C(P_TARGET,2,14,'text-primary')}<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Suggested</p></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${LUCIDE_C(P_TARGET,2,14,'text-primary')}<p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Suggested${tipI("The daily calories the coach recommends right now: your measured expenditure plus or minus your goal's planned gap.")}</p></div>
         <p style="font-size:24px;font-weight:700;margin:0;line-height:32px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="text-primary">${coaching.suggestedCalories}</p>
         <p style="font-size:10px;margin:0" class="text-muted-foreground">${tds>0?'+':''}${tds} ${tds<0?'deficit':tds>0?'surplus':''}</p></div></div>`;
     const eb=coaching.energyBalance;
@@ -5225,12 +5354,15 @@ function coachPage(){
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
             ${deltas.map(([s,c,u])=>{const d=s-c;return `<span class="${d!==0?'text-primary':'text-muted-foreground'}" style="${d!==0?'font-weight:600':''}">${d>0?'↑':d<0?'↓':'='}${Math.abs(d)}${u}</span>`}).join('')}</div>
           <p style="text-align:center;margin:4px 0 0" class="text-muted-foreground">vs current targets</p></div>
-        <button data-act="applyrecs" class="haptic glow-primary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));padding:10px 0;border-radius:8px;border:0;font-size:14px;font-weight:600;line-height:20px">${LUCIDE(P_CHECK,2,14)} Apply Recommendations</button></div>`;
+        ${(coaching.confidence==='low'||coaching.confidence==='initial')
+          ?`<p style="font-size:10px;line-height:15px;margin:0 0 8px;text-align:center" class="text-warning">Low confidence — built on limited data, so these can swing. A few more days of logging and weigh-ins firms them up. Applying now is optional.</p>
+        <button data-act="applyrecs" class="haptic" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;background:hsl(var(--secondary));color:hsl(var(--foreground));padding:10px 0;border-radius:8px;border:.5px solid hsl(var(--border));font-size:14px;font-weight:600;line-height:20px">${LUCIDE(P_CHECK,2,14)} Apply anyway</button>`
+          :`<button data-act="applyrecs" class="haptic glow-primary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));padding:10px 0;border-radius:8px;border:0;font-size:14px;font-weight:600;line-height:20px">${LUCIDE(P_CHECK,2,14)} Apply Recommendations</button>`}</div>`;
     }
     const adh=coaching.adherenceScore;
     const adhCard=`<div class="apple-card enter-up" style="animation-delay:.4s;padding:16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Adherence</p>
+        <p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Adherence${tipI("How close your 7-day average eating runs to your calorie target — 100% means spot on. Today counts too, so mid-day it reads low until you've finished eating. Under-eating lowers it just like over-eating: the plan only works when it's actually followed.")}</p>
         <div style="display:flex;align-items:center;gap:4px">${adh>=80?LUCIDE_C(P_AWARD,2,14,'text-primary'):adh<50?LUCIDE_C(P_ALERTTRI,2,14,'text-warning'):''}<span style="font-size:14px;font-weight:700;line-height:20px" class="text-foreground">${adh}%</span></div></div>
       <div class="bg-muted" style="height:8px;border-radius:9999px;overflow:hidden;margin-bottom:8px">
         <div style="height:100%;border-radius:9999px;width:${Math.max(0,adh)}%;background:hsl(var(--${adh>=80?'primary':adh>=50?'warning':'destructive'}))"></div></div>
@@ -5239,6 +5371,7 @@ function coachPage(){
       <button data-act="coachinsights" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:0;padding:0">
         <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_LIGHTBULB,2,14,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Insights (${coaching.insights.length})</p></div>
         <span style="display:inline-flex;transition:transform .2s;${coachShowInsights?'transform:rotate(90deg)':''}">${LUCIDE_C(P_CHEVRIGHT,2,16,'text-muted-foreground')}</span></button>
+      ${!coachShowInsights&&coaching.insights.length?`<button data-act="coachinsights" style="width:100%;text-align:left;background:none;border:0;padding:8px 0 0"><p style="font-size:11px;margin:0;line-height:15px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden" class="text-muted-foreground">${esc(coaching.insights[0])}</p></button>`:''}
       ${coachShowInsights?`<div class="anim" style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
         ${coaching.insights.map(ins=>`<div style="display:flex;gap:8px;align-items:flex-start"><div style="width:6px;height:6px;border-radius:9999px;background:hsl(var(--primary));margin-top:6px;flex-shrink:0"></div><p style="font-size:12px;line-height:1.625;margin:0" class="text-muted-foreground">${esc(ins)}</p></div>`).join('')}</div>`:''}</div>`;
     const avgCard=wa.calories>0?`<div class="apple-card enter-up" style="animation-delay:.5s;padding:16px;margin-bottom:16px">
@@ -5252,7 +5385,7 @@ function coachPage(){
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${LUCIDE_C(P_CAL,2,14,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Check-In History</p></div>
       <div style="display:flex;flex-direction:column;gap:8px;max-height:192px;overflow-y:auto">
         ${[...checkIns].reverse().slice(0,8).map((ci,i)=>`<div class="bg-muted" style="display:flex;align-items:center;justify-content:space-between;border-radius:8px;padding:10px">
-          <div><p style="font-size:12px;font-weight:600;margin:0;line-height:16px" class="text-foreground">${ci.date}</p>
+          <div><p style="font-size:12px;font-weight:600;margin:0;line-height:16px" class="text-foreground">${fmtDate(ci.date)}</p>
           <p style="font-size:10px;margin:0" class="text-muted-foreground">TDEE: ${ci.expenditureEstimate} • ${ci.suggestedCalories} cal</p></div>
           ${ci.applied?`<span style="font-size:10px;display:flex;align-items:center;gap:2px" class="text-primary">${LUCIDE(P_CHECK,2,10)} Applied</span>`
             :`<button data-act="applycirow" data-i="${checkIns.length-1-i}" class="haptic text-primary" style="font-size:10px;font-weight:600;background:none;border:0;padding:0">Apply</button>`}</div>`).join('')}</div></div>`:'';
@@ -5268,7 +5401,7 @@ function coachPage(){
   }
   return `<div class="page">
   <div class="enter-down">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h1 class="apple-title text-foreground" style="margin:0">Strategy<span class="text-primary">.</span></h1></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h1 class="apple-title text-foreground" style="margin:0">Coach<span class="text-primary">.</span></h1></div>
     <p style="font-size:13px;font-weight:500;margin:0 0 20px" class="text-muted-foreground">${sub}</p></div>
   ${ciPanel}${streaksRow}${woCard}${goalCardHtml}
   <div class="enter-up" style="animation-delay:.17s;margin-bottom:16px">${weightPlanSection()}</div>
@@ -5350,7 +5483,7 @@ function calendarPage(){
     return `<div class="cal-mealrow" style="display:flex;align-items:center;justify-content:space-between;padding:6px 0">
       <div style="display:flex;align-items:center;gap:8px"><span class="muted" style="display:flex">${LUCIDE(MEAL_ICON_PATHS[meal],2,12)}</span>
         <span style="font-size:12px;text-transform:capitalize;line-height:16px">${meal}</span>
-        <span class="muted" style="font-size:10px">(${me.length} items)</span></div>
+        <span class="muted" style="font-size:10px">(${me.length} item${me.length!==1?"s":""})</span></div>
       <span style="font-size:12px;font-weight:600;line-height:16px">${Math.round(mealCals)} cal</span></div>`;
   }).join("");
   const nutrition=dayEntries.length>0
@@ -5361,7 +5494,9 @@ function calendarPage(){
       <div style="margin-top:12px;padding-top:12px;border-top:.5px solid hsl(var(--border)/.5)">
         <div style="display:flex;justify-content:space-between;font-size:10px;color:hsl(var(--muted-foreground))">
           <span>vs Target: ${profile.targetKcal} cal</span>
-          <span style="color:hsl(var(--${totals.kcal>profile.targetKcal?"warning":"success"}));font-weight:600">${totals.kcal>profile.targetKcal?"+":""}${Math.round(totals.kcal-profile.targetKcal)} cal</span>
+          <span style="color:hsl(var(--${(()=>{const d=totals.kcal-profile.targetKcal,t=+profile.targetKcal||1;
+            // green = within ±10% of target; big misses in EITHER direction are amber — under-eating isn't a win on a coached plan
+            return Math.abs(d)<=t*0.10?"success":"warning"})()}));font-weight:600" data-tip="How this day landed against its calorie target. Within about 10% either way shows green. Far under is amber too — the plan already builds in your deficit, so big under-shoots cost energy and muscle, not extra progress.">${totals.kcal>profile.targetKcal?"+":""}${Math.round(totals.kcal-profile.targetKcal)} cal</span>
         </div>
       </div>
     </div>`
@@ -5595,6 +5730,7 @@ function authPage(){
           <label style="display:block;font-size:13px;font-weight:500;color:hsl(var(--muted-foreground));margin-bottom:6px">Password</label>
           <input type="password" id="authPass" placeholder="••••••••" required minlength="6" autocomplete="${authSignUp?"new-password":"current-password"}"
             style="width:100%;background:hsl(var(--secondary));border:0;border-radius:12px;padding:12px 16px;font-size:16px;color:hsl(var(--foreground));outline:none;line-height:24px">
+          ${authSignUp?"":`<button type="button" class="haptic" data-act="authforgot" style="display:block;margin:8px 0 0 auto;background:none;border:0;padding:0;font-size:13px;font-weight:500;color:hsl(var(--primary));line-height:18px">Forgot password?</button>`}
         </div>
         <p id="authErr" style="display:${authNotice?"block":"none"};font-size:13px;margin:0;line-height:18px;color:hsl(var(--${authNotice&&authNotice.kind==="err"?"destructive":"primary"}))">${authNotice?esc(authNotice.text):""}</p>
         <button type="submit" class="haptic glow-primary"
@@ -5604,7 +5740,8 @@ function authPage(){
         <button type="button" class="haptic" data-act="authtoggle"
           style="background:none;border:0;font-size:14px;color:hsl(var(--muted-foreground));line-height:20px">${authSignUp?"Already have an account? ":"Don&#39;t have an account? "}<span style="color:hsl(var(--primary));font-weight:600">${authSignUp?"Sign in":"Sign up"}</span></button>
         <button type="button" class="haptic" data-act="authskip"
-          style="display:block;margin:12px auto 0;background:none;border:0;font-size:13px;color:hsl(var(--muted-foreground));line-height:18px">Continue without an account</button>
+          style="display:block;width:100%;margin:16px auto 0;background:hsl(var(--secondary));border:.5px solid hsl(var(--border));border-radius:12px;padding:12px 0;font-size:14px;font-weight:500;color:hsl(var(--foreground));line-height:20px">Continue without an account</button>
+        <p style="font-size:11px;margin:8px 0 0;line-height:15px;color:hsl(var(--muted-foreground))">Your data stays on this device until you sign in</p>
       </div>
     </div>
   </div>`;
@@ -5612,6 +5749,8 @@ function authPage(){
 
 // ===== SETTINGS (pages/Settings.tsx — 7-section one-open accordion; no native selects) =====
 let settingsOpen="body", settingsExplain=false;                 // Settings.tsx:29-30 useState — reset on remount
+let advOpen=false, diagShow=false, diagTaps=0;                  // Advanced disclosure + 5-tap diagnostics reveal
+document.addEventListener("toggle",e=>{if(e.target&&e.target.id==="advWrap")advOpen=e.target.open},true);
 let manualSteps=load("manual_steps",{}), manualActiveCals=load("manual_active_calories",{}); // useHealthKit.ts:28-29 {'YYYY-MM-DD':n}
 // Re-render Settings in place, preserving scroll. Deferred to a rAF so a 'change' fired
 // mid-blur can't mutate #view re-entrantly (nested innerHTML swaps throw NotFoundError).
@@ -5642,7 +5781,7 @@ function setsBody(){
   const bm=profile.bodyMetrics||{};
   const chip=(v,l)=>`<button class="haptic" data-act="pset" data-k="heightUnit" data-v="${v}" style="padding:2px 8px;border:0;border-radius:4px;font-size:10px;font-weight:600;${profile.heightUnit===v?"background:hsl(var(--primary));color:hsl(var(--primary-foreground))":"background:hsl(var(--muted));color:hsl(var(--muted-foreground))"}">${l}</button>`;
   return `<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px">
-    <div><label class="set-label">Gender</label>
+    <div><label class="set-label">Sex${tipI("Used only for the calorie math: the metabolic formulas that estimate your daily burn differ by sex. Pick whichever best matches your physiology — the app learns your real metabolism from your data either way.")}</label>
       <div style="display:flex;gap:8px;margin-top:4px">${segBtn("gender","male","Male",profile.gender==="male")}${segBtn("gender","female","Female",profile.gender==="female")}</div></div>
     <div><label class="set-label">Date of Birth</label>
       <input type="date" class="set-input" data-set="birthDate" value="${profile.birthDate||""}" style="appearance:none;-webkit-appearance:none;color-scheme:dark;min-height:44px">
@@ -5663,11 +5802,12 @@ function setsBody(){
     <div><label class="set-label">Starting Weight (${profile.weightUnit})</label>
       <input type="number" inputmode="decimal" class="set-input tnum" data-set="startWeight" placeholder="Enter weight" value="${profile.startWeight||""}"></div>
   </div>
-  <div style="margin-top:12px"><label class="set-label">Body Fat Estimate (%)</label>
+  <div style="margin-top:12px"><label class="set-label">Body Fat Estimate (%)${tipI("A rough number is fine — it nudges the burn estimate for quick-logged workouts (leaner bodies burn slightly more per pound). Type an exact value if you know it from a scan or smart scale.")}</label>
     <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
       <input type="range" min="5" max="50" value="${bf}" class="rng" data-set="bodyFatEstimate" data-rangeval="bfVal" data-rangefmt="%">
-      <span class="text-foreground" id="bfVal" style="font-size:14px;font-weight:600;width:40px;text-align:right;line-height:20px">${bf}%</span></div>
-    <div class="text-muted-foreground" style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px"><span>Lean</span><span>Average</span><span>Higher</span></div></div>
+      <input type="number" inputmode="numeric" min="5" max="50" value="${bf}" data-set="bodyFatEstimate" class="set-input tnum" style="width:64px;flex:none;margin-top:0;text-align:right;padding:8px 10px">
+      <span class="text-foreground" style="font-size:14px;font-weight:600;line-height:20px">%</span></div>
+    <div class="text-muted-foreground" style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px"><span>Lean</span><span>Average</span><span>High</span></div></div>
   <div style="margin-top:12px"><label class="set-label" style="display:block;margin-bottom:4px">Body Measurements (cm, optional)</label>
     <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 1fr;gap:8px">
       ${["Neck","Waist","Hips","Chest","Arms","Thighs"].map(n=>`<input type="number" inputmode="decimal" class="set-input tnum" style="padding:8px;font-size:12px;margin-top:0;line-height:16px" data-bm="${n.toLowerCase()}" placeholder="${n}" value="${bm[n.toLowerCase()]||""}">`).join("")}
@@ -5888,15 +6028,6 @@ function settingsPage(animate=true){
       :`<button class="haptic" data-act="gosignin" style="width:100%;display:flex;align-items:center;gap:8px;justify-content:center;padding:12px 0;border:0;border-radius:12px;background:hsl(var(--primary)/.1);color:hsl(var(--primary));font-size:14px;font-weight:600;line-height:20px">Sign In / Create Account</button>`}
   </div>
   <!-- offline-build extras (no counterpart in the real Settings) — kept below the account block -->
-  <div class="apple-section" style="margin:24px 4px 8px">AI backend</div>
-  <div class="apple-card p-4">
-    <label class="set-label">Supabase URL</label>
-    <input class="set-input" data-set="supabaseUrl" value="${esc(profile.supabaseUrl||"")}" placeholder="${BAKED_URL||"https://xxx.supabase.co"}" autocapitalize="off" autocorrect="off">
-    <label class="set-label" style="margin-top:12px">API key</label>
-    <input class="set-input" data-set="supabaseKey" value="${esc(profile.supabaseKey||"")}" placeholder="${BAKED_KEY?"(built-in key set)":"sb_publishable_…"}" autocapitalize="off" autocorrect="off">
-    <div class="muted" style="font-size:12px;padding:8px 0 2px;line-height:16px">${aiOn()
-      ?"Connected. Food search falls back to AI estimates and workout notes are parsed by AI. If the backend is unreachable, everything still works locally."
-      :"Optional. Deploy the backend in this project's <b>supabase/</b> folder (see README), then paste your project URL and anon key to enable AI food estimates and AI workout parsing."}</div></div>
   <div class="apple-section" style="margin:18px 4px 8px">Data</div>
   <div class="apple-card p-4">
     <button class="btn" style="width:100%;margin-bottom:8px" data-act="csv">Export food log CSV</button>
@@ -5904,7 +6035,19 @@ function settingsPage(animate=true){
     <button class="btn" style="width:100%;margin-bottom:8px" data-act="restorebackup">Restore from backup…</button>
     <input type="file" id="backupIn" accept="application/json,.json" style="display:none">
     <button class="btn danger" style="width:100%" data-act="reset">Reset all data</button></div>
-  <p class="text-muted-foreground" style="font-size:10px;margin:14px 0 2px;opacity:.55;text-align:center;line-height:14px">${esc(diagLine())}</p>
+  <details style="margin-top:18px" ${advOpen?"open":""} id="advWrap">
+    <summary class="text-muted-foreground" style="font-size:12px;font-weight:600;padding:4px;cursor:pointer;list-style-position:inside">Advanced — AI backend</summary>
+    <div class="apple-card p-4" style="margin-top:8px">
+      <p class="muted" style="font-size:12px;margin:0 0 10px;line-height:16px">For self-hosters only — the app ships pointed at its built-in backend and needs nothing here.</p>
+      <label class="set-label">Supabase URL</label>
+      <input class="set-input" data-set="supabaseUrl" value="${esc(profile.supabaseUrl||"")}" placeholder="${BAKED_URL||"https://xxx.supabase.co"}" autocapitalize="off" autocorrect="off">
+      <label class="set-label" style="margin-top:12px">API key</label>
+      <input class="set-input" data-set="supabaseKey" value="${esc(profile.supabaseKey||"")}" placeholder="${BAKED_KEY?"(built-in key set)":"sb_publishable_…"}" autocapitalize="off" autocorrect="off">
+      <div class="muted" style="font-size:12px;padding:8px 0 2px;line-height:16px">${aiOn()
+        ?"Connected. Food search falls back to AI estimates and workout notes are parsed by AI. If the backend is unreachable, everything still works locally."
+        :"Optional. Deploy the backend in this project's <b>supabase/</b> folder (see README), then paste your project URL and anon key to enable AI food estimates and AI workout parsing."}</div></div>
+  </details>
+  <p class="text-muted-foreground haptic" data-act="diagreveal" style="font-size:10px;margin:14px 0 2px;opacity:.55;text-align:center;line-height:14px">${diagShow?esc(diagLine()):`MacroMind · build ${BUILD}`}</p>
   </div>`;
 }
 
@@ -5982,6 +6125,17 @@ document.addEventListener("click",e=>{
   }
   else if(act==="dstoday"){selDate=localDateStr();render()}
   else if(act==="authtoggle"){authSignUp=!authSignUp;authNotice=null;render()}
+  else if(act==="authforgot"){ // sends the GoTrue reset email; the link lands back here and opens the set-password dialog
+    const em=($("#authEmail")&&$("#authEmail").value.trim())||"";
+    const err=$("#authErr");
+    const note=(kind,text)=>{authNotice={kind,text};if(err){err.style.display="block";err.style.color=`hsl(var(--${kind==="err"?"destructive":"primary"}))`;err.textContent=text}};
+    if(!em){note("err","Type your email above first, then tap Forgot password.");return}
+    el.disabled=true;el.style.opacity=".6";
+    sbRecover(em)
+      .then(()=>note("ok","Reset link sent — check your email on this device. The link brings you back here to set a new password."))
+      .catch(e=>note("err",sbInViewer&&sbInViewer()?SB_BLOCKED_MSG:String((e&&e.message)||"Couldn't send the reset email — try again in a minute.")))
+      .finally(()=>{el.disabled=false;el.style.opacity=""});
+  }
   else if(act==="authskip"){authNotice=null;tab="home";render()}
   else if(act==="syncnow"){sbSync("manual")}
   // --- Settings (Settings.tsx) ---
@@ -6021,6 +6175,12 @@ document.addEventListener("click",e=>{
   }
   else if(act==="search"){openSearch(el.dataset.meal||mealByTime())}
   else if(act==="close"){closeSheet()}
+  else if(act==="dlgok"){dlgOk()}
+  else if(act==="dlgno"){dlgNo()}
+  else if(act==="diagreveal"){ // tap the version line 5× for the full viewport diagnostics; once shown, one tap hides
+    if(diagShow){diagShow=false;diagTaps=0;render()}
+    else{diagTaps++;if(diagTaps>=5){diagShow=true;diagTaps=0;render()}}
+  }
   // ----- food search overlay actions (FoodSearch.tsx) -----
   else if(act==="fsclose"){closeFS()}
   else if(act==="fsmain"){ // back arrow: clear query/results and return to main (FoodSearch.tsx:493)
@@ -6136,10 +6296,14 @@ document.addEventListener("click",e=>{
     fsRender();
   }
   else if(act==="fedel"){
-    if(!FS.editing||!confirm("Delete this food from your database? Past log entries are unaffected."))return;
-    custom=custom.filter(x=>x.id!==FS.editing.id);save("custom",custom);
-    FS.editing=null;FS.view="search";FS.results=FS.query?searchFoods(FS.query):[];
-    toast("Food deleted");fsRender();
+    if(!FS.editing)return;
+    const fid=FS.editing.id;
+    uiConfirm("Delete this food?","It comes out of your database. Everything you already logged with it stays logged.",{danger:true,ok:"Delete"}).then(ok=>{
+      if(!ok||!FS.editing||FS.editing.id!==fid)return;
+      custom=custom.filter(x=>x.id!==fid);save("custom",custom);
+      FS.editing=null;FS.view="search";FS.results=FS.query?searchFoods(FS.query):[];
+      toast("Food deleted");fsRender();
+    });
   }
   else if(act==="fsscan"){closeFS();openScanner()}               // FoodLog.tsx:177-179 — closes search first
   else if(act==="fsrest"){ // FoodLog.tsx:172-176 — close search, open the restaurant builder
@@ -6195,6 +6359,18 @@ document.addEventListener("click",e=>{
     const all=entriesFor(copyDate);
     all.forEach(x=>foodLog.push({...x,id:newId(),date:selDate,ts:Date.now()}));
     saveLog();closeSheet();toast(`Copied all ${all.length} items`);render();
+  }
+  else if(act==="tplsavemeal"){ // turn a logged meal into a reusable template (creation UI the original app never had)
+    const m=el.dataset.meal,items=entriesFor(selDate).filter(e=>e.meal===m);
+    if(!items.length)return;
+    const defName=`${MEAL_LABELS[m]} — ${fmtDate(selDate)}`;
+    uiPrompt("Save this meal","Re-log the whole set any day with one tap from Saved Meals.",defName).then(name=>{
+      if(name==null)return;
+      const nm=String(name).trim()||defName;
+      mealTemplates.push({id:newId(),name:nm,entries:items.map(e=>({...e}))});
+      save("mealtemplates",mealTemplates);
+      toast(`Saved “${nm}” to Saved Meals`);
+    });
   }
   else if(act==="tplapply"){ // SavedMeals.tsx:19-28 — applies to TODAY with meal override, stays on the page
     const tpl=mealTemplates.find(x=>x.id===el.dataset.id);if(!tpl)return;
@@ -6357,16 +6533,19 @@ document.addEventListener("click",e=>{
   }
   else if(act==="woeditcal"){ // user overrides any workout's burn; corrections on estimates feed calibration
     const w=workouts.find(x=>x.id===el.dataset.id);if(!w)return;
-    const v=prompt("Calories burned for “"+w.name+"”:",w.totalCaloriesBurned);
-    if(v==null)return;
-    const n=Math.round(+v);
-    if(!(n>0)){toast("Enter a number");return}
-    if(n!==w.totalCaloriesBurned&&w.estBase){
-      const hit=BURN_ACTS.find(x=>x.rx.test(w.notes||w.name));
-      if(hit)learnBurn(hit.key,w.estBase,n);
-    }
-    w.totalCaloriesBurned=n;w.aiEstimated=false;
-    save("workouts",workouts);toast("Updated to "+n+" cal");render();
+    const wid=w.id;
+    uiPrompt("Calories burned","“"+w.name+"” — your correction also teaches the app your real burn for next time.",w.totalCaloriesBurned,{type:"number",ok:"Update"}).then(v=>{
+      if(v==null)return;
+      const w2=workouts.find(x=>x.id===wid);if(!w2)return;
+      const n=Math.round(+v);
+      if(!(n>0)){toast("Enter a number");return}
+      if(n!==w2.totalCaloriesBurned&&w2.estBase){
+        const hit=BURN_ACTS.find(x=>x.rx.test(w2.notes||w2.name));
+        if(hit)learnBurn(hit.key,w2.estBase,n);
+      }
+      w2.totalCaloriesBurned=n;w2.aiEstimated=false;
+      save("workouts",workouts);toast("Updated to "+n+" cal");render();
+    });
   }
   else if(act==="goprog"){tab="progress";render()}
   else if(act==="restday"){ // Workout.tsx:207-215 markRestDay — toggles TODAY, with toasts
@@ -6476,9 +6655,11 @@ document.addEventListener("click",e=>{
   }
   else if(act==="restorebackup"){$("#backupIn").click()}
   else if(act==="reset"){
-    if(!confirm("Erase all local data?"))return;
-    Object.keys(localStorage).filter(k=>k.startsWith(LS)).forEach(k=>localStorage.removeItem(k));
-    vaultClear().then(()=>location.reload()); // the ONLY thing allowed to clear the vault is this explicit user action
+    uiConfirm("Erase all local data?","Everything on this device is deleted. Data synced to your account stays safe in the cloud.",{danger:true,ok:"Erase"}).then(ok=>{
+      if(!ok)return;
+      Object.keys(localStorage).filter(k=>k.startsWith(LS)).forEach(k=>localStorage.removeItem(k));
+      vaultClear().then(()=>location.reload()); // the ONLY thing allowed to clear the vault is this explicit user action
+    });
   }
 });
 // Enter confirms the inline template rename (SavedMeals.tsx:104 onKeyDown)
@@ -6507,6 +6688,7 @@ document.addEventListener("change",e=>{
   }
   else if(k==="startWeight"||k==="goalWeight")profile[k]=parseFloat(el.value)||undefined; // real: parseFloat(...) || undefined
   else if(el.type==="range")profile[k]=+el.value;                                         // bodyFatEstimate / exFreq sliders
+  else if(k==="bodyFatEstimate")profile[k]=Math.min(50,Math.max(5,parseInt(el.value)||20)); // typed % clamps to the slider's 5–50 range
   else if(el.type==="number")profile[k]=parseInt(el.value)||0;                            // heightCm, dailySteps, manual targets
   else{
     const v=el.value;
@@ -6531,7 +6713,9 @@ document.addEventListener("input",e=>{
 });
 $("#fab").innerHTML=IC_PLUS; // lucide Plus, size 26, stroke-width 2.5
 $("#fab").addEventListener("click",()=>{
-  if(tab==="home"){tab="food";render()} // Index.tsx:494-495 — Home FAB navigates to /log
+  // The + always means "log food" — same outcome from Home and Food, so the button
+  // teaches one thing. (It used to merely switch tabs from Home.)
+  if(tab==="home"){tab="food";render();openSearch(mealByTime())}
   else openSearch(activeMeal);          // FoodLog.tsx:147-148 — Food FAB opens search with page state
 });
 // Auth submit — real Supabase email/password. Errors render inline (no re-render, so
@@ -6573,9 +6757,11 @@ document.addEventListener("change",e=>{
       if(!j||j.app!=="MacroMind"||!j.data||typeof j.data!=="object")throw 0;
       const keys=Object.keys(j.data).filter(k=>k.startsWith(LS)&&k!==LS+"sb_session");
       if(!keys.length)throw 0;
-      if(!confirm("Restore backup from "+String(j.at||"unknown date").slice(0,10)+"? This replaces the data on this device."))return;
-      keys.forEach(k=>localStorage.setItem(k,j.data[k]));
-      location.reload();
+      uiConfirm("Restore this backup?","From "+String(j.at||"unknown date").slice(0,10)+". It replaces the data currently on this device.",{ok:"Restore"}).then(ok=>{
+        if(!ok)return;
+        keys.forEach(k=>localStorage.setItem(k,j.data[k]));
+        location.reload();
+      });
     }catch(_){toast("That file isn't a MacroMind backup")}
   };
   rd.readAsText(f);
@@ -6645,6 +6831,31 @@ setInterval(()=>{const s=session();if(s&&s.isRunning){woElapsed=Math.floor((Date
 // portal menus dismiss on outside tap and on scroll (never clipped, never stranded)
 document.addEventListener("click",e=>{if(pmenuEl&&!pmenuEl.contains(e.target)&&!e.target.closest("[data-act=emenu]"))closePMenu()},true);
 document.querySelector(".app-content").addEventListener("scroll",closePMenu,{passive:true});
+// Password-recovery landing: the emailed reset link returns here with GoTrue tokens in the
+// hash (#access_token=…&type=recovery). Consume them BEFORE the router reads the hash.
+(function(){
+  const h=location.hash.slice(1);
+  if(!/type=recovery/.test(h)||!/access_token=/.test(h))return;
+  const p=new URLSearchParams(h);
+  const at=p.get("access_token"),rt=p.get("refresh_token");
+  history.replaceState(null,"","#/");
+  if(!at)return;
+  const ask=()=>uiPrompt("Set a new password","The reset link signed you in — choose the new password for your account (6+ characters).","",{type:"password",ok:"Set password"}).then(async pw=>{
+    if(pw==null)return;
+    if(String(pw).length<6){toast("Password needs at least 6 characters");return ask()}
+    try{
+      const r=await fetch(sbUrl().replace(/\/+$/,"")+"/auth/v1/user",{method:"PUT",
+        headers:{"Content-Type":"application/json",apikey:sbKey(),Authorization:"Bearer "+at},
+        body:JSON.stringify({password:pw})});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(j.msg||j.message||("Couldn't set the password ("+r.status+")"));
+      sbSaveSession({access_token:at,refresh_token:rt,expires_in:3600,user:{id:j.id,email:j.email}});
+      sbSetSync("idle");sbSync("recovery");
+      toast("Password updated — you're signed in");render();
+    }catch(e){toast(String((e&&e.message)||e))}
+  });
+  setTimeout(ask,400);
+})();
 const bootRoute=ROUTES[location.hash.slice(1)||"/"];
 if(location.hash&&!bootRoute)tab="notfound";else if(bootRoute)tab=bootRoute;
 render();
