@@ -845,6 +845,7 @@ let mealTemplates=load("mealtemplates",[]);
 let favorites=load("favorites",[]);    // food ids
 let burnCal=load("burn_cal",{});       // per-activity burn calibration {key:{n,r}} learned from the user's corrections
 let rbExtra=load("rb_extra",{});       // user menu extensions per restaurant {restId:[{id,name,category,macros,ai?}]} — seasonal drops etc.
+let portionMem=load("portion_memory",{}); // {foodId:{a,unit}} — the last portion you logged each food at; quick-log replays it
 
 // ===== Real account + cloud sync (Supabase REST; offline-first, fail-soft) =====
 // localStorage stays the source of truth. Sign-in pulls & merges, saves push (debounced).
@@ -859,7 +860,7 @@ const SB_BLOCKED_MSG=()=>sbInViewer()
   ?"Network blocked here — sync runs when the app is opened outside the claude.ai viewer"
   :"Can't reach the sync server — check your connection; if it persists, the backend may be paused (supabase.com/dashboard)";
 let syncState={state:sbSess?"idle":"signedout",msg:"",at:load("last_sync",0)};
-const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories","burn_cal","rb_extra"];
+const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories","burn_cal","rb_extra","portion_memory"];
 function sbSetSync(state,msg){const was=syncState.state;syncState.state=state;syncState.msg=msg||"";
   if(state==="ok"){syncState.at=Date.now();save0("last_sync",syncState.at)}
   if(state==="error"&&was!=="error"&&typeof toast==="function")toast("Sync problem — see Settings"); // silent sync failure = silent data loss
@@ -960,7 +961,7 @@ async function sbSync(reason){
         profile=Object.assign({},PROFILE_DEFAULTS,load("profile",{}));
         water=load("water",{});checkIns=load("checkins",[]);favorites=load("favorites",[]);
         custom=(load("custom",[])||[]).filter(Boolean).map(f=>f.isCustom?f:{...f,isCustom:true});
-        restDays=load("rest_days",[]);burnCal=load("burn_cal",{});rbExtra=load("rb_extra",{});
+        restDays=load("rest_days",[]);burnCal=load("burn_cal",{});rbExtra=load("rb_extra",{});portionMem=load("portion_memory",{});
         manualSteps=load("manual_steps",{});manualActiveCals=load("manual_active_calories",{});
       }
     }
@@ -989,7 +990,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");vaultPut(LS+"sb_session",null);sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-09-01.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-01.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2803,6 +2804,8 @@ function fsRender(){
   fsWire();
 }
 function fsWire(){
+  const q0=fsEl&&fsEl.querySelector("#fsQ0"); // search box on the main view: focusing it IS entering search
+  if(q0)q0.addEventListener("focus",()=>{FS.view="search";FS.focusPending=true;fsRender()});
   const q=fsEl&&fsEl.querySelector("#fsQ");
   if(q){
     q.addEventListener("input",e=>fsHandleSearch(e.target.value));
@@ -2832,8 +2835,16 @@ function fsCard(food,opts){
     <button class="fcard-plus haptic" data-act="fsplus" data-fid="${esc(fid)}">${IC_PLUS18B}</button>
   </div>`;
 }
+function rememberPortion(fid,a,unit){if(fid==null)return;portionMem[String(fid)]={a,unit};save("portion_memory",portionMem)}
+function fsYesterdayMeal(meal){ // entries logged for this meal yesterday — one-tap repeat
+  const d=new Date();d.setDate(d.getDate()-1);const y=localDateStr(d);
+  const es=foodLog.filter(e=>e.date===y&&e.meal===meal);
+  if(!es.length)return null;
+  return{n:es.length,cal:Math.round(es.reduce((s,e)=>s+e.macros.calories,0)),entries:es};
+}
 // MAIN view (FoodSearch.tsx:621-775)
 function fsMainView(){
+  const ym=fsYesterdayMeal(FS.meal);
   const rc=recentFoods(foodLog,allFoods());
   const freq=fsFrequent(rc);
   const favCount=allFoods().filter(f=>favorites.includes(f.id)).length; // favoriteFoods.length
@@ -2846,6 +2857,7 @@ function fsMainView(){
     ${MEALS.map(m=>`<button class="fs-pickbtn haptic${m===FS.meal?" on":""}" data-act="fssetmeal" data-m="${m}">${FS_MEAL_LABELS[m]}</button>`).join("")}
   </div></div>
   <div class="fs-scroll">
+    ${ym?`<button class="fs-custom haptic" data-act="fsrepeaty" style="margin:12px 0 4px">${IC_COPY14} Repeat yesterday's ${FS_MEAL_LABELS[FS.meal].toLowerCase()} · ${ym.n} item${ym.n>1?"s":""} · ${ym.cal} cal</button>`:""}
     ${rc.length?`<p class="fs-sech shelf">${IC_CLOCK13} Recently Logged</p>`
       +rc.slice(0,5).map(f=>fsCard(f,{fav:favorites.includes(f.id),custom:f.isCustom})).join(""):""}
     ${freq.length?`<p class="fs-sech shelf" style="margin-top:8px">${IC_TREND13} Frequently Eaten</p>`
@@ -2860,7 +2872,7 @@ function fsMainView(){
     <div style="height:80px"></div>
   </div>
   <div class="fs-bar">
-    <button class="fs-searchpill haptic" data-act="fssearchview">${IC_SEARCH16} Search</button>
+    <div class="fs-searchpill" style="display:flex;align-items:center;gap:8px">${IC_SEARCH16}<input id="fsQ0" placeholder="Search foods, brands, barcodes..." autocomplete="off" style="background:none;border:0;outline:none;flex:1;min-width:0;font:inherit;font-size:15px;color:hsl(var(--foreground))"></div>
     <button class="fs-round haptic" data-act="fsscan">${IC_SCAN18}</button>
     <button class="fs-round haptic" data-act="fsclose">${IC_X18}</button>
   </div>`;
@@ -3021,6 +3033,7 @@ function fsDetailView(){
           <select class="fs-unit" id="fsUnit">${units.map(u=>`<option value="${esc(u.unit)}"${u.unit===FS.unit?" selected":""}>${esc(u.label)}</option>`).join("")}</select>
         </div></div>
     </div>
+    <div style="display:flex;gap:6px;margin:8px 0 0">${["0.5","1","1.5","2"].map(v=>`<button class="rb-chip haptic${String(FS.amount)===v?" on":""}" data-act="fsamt" data-v="${v}" style="padding:6px 14px;font-size:12px">${v==="0.5"?"½":v==="1.5"?"1½":v}×</button>`).join("")}</div>
     <div class="fs-chips">
       <div class="fs-chip"><p class="l">Protein</p><p class="v tnum" id="mcP" style="color:hsl(var(--protein))">${m.protein}g</p></div>
       <div class="fs-chip"><p class="l">Carbs</p><p class="v tnum" id="mcC" style="color:hsl(var(--carbs))">${m.carbs}g</p></div>
@@ -6021,14 +6034,19 @@ document.addEventListener("click",e=>{
       else if(typeof openRestaurants==="function")openRestaurants(activeMeal);
       return;
     }
-    FS.selected=f;FS.amount="1";FS.unit="serving";FS.showDetails=false;fsRender();
+    const mem=portionMem[String(f.id)]; // preload the portion you used last time for this food
+    const memOk=mem&&getAvailableUnits(f).some(u=>u.unit===mem.unit);
+    FS.selected=f;FS.amount=memOk?String(mem.a):"1";FS.unit=memOk?mem.unit:"serving";FS.showDetails=false;fsRender();
   }
-  else if(act==="fsplus"){ // + quick-add: log 1 serving instantly, overlay stays open (FoodSearch.tsx:131-133)
+  else if(act==="fsplus"){ // + quick-add: replays your last portion of this food (default 1 serving); overlay stays open
     const f=FS.rowFoods.get(el.dataset.fid);if(!f)return;
-    const r=logFoodMacros(f,1,"serving");if(!r)return;
-    foodLog.push({id:newId(),foodId:f.id,name:f.name,sv:r.servings,servingUnit:"serving",
+    const mem=portionMem[String(f.id)];
+    const memOk=mem&&getAvailableUnits(f).some(u=>u.unit===mem.unit);
+    const amt=memOk?mem.a:1,unit=memOk?mem.unit:"serving";
+    const r=logFoodMacros(f,amt,unit);if(!r)return;
+    foodLog.push({id:newId(),foodId:f.id,name:f.name,sv:r.servings,servingUnit:unit,
       macros:r.macros,meal:FS.meal,date:selDate,ts:Date.now()});
-    saveLog();toast(`Logged '${f.name}'`);
+    saveLog();toast(`Logged '${f.name}'${memOk&&(amt!==1||unit!=="serving")?` · ${amt} ${unit}`:""}`);
     if(FS.view==="main"&&!FS.selected)fsRender(); // recents/frequents shelves refresh reactively
     render();
   }
@@ -6052,8 +6070,22 @@ document.addEventListener("click",e=>{
     if(!r)return;
     foodLog.push({id:newId(),foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,
       macros:r.macros,meal:FS.meal,date:selDate,ts:Date.now()});
-    saveLog();toast(`Logged '${f.name}'`); // FoodLog.tsx:157-163 — onSelect only logs+toasts; overlay resets to main
-    FS.selected=null;FS.view="main";FS.query="";FS.results=[];FS.online=[];fsRender();
+    saveLog();rememberPortion(f.id,a,FS.unit); // next time this food defaults to this portion
+    const mealCal=Math.round(foodLog.filter(e=>e.date===selDate&&e.meal===FS.meal).reduce((s,e)=>s+e.macros.calories,0));
+    toast(`Logged '${f.name}' · ${FS_MEAL_LABELS[FS.meal]} now ${mealCal} cal`);
+    // stay in context for chain-logging: back to your results if you were searching, shelves otherwise
+    FS.selected=null;FS.view=FS.query.trim()?"search":"main";fsRender();
+  }
+  else if(act==="fsrepeaty"){ // one tap re-logs yesterday's whole meal for today
+    const ym=fsYesterdayMeal(FS.meal);if(!ym)return;
+    ym.entries.forEach(e=>foodLog.push({id:newId(),foodId:e.foodId,name:e.name,sv:e.sv,servingUnit:e.servingUnit,
+      macros:Object.assign({},e.macros),meal:FS.meal,date:selDate,ts:Date.now()}));
+    saveLog();toast(`Repeated ${ym.n} item${ym.n>1?"s":""} · +${ym.cal} cal`);fsRender();render();
+  }
+  else if(act==="fsamt"){ // quick portion chips in the detail view
+    FS.amount=el.dataset.v;
+    const a=fsEl&&fsEl.querySelector("#fsAmt");if(a)a.value=FS.amount;
+    fsUpd();fsRender();
   }
   else if(act==="fsquickadd"){closeFS();openQuickAdd(activeMeal)} // FoodLog.tsx:181-184 — closes search first
   else if(act==="fenew"){ // create a database food (prefilled from the current search)
