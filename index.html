@@ -1029,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-02.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-02.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2574,7 +2574,7 @@ function openEntryMenu(anchor,id){
       <div class="pm-sub-w${emenuMoveOpen?" open":""}"><div class="pm-sub">${MEALS.filter(m=>m!==cur.meal).map(m=>
         `<button data-act="emoveto" data-id="${id}" data-m="${m}">${MEAL_LABELS[m]}</button>`).join("")}</div></div>
     </div>
-    <button class="pm-sep" data-act="eedit" data-id="${id}">${LUCIDE(P_EDIT2,2,15)} Edit</button>
+    <button class="pm-sep" data-act="eedit" data-id="${id}">${IC_ROT15} Re-log</button>
     <button class="pm-sep" data-act="edup" data-id="${id}">${IC_COPY15} Duplicate</button>
     <button class="pm-sep danger" data-act="edel" data-id="${id}">${IC_TRASH15} Delete</button>`;
   });
@@ -4000,6 +4000,45 @@ function rbSnapItemSrc(){
 function rbSnapMealSrc(){
   return{t:"rbm",rid:RB.restaurant.id,format:RB.format||undefined,
     items:RB.items.map(p=>({id:p.component.id,portion:p.portion,sz:p.selectedSizeId}))};
+}
+// Legacy entries predate the provenance map, but their names were BUILT from menu data
+// ("Starbucks: Tall (12oz) Blonde Roast + 2x Vanilla Syrup") — so reconstruct the menu
+// state from the name: restaurant by prefix, item by longest name match, size/count/mods
+// from their markers. Best effort: worst case Re-log still opens that restaurant's menu.
+function rbSrcFromName(e){
+  const m=String(e.name||"").match(/^([^:]+):\s*(.+)$/);if(!m)return null;
+  const rest=RESTAURANTS_DB.find(r=>r.name.toLowerCase()===m[1].trim().toLowerCase());
+  if(!rest)return null;
+  const R=rbEntry(rest.id)||rest,body=m[2],low=body.toLowerCase();
+  // parse mode must MATCH the render mode: chains like Starbucks are modular:true but render
+  // (and name their entries) via the item sheet — same gate rbRender uses
+  const itemSelect=rest.menuStyle==="item-select"||!rest.modular;
+  if(!itemSelect){ // built-meal names are comma-joined component names (may be truncated)
+    const items=[];
+    for(let seg of body.replace(/\.\.\.$/,"").split(/,\s*/)){
+      let portion="regular";seg=seg.trim();
+      if(/^2x\s/i.test(seg)){portion="double";seg=seg.slice(3)}
+      else if(/^½\s/.test(seg)){portion="half";seg=seg.slice(2)}
+      else if(/^light\s/i.test(seg)){portion="light";seg=seg.slice(6)}
+      const t=seg.replace(/\s*\([^)]*\)\s*$/,"").trim().toLowerCase();
+      const c=R.components.find(x=>{const n=x.name.toLowerCase();return t===n||t.includes(n)||n.includes(t)});
+      if(c)items.push({id:c.id,portion,sz:undefined});
+    }
+    return items.length?{t:"rbm",rid:rest.id,items}:{t:"rb-open",rid:rest.id};
+  }
+  let qty=1,s2=body;const qm=s2.match(/^(\d+)[×x]\s+/);if(qm){qty=+qm[1];s2=s2.slice(qm[0].length)}
+  const comps=R.components.filter(c=>!c.isModifier).slice().sort((a,b)=>b.name.length-a.name.length);
+  const item=comps.find(c=>s2.toLowerCase().includes(c.name.toLowerCase()));
+  if(!item)return{t:"rb-open",rid:rest.id};
+  let sizeId;
+  if(item.sizeVariants){const sv=item.sizeVariants.find(v=>v.sizeName&&low.includes(String(v.sizeName).toLowerCase()));if(sv)sizeId=sv.sizeId}
+  const mods=[];
+  R.components.filter(c=>c.isModifier).forEach(c=>{
+    const i=low.indexOf(c.name.toLowerCase());if(i<0)return;
+    const cm=body.slice(0,i).match(/(\d+)x\s+$/); // "2x Vanilla Syrup"
+    mods.push({id:c.id,n:cm?+cm[1]:1});
+  });
+  return{t:"rbi",rid:rest.id,cid:item.id,sizeId,qty,mods,sides:[],extras:[],custom:[]};
 }
 // Edit: reopen the builder exactly as it was when the entry was logged (item, size, count,
 // sauces, sides, combo — or the whole built bowl), then update-in-place on log
@@ -6509,19 +6548,24 @@ document.addEventListener("click",e=>{
     if(src){foodLog.push({...src,id:newId(),date:selDate,ts:Date.now()});saveLog();toast(`Duplicated '${src.name}'`)}
     render();
   }
-  else if(act==="eedit"){ // reopen the entry where it was built; logging again UPDATES it — no duplicate
+  else if(act==="eedit"){ // Re-log: pull the entry back up where it was built; logging again UPDATES it — no duplicate
     closePMenu();
     const e=foodLog.find(x=>x.id===el.dataset.id);if(!e)return;
-    const s=entrySrc[e.id];
+    let s=entrySrc[e.id];
+    // older entries have no stored provenance — rebuild the menu state from the entry name
+    if(!s&&e.foodId==="quick-add")s=rbSrcFromName(e);
     if(s&&s.t==="qa"){openQuickAdd(e.meal,e)}
     else if(s&&(s.t==="rbi"||s.t==="rbm")&&rbEntry(s.rid)){rbOpenEdit(e,s)}
+    else if(s&&s.t==="rb-open"&&rbEntry(s.rid)){ // couldn't pin the exact item — still open that restaurant's menu
+      openRestaurantBuilder(e.meal,s.rid);RB.replaceId=e.id;rbRender();
+    }
     else{
       const f=(s&&s.t==="fss"&&s.f)||allFoods().find(x=>x.id===e.foodId);
       if(f&&e.foodId!=="quick-add"){
         openSearch(e.meal);
         FS.selected={...f};FS.amount=String(e.sv);FS.unit=e.servingUnit||"serving";FS.replaceId=e.id;
         fsRender();
-      }else openQuickAdd(e.meal,e); // no provenance (older entries) — edit the numbers directly
+      }else openQuickAdd(e.meal,e); // nothing to rebuild from — edit the numbers directly
     }
   }
   else if(act==="emoveto"){ // FoodLog.tsx:66-71 — toast uses the lowercase meal key
