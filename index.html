@@ -990,7 +990,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");vaultPut(LS+"sb_session",null);sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-09-01.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-01.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2804,8 +2804,16 @@ function fsRender(){
   fsWire();
 }
 function fsWire(){
-  const q0=fsEl&&fsEl.querySelector("#fsQ0"); // search box on the main view: focusing it IS entering search
-  if(q0)q0.addEventListener("focus",()=>{FS.view="search";FS.focusPending=true;fsRender()});
+  // Main-view search box: the tapped input IS the live search field (iOS only opens the
+  // keyboard for the element the finger touched, so it must never be rebuilt mid-typing).
+  // Results render into #fsResults beside the shelves; the input node stays untouched.
+  const q0=fsEl&&fsEl.querySelector("#fsQ0");
+  if(q0){
+    const swap=on=>{const sh=fsEl.querySelector("#fsShelves"),res=fsEl.querySelector("#fsResults");
+      if(sh)sh.style.display=on?"none":"";if(res)res.style.display=on?"":"none"};
+    q0.addEventListener("input",e=>{fsHandleSearch(e.target.value);swap(!!e.target.value.trim())});
+    if(FS.query.trim()){q0.value=FS.query;swap(true);fsRenderResults()} // back from detail: restore results
+  }
   const q=fsEl&&fsEl.querySelector("#fsQ");
   if(q){
     q.addEventListener("input",e=>fsHandleSearch(e.target.value));
@@ -2857,6 +2865,7 @@ function fsMainView(){
     ${MEALS.map(m=>`<button class="fs-pickbtn haptic${m===FS.meal?" on":""}" data-act="fssetmeal" data-m="${m}">${FS_MEAL_LABELS[m]}</button>`).join("")}
   </div></div>
   <div class="fs-scroll">
+    <div id="fsShelves">
     ${ym?`<button class="fs-custom haptic" data-act="fsrepeaty" style="margin:12px 0 4px">${IC_COPY14} Repeat yesterday's ${FS_MEAL_LABELS[FS.meal].toLowerCase()} · ${ym.n} item${ym.n>1?"s":""} · ${ym.cal} cal</button>`:""}
     ${rc.length?`<p class="fs-sech shelf">${IC_CLOCK13} Recently Logged</p>`
       +rc.slice(0,5).map(f=>fsCard(f,{fav:favorites.includes(f.id),custom:f.isCustom})).join(""):""}
@@ -2869,6 +2878,8 @@ function fsMainView(){
     </div>
     <button class="fs-custom haptic" data-act="fsquickadd">${IC_PLUS16} Log custom entry</button>
     <button class="fs-custom haptic" data-act="fenew" style="margin-top:8px">${IC_PLUS16} Add a food to my database</button>
+    </div>
+    <div id="fsResults" style="display:none"></div>
     <div style="height:80px"></div>
   </div>
   <div class="fs-bar">
@@ -6047,7 +6058,9 @@ document.addEventListener("click",e=>{
     foodLog.push({id:newId(),foodId:f.id,name:f.name,sv:r.servings,servingUnit:unit,
       macros:r.macros,meal:FS.meal,date:selDate,ts:Date.now()});
     saveLog();toast(`Logged '${f.name}'${memOk&&(amt!==1||unit!=="serving")?` · ${amt} ${unit}`:""}`);
-    if(FS.view==="main"&&!FS.selected)fsRender(); // recents/frequents shelves refresh reactively
+    if(FS.view==="main"&&!FS.selected){ // refresh content only — never rebuild the input mid-typing
+      if(FS.query.trim())fsRenderResults();else fsRender();
+    }
     render();
   }
   else if(act==="fsback"){FS.selected=null;fsRender()} // back to whichever list view, query intact
@@ -6073,8 +6086,8 @@ document.addEventListener("click",e=>{
     saveLog();rememberPortion(f.id,a,FS.unit); // next time this food defaults to this portion
     const mealCal=Math.round(foodLog.filter(e=>e.date===selDate&&e.meal===FS.meal).reduce((s,e)=>s+e.macros.calories,0));
     toast(`Logged '${f.name}' · ${FS_MEAL_LABELS[FS.meal]} now ${mealCal} cal`);
-    // stay in context for chain-logging: back to your results if you were searching, shelves otherwise
-    FS.selected=null;FS.view=FS.query.trim()?"search":"main";fsRender();
+    // stay in context for chain-logging: return to whichever list you came from, query & results intact
+    FS.selected=null;fsRender();
   }
   else if(act==="fsrepeaty"){ // one tap re-logs yesterday's whole meal for today
     const ym=fsYesterdayMeal(FS.meal);if(!ym)return;
