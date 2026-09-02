@@ -601,6 +601,8 @@ const MUSCLE_LABELS={"chest":"Chest","back":"Back","shoulders":"Shoulders","bice
 const $=s=>document.querySelector(s);
 const r1=x=>Math.round(x*10)/10;
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// small color-coded protein/carbs/fat readout for Log CTAs — light tints so they stay legible on the blue button
+const pcfBtn=m=>`<span style="font-size:11px;font-weight:700;margin-left:8px"><span style="color:hsl(340,90%,82%)">${Math.round(m.protein)}P</span> <span style="color:hsl(45,95%,68%)">${Math.round(m.carbs)}C</span> <span style="color:hsl(197,95%,82%)">${Math.round(m.fat)}F</span></span>`;
 // human date for UI copy ("Aug 26", with the year only when it isn't this year) — raw ISO stays storage-only
 const fmtDate=d=>{try{const dt=new Date(String(d).slice(0,10)+'T12:00:00');if(isNaN(dt))return String(d);
   const o={month:'short',day:'numeric'};if(dt.getFullYear()!==new Date().getFullYear())o.year='numeric';
@@ -868,6 +870,15 @@ let favorites=load("favorites",[]);    // food ids
 let burnCal=load("burn_cal",{});       // per-activity burn calibration {key:{n,r}} learned from the user's corrections
 let rbExtra=load("rb_extra",{});       // user menu extensions per restaurant {restId:[{id,name,category,macros,ai?}]} — seasonal drops etc.
 let portionMem=load("portion_memory",{}); // {foodId:{a,unit}} — the last portion you logged each food at; quick-log replays it
+let entrySrc=load("entry_src",{});     // {entryId: how it was built} — lets Edit reopen the exact page (restaurant item + sauces,
+                                       // built bowl, quick-add) an entry came from; pruned as entries are deleted
+function setEntrySrc(id,src){
+  if(src)entrySrc[id]=src;else delete entrySrc[id];
+  // prune ids whose entries no longer exist so the map never grows unbounded
+  const live=new Set(foodLog.map(e=>e.id));
+  for(const k of Object.keys(entrySrc))if(!live.has(k))delete entrySrc[k];
+  save("entry_src",entrySrc);
+}
 
 // ===== Real account + cloud sync (Supabase REST; offline-first, fail-soft) =====
 // localStorage stays the source of truth. Sign-in pulls & merges, saves push (debounced).
@@ -882,7 +893,7 @@ const SB_BLOCKED_MSG=()=>sbInViewer()
   ?"Network blocked here — sync runs when the app is opened outside the claude.ai viewer"
   :"Can't reach the sync server — check your connection; if it persists, the backend may be paused (supabase.com/dashboard)";
 let syncState={state:sbSess?"idle":"signedout",msg:"",at:load("last_sync",0)};
-const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories","burn_cal","rb_extra","portion_memory"];
+const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories","burn_cal","rb_extra","portion_memory","entry_src"];
 function sbSetSync(state,msg){const was=syncState.state;syncState.state=state;syncState.msg=msg||"";
   if(state==="ok"){syncState.at=Date.now();save0("last_sync",syncState.at)}
   if(state==="error"&&was!=="error"&&typeof toast==="function")toast("Sync problem — see Settings"); // silent sync failure = silent data loss
@@ -985,6 +996,7 @@ async function sbSync(reason){
         custom=(load("custom",[])||[]).filter(Boolean).map(f=>f.isCustom?f:{...f,isCustom:true});
         restDays=load("rest_days",[]);burnCal=load("burn_cal",{});rbExtra=load("rb_extra",{});portionMem=load("portion_memory",{});
         manualSteps=load("manual_steps",{});manualActiveCals=load("manual_active_calories",{});
+        entrySrc=load("entry_src",{});
       }
     }
     const uidRow=r=>Object.assign({user_id:uid},r); // push every table as isolated upserts — one failure never blocks the rest
@@ -1017,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-02.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-02.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2505,9 +2517,9 @@ function mealSection(m){
         </div>
         <button class="mrow-menu haptic" data-act="emenu" data-id="${e.id}">${IC_MORE18}</button>
       </div>`).join("")}</div>
-      <div style="display:flex;gap:0">
+      <div style="display:flex;align-items:stretch">
         <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}">${IC_PLUS14} Add Food</button>
-        <button class="madd haptic" style="flex:1" data-act="tplsavemeal" data-meal="${m}">${IC_COPY14} Save as meal</button>
+        <button class="madd haptic" style="flex:0 0 52px" data-act="tplsavemeal" data-meal="${m}" aria-label="Save as meal">${LUCIDE('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',2,15)}</button>
       </div>
     </div></div>`:""}
   </div></div>`;
@@ -2562,8 +2574,8 @@ function openEntryMenu(anchor,id){
       <div class="pm-sub-w${emenuMoveOpen?" open":""}"><div class="pm-sub">${MEALS.filter(m=>m!==cur.meal).map(m=>
         `<button data-act="emoveto" data-id="${id}" data-m="${m}">${MEAL_LABELS[m]}</button>`).join("")}</div></div>
     </div>
+    <button class="pm-sep" data-act="eedit" data-id="${id}">${LUCIDE(P_EDIT2,2,15)} Edit</button>
     <button class="pm-sep" data-act="edup" data-id="${id}">${IC_COPY15} Duplicate</button>
-    <button class="pm-sep" data-act="erelog" data-id="${id}">${IC_ROT15} Re-log</button>
     <button class="pm-sep danger" data-act="edel" data-id="${id}">${IC_TRASH15} Delete</button>`;
   });
 }
@@ -2887,7 +2899,7 @@ function openSearch(meal){
 function closeFS(){
   if(fsEl){fsEl.remove();fsEl=null}
   if(fsTimer){clearTimeout(fsTimer);fsTimer=null}
-  fsSeq++;FS.selected=null;
+  fsSeq++;FS.selected=null;FS.replaceId=null;
 }
 function fsRender(){
   if(!fsEl)return;
@@ -2970,8 +2982,10 @@ function fsMainView(){
       ${rc.length?`<button class="fs-librow haptic" data-act="fssearchview"><span class="l">${IC_CLOCK14} Recents</span><span class="r"><span class="tnum">${rc.length}</span>${IC_CHEVR14}</span></button>`:""}
       ${favCount?`<button class="fs-librow haptic" data-act="fssearchview"><span class="l">${fsStar(14,false)} Saved Items</span><span class="r"><span class="tnum">${favCount}</span>${IC_CHEVR14}</span></button>`:""}
     </div>`:`<div class="fs-libcard" style="padding:14px 16px"><p style="font-size:12px;margin:0;line-height:17px" class="text-muted-foreground">Foods you log and save land here for one-tap re-adding. Search below to log your first.</p></div>`}
-    <button class="fs-custom haptic" data-act="fsquickadd" style="text-align:left">${IC_PLUS16} <span><span style="display:block">Log custom entry</span><span style="display:block;font-size:11px;font-weight:400;line-height:15px;color:hsl(var(--muted-foreground))">One-off — type the macros, not saved for reuse</span></span></button>
-    <button class="fs-custom haptic" data-act="fenew" style="margin-top:8px;text-align:left">${IC_PLUS16} <span><span style="display:block">New food in my database</span><span style="display:block;font-size:11px;font-weight:400;line-height:15px;color:hsl(var(--muted-foreground))">Saved & searchable for every future log</span></span></button>
+    <div style="display:flex;gap:8px">
+      <button class="fs-custom haptic" data-act="fsquickadd" style="flex:1">${IC_PLUS16} Quick entry</button>
+      <button class="fs-custom haptic" data-act="fenew" style="flex:1">${IC_PLUS16} New food</button>
+    </div>
     </div>
     <div id="fsResults" style="display:none"></div>
     <div style="height:80px"></div>
@@ -3154,7 +3168,7 @@ function fsDetailView(){
       ${f.ingredients?`<div><p class="muted" style="margin:0 0 4px;font-weight:500">Ingredients:</p><p style="margin:0;opacity:.8;line-height:1.6">${esc(f.ingredients)}</p></div>`:""}
     </div></div></div>`:""}
   </div>
-  <div class="fsd-foot"><button class="fsd-log glow-primary haptic" id="fsLogBtn" data-act="fslog">Log ${m.calories} cal</button></div>`;
+  <div class="fsd-foot"><button class="fsd-log glow-primary haptic" id="fsLogBtn" data-act="fslog">${FS.replaceId?"Save changes":"Log"} ${m.calories} cal${pcfBtn(m)}</button></div>`;
 }
 // live-update the FDA panel, macro chips, and log button (no full re-render — keeps input focus)
 function fsUpd(){
@@ -3168,7 +3182,8 @@ function fsUpd(){
   set("fdaProt",`Protein ${m.protein}g`);
   set("mcP",m.protein+"g");set("mcC",m.carbs+"g");set("mcF",m.fat+"g");
   if(m.fiber!=null)set("mcFib",m.fiber+"g");
-  set("fsLogBtn",`Log ${m.calories} cal`);
+  const lb=fsEl.querySelector("#fsLogBtn"); // P/C/F on the button scale live with the portion
+  if(lb)lb.innerHTML=`${FS.replaceId?"Save changes":"Log"} ${m.calories} cal${pcfBtn(m)}`;
 }
 
 // ===== barcode scanner (BarcodeScanner.tsx) =====
@@ -3228,32 +3243,34 @@ function scanFound(food){ // FoodLog.tsx:196-199 — close scanner, log 1 servin
 
 // ===== Quick Add (QuickAdd.tsx, whole file, exact) =====
 // No meal dropdown — meal fixed to defaultMeal (QuickAdd.tsx:9,52). Inputs start EMPTY.
-let qaMeal,qaSmart=false,qaExtras=false;
+let qaMeal,qaSmart=false,qaExtras=false,qaReplaceId=null;
 // QuickAdd.tsx:12-16 — Atwater estimate: P×4 + C×4 + F×9 − Fiber×2
 function qaEstimate(){
   const p=parseFloat($("#qP").value)||0,c=parseFloat($("#qC").value)||0,
         f=parseFloat($("#qF").value)||0,fb=parseFloat($("#qFib")?.value)||0;
   return Math.round(p*4+c*4+f*9-fb*2);
 }
-function openQuickAdd(meal){
+function openQuickAdd(meal,editEntry){
   qaMeal=meal;qaSmart=false;qaExtras=false;
+  qaReplaceId=editEntry?editEntry.id:null; // Edit mode: saving updates the original entry in place
+  const em=editEntry&&editEntry.macros||{};
   openSheet(`<div class="qa-wrap">
-    <div class="qa-head"><h3>Quick Add</h3><button class="qa-x haptic" data-act="close">${IC_X20}</button></div>
-    <input class="qa-in" id="qL" placeholder="Label (optional)" style="font-size:16px;line-height:24px">
+    <div class="qa-head"><h3>${editEntry?"Edit Entry":"Quick Add"}</h3><button class="qa-x haptic" data-act="close">${IC_X20}</button></div>
+    <input class="qa-in" id="qL" placeholder="Label (optional)" value="${editEntry?esc(editEntry.name):""}" style="font-size:16px;line-height:24px">
     <button class="qa-smart haptic" id="qaSmartBtn" data-act="qasmart">${IC_ZAP14}<span>Smart Calories</span><span class="qa-hint" id="qaHint">OFF — enter manually</span></button>
     <div class="qa-grid">
-      <div><label>Calories</label><input class="qa-in tnum" id="qK" type="number" placeholder="0" style="font-size:16px;line-height:24px">
+      <div><label>Calories</label><input class="qa-in tnum" id="qK" type="number" placeholder="0" value="${em.calories!=null?em.calories:""}" style="font-size:16px;line-height:24px">
         <p class="qa-formula" id="qaFormula" hidden>P×4 + C×4 + F×9 − Fiber×2</p></div>
-      <div><label>Protein (g)</label><input class="qa-in tnum" id="qP" type="number" style="font-size:16px;line-height:24px"></div>
-      <div><label>Carbs (g)</label><input class="qa-in tnum" id="qC" type="number" style="font-size:16px;line-height:24px"></div>
-      <div><label>Fat (g)</label><input class="qa-in tnum" id="qF" type="number" style="font-size:16px;line-height:24px"></div>
+      <div><label>Protein (g)</label><input class="qa-in tnum" id="qP" type="number" value="${em.protein!=null?em.protein:""}" style="font-size:16px;line-height:24px"></div>
+      <div><label>Carbs (g)</label><input class="qa-in tnum" id="qC" type="number" value="${em.carbs!=null?em.carbs:""}" style="font-size:16px;line-height:24px"></div>
+      <div><label>Fat (g)</label><input class="qa-in tnum" id="qF" type="number" value="${em.fat!=null?em.fat:""}" style="font-size:16px;line-height:24px"></div>
     </div>
     <button class="qa-extras haptic" id="qaExtrasBtn" data-act="qaextras">+ Show Fiber &amp; Sodium</button>
     <div class="qa-grid" id="qaExtrasGrid" hidden>
-      <div><label>Fiber (g)</label><input class="qa-in tnum" id="qFib" type="number" placeholder="optional" style="font-size:16px;line-height:24px"></div>
-      <div><label>Sodium (mg)</label><input class="qa-in tnum" id="qNa" type="number" placeholder="optional" style="font-size:16px;line-height:24px"></div>
+      <div><label>Fiber (g)</label><input class="qa-in tnum" id="qFib" type="number" placeholder="optional" value="${em.fiber!=null?em.fiber:""}" style="font-size:16px;line-height:24px"></div>
+      <div><label>Sodium (mg)</label><input class="qa-in tnum" id="qNa" type="number" placeholder="optional" value="${em.sodium!=null?em.sodium:""}" style="font-size:16px;line-height:24px"></div>
     </div>
-    <button class="qa-submit glow-primary haptic" data-act="quickok">Add Entry</button></div>`);
+    <button class="qa-submit glow-primary haptic" data-act="quickok">${editEntry?"Save Changes":"Add Entry"}</button></div>`);
   // Smart auto-calc on P/C/F/Fiber input while smart is ON (QuickAdd.tsx:30-40)
   ["qP","qC","qF","qFib"].forEach(id=>$("#"+id)?.addEventListener("input",qaRecalc));
 }
@@ -3748,7 +3765,7 @@ function openRestaurantBuilder(meal,initialRestaurantId){
   rbRender();
 }
 function openRestaurants(meal){openRestaurantBuilder(meal,null)} // legacy entry alias
-function closeRB(){if(rbEl){rbEl.remove();rbEl=null}}
+function closeRB(){if(rbEl){rbEl.remove();rbEl=null}RB.replaceId=null}
 
 function rbRender(keep){
   if(!rbEl)return;
@@ -3935,7 +3952,7 @@ function rbBuilderFooterHTML(){
         <div style="text-align:center"><p class="macro-fat" style="font-weight:700;margin:0">${Math.round(t.fat)}g</p><p style="margin:0">fat</p></div>
       </div></div>
     ${rbMealSelHTML()}
-    <button class="rb-cta glow-primary haptic" data-act="rblog">${IC_BAG16}Log Meal (${RB.items.length} items)</button></div>`;
+    <button class="rb-cta glow-primary haptic" data-act="rblog">${IC_BAG16}${RB.replaceId?"Update Meal":"Log Meal"} (${RB.items.length} items) · ${t.calories} cal</button></div>`;
 }
 // handleLog (RestaurantMealBuilder.tsx:163-182): ONE combined entry via quickAdd-equivalent
 function rbLog(){
@@ -3949,8 +3966,8 @@ function rbLog(){
   const nameStr=[...new Set(names)].join(", ");
   const name=`${RB.restaurant.name}: ${nameStr.length>50?nameStr.slice(0,50)+"...":nameStr}`;
   const total=calculateMealMacrosWithPortions(RB.items); // per-item rounded, carries fiber+sodium
-  foodLog.push({id:newId(),foodId:"quick-add",name,sv:1,servingUnit:"serving",macros:total,meal:RB.meal,date:selDate,ts:Date.now()});
-  saveLog();closeRB();render();
+  rbCommitEntry({foodId:"quick-add",name,sv:1,servingUnit:"serving",macros:total,meal:RB.meal},rbSnapMealSrc());
+  closeRB();render();
 }
 
 // ----- item-select mode (StarbucksItemSelect.tsx — starbucks, peets, texas-roadhouse) -----
@@ -3959,6 +3976,54 @@ const rbISSideItems=()=>{const R=RB.restaurant;if(!R.sidesCategory)return[];
   return R.components.filter(c=>c.category===R.sidesCategory&&!c.isModifier)};
 const rbISCatItems=()=>RB.restaurant.components.filter(c=>c.category===RB.cat&&!c.isModifier);
 const rbQx=(m,q)=>({calories:Math.round(m.calories*q),protein:Math.round(m.protein*q*10)/10,carbs:Math.round(m.carbs*q*10)/10,fat:Math.round(m.fat*q*10)/10});
+// compact snapshot of the open item sheet — ids/names only, so Edit can rebuild the exact
+// page (size, count, sauces, sides, combo) later without storing whole component objects
+function rbSnapItemSrc(){
+  const mods={};RB.mods.forEach(x=>{mods[x.component.id]=(mods[x.component.id]||0)+1});
+  return{t:"rbi",rid:RB.restaurant.id,cid:RB.item.id,sizeId:RB.sizeId,qty:RB.qty,
+    mods:Object.entries(mods).map(([id,n])=>({id,n})),
+    sides:RB.sides.map(s=>s.id),extras:RB.extras.map(x=>x.id),custom:RB.custom.map(c=>c.name),
+    combo:RB.combo||undefined,comboSide:RB.comboSide?RB.comboSide.id:undefined,
+    drink:RB.comboDrink?RB.comboDrink.name:undefined};
+}
+// modular builder snapshot (built bowl/burrito): the picked components with portions/sizes
+function rbSnapMealSrc(){
+  return{t:"rbm",rid:RB.restaurant.id,format:RB.format||undefined,
+    items:RB.items.map(p=>({id:p.component.id,portion:p.portion,sz:p.selectedSizeId}))};
+}
+// Edit: reopen the builder exactly as it was when the entry was logged (item, size, count,
+// sauces, sides, combo — or the whole built bowl), then update-in-place on log
+function rbOpenEdit(e,s){
+  openRestaurantBuilder(e.meal,s.rid);
+  if(!RB.restaurant){closeRB();openQuickAdd(e.meal,e);return}
+  const byId=id=>RB.restaurant.components.find(c=>c.id===id);
+  if(s.t==="rbm"){ // modular builder (Chipotle-style built meal)
+    RB.format=s.format||null;
+    RB.items=(s.items||[]).map(x=>{const c=byId(x.id);return c?{component:c,portion:x.portion||"regular",selectedSizeId:x.sz}:null}).filter(Boolean);
+  }else{ // item sheet
+    const c=byId(s.cid);
+    if(!c){closeRB();openQuickAdd(e.meal,e);return} // item left the menu — fall back to number editing
+    RB.cat=c.category;RB.subcat=c.subcategory||null;RB.item=c;
+    RB.sizeId=s.sizeId;RB.qty=s.qty||1;
+    RB.mods=(s.mods||[]).flatMap(m=>{const c2=byId(m.id);return c2?Array.from({length:m.n||1},()=>({component:c2})):[]});
+    RB.sides=(s.sides||[]).map(byId).filter(Boolean);
+    RB.extras=(s.extras||[]).map(byId).filter(Boolean);
+    RB.combo=!!s.combo;
+    RB.comboSide=s.comboSide?(byId(s.comboSide)||null):null;
+    RB.custom=s.custom&&s.custom.length?(rbCustFor()||[]).filter(o=>s.custom.includes(o.name)):[];
+    if(s.drink){const opts=rbDrinkOptions()||[];RB.comboDrink=opts.find(o=>o.name===s.drink)||null}
+  }
+  RB.replaceId=e.id;rbRender();
+}
+// replace-or-append: Edit flows set RB.replaceId so re-logging updates the ORIGINAL entry
+// (same id, same day, same position) instead of duplicating it
+function rbCommitEntry(fields,src){
+  const rid=RB.replaceId,e=rid&&foodLog.find(x=>x.id===rid);
+  if(e){Object.assign(e,fields);setEntrySrc(e.id,src);RB.replaceId=null;saveLog();toast("Updated · "+fields.macros.calories+" cal");return e.id}
+  const id=newId();
+  foodLog.push(Object.assign({id,date:selDate,ts:Date.now()},fields));
+  setEntrySrc(id,src);saveLog();return id;
+}
 function rbISTotal(){
   if(!RB.item)return{calories:0,protein:0,carbs:0,fat:0};
   let base={...RB.item.macros};
@@ -4000,7 +4065,8 @@ function rbCartHTML(){
       return `<div class="rb-cartrow"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:20px">${esc(it.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${qm.calories} cal · ${qm.protein}P · ${qm.carbs}C · ${qm.fat}F</p></div>
       <div style="display:flex;align-items:center;gap:6px;margin-right:4px">${q>1?`<button class="rb-step m haptic" data-act="rblinem" data-id="${it.id}">${IC_MINUS14}</button>`:""}<span class="rb-count">${q}</span>${q<10?`<button class="rb-step p haptic" data-act="rblinep" data-id="${it.id}">${IC_PLUS14}</button>`:""}</div>
       <button class="rb-x haptic" style="padding:6px" data-act="rbcartrm" data-id="${it.id}">${IC_TRASH14}</button></div>`}).join("")}</div>`}
-    ${n>0?rbMealSelHTML()+`<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${RB.cart.reduce((s,c)=>s+(c.qty||1),0)} item${RB.cart.reduce((s,c)=>s+(c.qty||1),0)!==1?"s":""} · ${RB.cart.reduce((s,c)=>s+c.macros.calories*(c.qty||1),0)} cal</button>`:""}
+    ${n>0?rbMealSelHTML()+(()=>{const ct=RB.cart.reduce((a,c)=>{const q=rbQx(c.macros,c.qty||1);return{calories:a.calories+q.calories,protein:a.protein+q.protein,carbs:a.carbs+q.carbs,fat:a.fat+q.fat}},{calories:0,protein:0,carbs:0,fat:0});const qn2=RB.cart.reduce((s,c)=>s+(c.qty||1),0);
+      return `<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${qn2} item${qn2!==1?"s":""} · ${ct.calories} cal${pcfBtn(ct)}</button>`})():""}
   </div></div>`;
 }
 function rbTabsHTML(){
@@ -4111,13 +4177,15 @@ function rbISFooterHTML(){
   if(RB.item){
     const t=rbISTotal();
     if(RB.cart.length===0){
-      inner=rbMealSelHTML()+`<div style="display:flex;gap:8px"><button class="rb-cta2 haptic" data-act="rbaddcart">${IC_PLUS16}Add &amp; keep browsing</button><button class="rb-cta glow-primary haptic" data-act="rbilog" style="flex:1">${IC_BAG16}Log · ${t.calories*RB.qty} cal</button></div>`;
+      inner=rbMealSelHTML()+(()=>{const tq=rbQx(t,RB.qty);
+        return `<div style="display:flex;gap:8px"><button class="rb-cta2 haptic" data-act="rbaddcart">${IC_PLUS16}Add &amp; keep browsing</button><button class="rb-cta glow-primary haptic" data-act="rbilog" style="flex:1">${IC_BAG16}${RB.replaceId?"Update":"Log"} · ${tq.calories} cal${pcfBtn(tq)}</button></div>`})();
     }else{
       inner=`<div style="display:flex;gap:8px"><button class="rb-cta glow-primary haptic" data-act="rbaddcart" style="flex:1">${IC_PLUS16}Add to order · ${t.calories*RB.qty} cal</button></div>`;
     }
   }else if(RB.cart.length>0){
     const qn=RB.cart.reduce((s,c)=>s+(c.qty||1),0);
-    inner=rbMealSelHTML()+`<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${qn} item${qn!==1?"s":""} · ${RB.cart.reduce((s,c)=>s+c.macros.calories*(c.qty||1),0)} cal</button>`;
+    inner=rbMealSelHTML()+(()=>{const ct=RB.cart.reduce((a,c)=>{const q=rbQx(c.macros,c.qty||1);return{calories:a.calories+q.calories,protein:a.protein+q.protein,carbs:a.carbs+q.carbs,fat:a.fat+q.fat}},{calories:0,protein:0,carbs:0,fat:0});
+      return `<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${qn} item${qn!==1?"s":""} · ${ct.calories} cal${pcfBtn(ct)}</button>`})();
   }
   if(!inner){RB._foot=false;return""}
   const anim=!RB._foot;RB._foot=true;
@@ -4255,7 +4323,7 @@ function rbAction(act,el){
     case"rbsidep":{const c=R.components.find(x=>x.id===el.dataset.c);const inc=(RB.item&&RB.item.includedSides)||0;
       if(c&&RB.sides.length<inc)RB.sides.push(c);rbRender(true);return}
     case"rbsidem":{const idx=RB.sides.map(s=>s.id).lastIndexOf(el.dataset.c);if(idx>=0)RB.sides.splice(idx,1);rbRender(true);return}
-    case"rbaddcart":{if(!RB.item)return;RB.cart.push({id:newId(),name:rbBuildItemName(),macros:{...rbISTotal()},qty:RB.qty});RB.item=null;RB.qty=1;RB.combo=false;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];rbRender();return}
+    case"rbaddcart":{if(!RB.item)return;RB.cart.push({id:newId(),name:rbBuildItemName(),macros:{...rbISTotal()},qty:RB.qty,src:rbSnapItemSrc()});RB.item=null;RB.qty=1;RB.combo=false;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];rbRender();return}
     case"rbqtyp":RB.qty=Math.min(10,RB.qty+1);rbRender(true);return;
     case"rbqtyset":RB.qty=+el.dataset.q;rbRender(true);return;
     case"rbcombo":{RB.combo=el.dataset.v==="1";if(!RB.combo){RB.comboSide=null;RB.comboDrink=null}rbRender(true);return}
@@ -4268,11 +4336,13 @@ function rbAction(act,el){
     case"rblinep":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=Math.min(10,(it.qty||1)+1);rbRender(true);return}
     case"rblinem":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=Math.max(1,(it.qty||1)-1);rbRender(true);return}
     case"rbilog":{if(!RB.item)return;const t=rbQx(rbISTotal(),RB.qty);
-      foodLog.push({id:newId(),foodId:"quick-add",name:`${R.name}: ${RB.qty>1?RB.qty+"\u00d7 ":""}${rbBuildItemName()}`,sv:1,servingUnit:"serving",macros:t,meal:RB.meal,date:selDate,ts:Date.now()});
-      saveLog();closeRB();render();return}
+      rbCommitEntry({foodId:"quick-add",name:`${R.name}: ${RB.qty>1?RB.qty+"\u00d7 ":""}${rbBuildItemName()}`,sv:1,servingUnit:"serving",macros:t,meal:RB.meal},rbSnapItemSrc());
+      closeRB();render();return}
     case"rbcartlog":{if(!RB.cart.length)return; // logs bag lines as SEPARATE entries, qty-multiplied
-      RB.cart.forEach(it=>{const q=it.qty||1;
-        foodLog.push({id:newId(),foodId:"quick-add",name:`${R.name}: ${q>1?q+"\u00d7 ":""}${it.name}`,sv:1,servingUnit:"serving",macros:rbQx(it.macros,q),meal:RB.meal,date:selDate,ts:Date.now()})});
+      RB.cart.forEach((it,i)=>{const q=it.qty||1;
+        const fields={foodId:"quick-add",name:`${R.name}: ${q>1?q+"\u00d7 ":""}${it.name}`,sv:1,servingUnit:"serving",macros:rbQx(it.macros,q),meal:RB.meal};
+        if(i===0)rbCommitEntry(fields,it.src||null); // an Edit that went through the bag replaces the original with line 1
+        else{const id=newId();foodLog.push(Object.assign({id,date:selDate,ts:Date.now()},fields));setEntrySrc(id,it.src||null)}});
       saveLog();closeRB();render();return}
   }
 }
@@ -6247,8 +6317,20 @@ document.addEventListener("click",e=>{
     const a=parseFloat(FS.amount)||1;
     const r=logFoodMacros(f,a,FS.unit); // useNutrition.ts:226-237 — rejects amount<=0, fiber/sodium stay undefined
     if(!r)return;
-    foodLog.push({id:newId(),foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,
+    // foods that came from online search can't be re-found by id later — keep a snapshot so Edit still works
+    const fsSnap=allFoods().some(x=>x.id===f.id)?null:{t:"fss",f:{id:f.id,name:f.name,brand:f.brand,servingSize:f.servingSize,servingUnit:f.servingUnit,macros:f.macros}};
+    const fe=FS.replaceId&&foodLog.find(x=>x.id===FS.replaceId);
+    if(fe){ // Edit mode: update the original entry in place — same id, same day, same position
+      Object.assign(fe,{foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,macros:r.macros,meal:FS.meal});
+      setEntrySrc(fe.id,fsSnap);
+      FS.replaceId=null;saveLog();rememberPortion(f.id,a,FS.unit);
+      toast(`Updated '${f.name}' · ${r.macros.calories} cal`);
+      closeFS();render();return;
+    }
+    const nid=newId();
+    foodLog.push({id:nid,foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,
       macros:r.macros,meal:FS.meal,date:selDate,ts:Date.now()});
+    if(fsSnap)setEntrySrc(nid,fsSnap);
     saveLog();rememberPortion(f.id,a,FS.unit); // next time this food defaults to this portion
     const mealCal=Math.round(foodLog.filter(e=>e.date===selDate&&e.meal===FS.meal).reduce((s,e)=>s+e.macros.calories,0));
     toast(`Logged '${f.name}' · ${FS_MEAL_LABELS[FS.meal]} now ${mealCal} cal`);
@@ -6337,10 +6419,14 @@ document.addEventListener("click",e=>{
           c=parseFloat($("#qC").value)||0,f=parseFloat($("#qF").value)||0,
           fib=parseFloat($("#qFib")?.value)||undefined,sod=parseFloat($("#qNa")?.value)||undefined;
     if(kcal===0&&p===0&&c===0&&f===0)return; // all-zero guard (QuickAdd.tsx:51)
-    foodLog.push({id:newId(),foodId:"quick-add",name:$("#qL").value.trim()||"Quick Add",sv:1,servingUnit:"serving",
-      macros:{calories:kcal,protein:p,carbs:c,fat:f,fiber:fib,sodium:sod},
-      meal:qaMeal,date:selDate,ts:Date.now()});
-    saveLog();closeSheet();render();
+    const qaFields={name:$("#qL").value.trim()||"Quick Add",macros:{calories:kcal,protein:p,carbs:c,fat:f,fiber:fib,sodium:sod}};
+    const qe=qaReplaceId&&foodLog.find(x=>x.id===qaReplaceId);
+    if(qe){Object.assign(qe,qaFields);setEntrySrc(qe.id,{t:"qa"});qaReplaceId=null;saveLog();closeSheet();toast("Updated · "+kcal+" cal");render()}
+    else{
+      const id=newId();
+      foodLog.push(Object.assign({id,foodId:"quick-add",sv:1,servingUnit:"serving",meal:qaMeal,date:selDate,ts:Date.now()},qaFields));
+      setEntrySrc(id,{t:"qa"});saveLog();closeSheet();render();
+    }
   }
   else if(act==="mealtoggle"){ // MealSection.tsx:170,203-211 — animate height/opacity in place, no re-render
     const m=el.dataset.meal||el.dataset.k;const k=m;
@@ -6407,16 +6493,26 @@ document.addEventListener("click",e=>{
     emenuMoveOpen=!emenuMoveOpen; // animate in place — the menu keeps its anchor while the submenu grows
     const sw=pmenuEl&&pmenuEl.querySelector(".pm-sub-w");if(sw)sw.classList.toggle("open",emenuMoveOpen);
   }
-  else if(act==="edel"){closePMenu();sbTomb("food_log",el.dataset.id);foodLog=foodLog.filter(e=>e.id!==el.dataset.id);saveLog();render()} // no toast (real has none)
+  else if(act==="edel"){closePMenu();sbTomb("food_log",el.dataset.id);foodLog=foodLog.filter(e=>e.id!==el.dataset.id);setEntrySrc(el.dataset.id,null);saveLog();render()} // no toast (real has none)
   else if(act==="edup"){ // FoodLog.tsx:73-81 — duplicate onto the selected date
     closePMenu();const src=foodLog.find(e=>e.id===el.dataset.id);
     if(src){foodLog.push({...src,id:newId(),date:selDate,ts:Date.now()});saveLog();toast(`Duplicated '${src.name}'`)}
     render();
   }
-  else if(act==="erelog"){ // FoodLog.tsx:83-91 — always copies to TODAY, regardless of selected date
-    closePMenu();const src=foodLog.find(e=>e.id===el.dataset.id);
-    if(src){foodLog.push({...src,id:newId(),date:localDateStr(),ts:Date.now()});saveLog();toast(`Re-logged '${src.name}'`)}
-    render();
+  else if(act==="eedit"){ // reopen the entry where it was built; logging again UPDATES it — no duplicate
+    closePMenu();
+    const e=foodLog.find(x=>x.id===el.dataset.id);if(!e)return;
+    const s=entrySrc[e.id];
+    if(s&&s.t==="qa"){openQuickAdd(e.meal,e)}
+    else if(s&&(s.t==="rbi"||s.t==="rbm")&&rbEntry(s.rid)){rbOpenEdit(e,s)}
+    else{
+      const f=(s&&s.t==="fss"&&s.f)||allFoods().find(x=>x.id===e.foodId);
+      if(f&&e.foodId!=="quick-add"){
+        openSearch(e.meal);
+        FS.selected={...f};FS.amount=String(e.sv);FS.unit=e.servingUnit||"serving";FS.replaceId=e.id;
+        fsRender();
+      }else openQuickAdd(e.meal,e); // no provenance (older entries) — edit the numbers directly
+    }
   }
   else if(act==="emoveto"){ // FoodLog.tsx:66-71 — toast uses the lowercase meal key
     closePMenu();const src=foodLog.find(e=>e.id===el.dataset.id);
