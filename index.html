@@ -989,7 +989,7 @@ async function sbSignUp(email,pw){
   return"confirm"; // instance requires email confirmation
 }
 function sbSignOut(){sbSess=null;localStorage.removeItem(LS+"sb_session");vaultPut(LS+"sb_session",null);sbSetSync("signedout")} // local data stays on the device
-const BUILD="2026-09-01.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-01.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1541,6 +1541,23 @@ function dayTargetsFor(profile, restDays /* array of date strings */, workouts, 
   }
   return { calories: profile.targetCalories, protein: profile.targetProtein, carbs: profile.targetCarbs, fat: profile.targetFat };
 }
+// ===== Activity payback (opt-in, off by default; profile.burnPayback) =====
+// Adds back a GOAL-AWARE fraction of the day's logged workout burn to that day's
+// calorie target — deliberately discounted, because machine consoles and MET math
+// run hot and include resting burn: cut/recomp 50%, maintain/bulk 75%. Unverified
+// quick-log estimates count at 85% first (same grain-of-salt as the coach), and
+// the payback is capped per day so a typo'd workout can't blow up the target.
+// On workout days it SUPERSEDES the flat Calorie Shifting training-day boost
+// (never both); the rest-day reduction still applies on no-workout days.
+const BURN_PAYBACK_RATE={cut:0.5,recomp:0.5,maintain:0.75,bulk:0.75}; // fraction of discounted burn returned
+const BURN_PAYBACK_CAP=600;                                           // cal/day ceiling
+function dayWorkoutBurn(date){return workouts.filter(w=>w.date===date)
+  .reduce((s,w)=>s+(w.aiEstimated?Math.round(w.totalCaloriesBurned*0.85):w.totalCaloriesBurned),0)}
+function burnPayback(date){
+  if(!(profile.burnPayback===true||profile.burnPayback==="on"))return 0;
+  const rate=BURN_PAYBACK_RATE[profile.goal]||0.5;
+  return Math.min(BURN_PAYBACK_CAP,Math.round(dayWorkoutBurn(date)*rate));
+}
 function remainingFor(dayTargets, totals) {          // Index.tsx:87-92 — clamped at 0
   return {
     calories: Math.max(0, dayTargets.calories - totals.calories),
@@ -1910,8 +1927,15 @@ function streaks(){return{f:getLoggingStreak(foodLog),w:getWeighingStreak(weight
 // Per-day targets — exact Index.tsx:69-83 logic via dayTargetsFor: protein never scales,
 // carbs/fat scale by ratio, and there is NO diet-break override of daily targets.
 function targetsFor(date){
-  const dt=dayTargetsFor(engineProfile(),restDays,workouts,date);
-  return{kcal:dt.calories,p:dt.protein,c:dt.carbs,f:dt.fat};
+  const ep=engineProfile();
+  const dt=dayTargetsFor(ep,restDays,workouts,date);
+  const pb=burnPayback(date);
+  if(!pb)return{kcal:dt.calories,p:dt.protein,c:dt.carbs,f:dt.fat};
+  // payback replaces the flat training-day boost; protein stays fixed, carbs/fat scale (matches shifting behavior)
+  const shifted=ep.calorieShifting&&workouts.some(w=>w.date===date);
+  const kcal=(shifted?ep.targetCalories:dt.calories)+pb;
+  const ratio=ep.targetCalories>0?kcal/ep.targetCalories:1;
+  return{kcal,p:dt.protein,c:Math.round(ep.targetCarbs*ratio),f:Math.round(ep.targetFat*ratio)};
 }
 // Adherence — useCoaching.ts:131-133: 100 − % deviation of the 7-day average intake from target
 function adherence(){return adherenceScore(getWeeklyAverage(foodLog).calories,+profile.targetKcal||0)}
@@ -2041,7 +2065,7 @@ function dayStrip(opts){
 
 // ===== HOME (Index.tsx + CalorieProgress/DeficitVisual/MacroRing/WaterTracker, exact) =====
 // CalorieProgress.tsx — flat card, NO ring
-function calorieProgress(current,target){
+function calorieProgress(current,target,note){
   const percentage=(current/target)*100, isOver=current>target, overBy=current-target;
   const displayPct=Math.min(percentage,100);
   return `<div class="apple-card" style="padding:20px">
@@ -2058,7 +2082,7 @@ function calorieProgress(current,target){
     <div style="height:5px;border-radius:9999px;overflow:hidden" class="bg-muted">
       <div class="bar-anim ${isOver?'bg-over':'bg-primary'}" style="height:100%;border-radius:9999px;width:${displayPct}%"></div>
     </div>
-    <p style="font-size:11px;margin:8px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} kcal</p>
+    <p style="font-size:11px;margin:8px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} kcal${note?` · ${note}`:""}</p>
   </div>`;
 }
 // DeficitVisual.tsx — Target header + confidence chip, gauge with TDEE/Target markers, three pills
@@ -2268,6 +2292,7 @@ function homePage(){
   const T=totalsFor(selDate), G=targetsFor(selDate);
   const totals={calories:T.kcal,protein:T.p,carbs:T.c,fat:T.f,fiber:T.fib};
   const targets={calories:G.kcal,protein:G.p,carbs:G.c,fat:G.f};
+  const pbToday=burnPayback(selDate);
   const ex=expenditure();
   const dayWaterMl=waterOn(selDate);
   const dayWo=workouts.filter(w=>w.date===selDate);
@@ -2327,8 +2352,8 @@ function homePage(){
       <p class="apple-section" style="margin:0">Nutrition</p>
       <button data-act="viewmode" class="haptic text-primary" style="font-size:12px;font-weight:600;padding:4px 8px;margin:-4px;background:none;border:0;line-height:18px">${viewMode==='consumed'?'Remaining':'Consumed'}</button>
     </div>
-    ${calorieProgress(totals.calories,targets.calories)}
-    ${shiftOn&&targets.calories!==baseCals?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
+    ${calorieProgress(totals.calories,targets.calories,pbToday>0?`includes +${pbToday} from workouts`:"")}
+    ${shiftOn&&targets.calories!==baseCals&&!pbToday?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
     ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
   </div>
@@ -5727,6 +5752,13 @@ function setsHealth(){
       <span class="text-warning" style="display:flex;justify-content:center;margin-bottom:4px">${LUCIDE(P_FLAME,2,14)}</span>
       <p class="text-foreground" style="font-size:14px;font-weight:700;margin:0;line-height:20px">${hkWeeklyAvg(manualActiveCals)}</p>
       <p class="text-muted-foreground" style="font-size:10px;margin:0">avg active cal/day</p></div>
+  </div>
+  <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between">
+    <div style="min-width:0;padding-right:12px"><p class="text-foreground" style="font-size:12px;font-weight:600;margin:0;line-height:16px">Add workout burn to daily target</p>
+      <p class="text-muted-foreground" style="font-size:10px;margin:0;line-height:14px">Safely discounted by goal: ${Math.round((BURN_PAYBACK_RATE[profile.goal]||0.5)*100)}% of logged burn on a ${profile.goal||"cut"}, capped at +${BURN_PAYBACK_CAP}/day. Unconfirmed estimates count at 85%.</p></div>
+    <button class="haptic" data-act="ptoggle" data-k="burnPayback" style="width:51px;height:31px;border-radius:9999px;border:0;position:relative;flex-shrink:0;transition:background .2s ease;background:${(profile.burnPayback===true||profile.burnPayback==="on")?"#34C759":"rgba(120,120,128,.32)"}">
+      <span style="position:absolute;top:2px;left:0;width:27px;height:27px;border-radius:9999px;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .2s cubic-bezier(.3,.9,.4,1.1);transform:translateX(${(profile.burnPayback===true||profile.burnPayback==="on")?22:2}px)"></span>
+    </button>
   </div>
   <p class="text-muted-foreground" style="font-size:10px;margin:12px 0 0;line-height:1.625">Activity data feeds into your expenditure estimate and coaching recommendations. More data = more accurate TDEE calculations.</p>`;
 }
