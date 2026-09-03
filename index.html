@@ -1029,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-03.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-03.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -6435,12 +6435,24 @@ document.addEventListener("click",e=>{
     const p=fsEl&&fsEl.querySelector("#fsDPick");if(p)p.classList.toggle("open");
   }
   else if(act==="fssetmeal"){FS.meal=el.dataset.m;fsRender()}
-  else if(act==="fstap"){ // row tap: open detail; modular restaurant items open the builder instead
+  else if(act==="fstap"){ // row tap: open detail; restaurant items open the RESTAURANT'S page instead —
+    // sizes and add-ons live there, which the generic food page can't offer
     const f=FS.rowFoods.get(el.dataset.fid);if(!f)return;
-    if(f.isModularRestaurant){
+    if(f.restaurantId){
+      const R=rbEntry(f.restaurantId);
       closeFS();
-      if(typeof openRestaurantBuilder==="function")openRestaurantBuilder(activeMeal,f.restaurantId);
-      else if(typeof openRestaurants==="function")openRestaurants(activeMeal);
+      openRestaurantBuilder(activeMeal,f.restaurantId);
+      if(R&&(R.menuStyle==="item-select"||!R.modular)&&RB.restaurant){ // item-select: jump straight to THIS item's sheet
+        const cid=String(f.id).replace(/^rest-/,"");
+        const c=RB.restaurant.components.find(x=>x.id===cid);
+        if(c){
+          RB.cat=c.category;RB.subcat=c.subcategory||null;RB.item=c;
+          RB.sizeId=c.defaultSizeId||(c.sizeVariants&&((c.sizeVariants[1]&&c.sizeVariants[1].sizeId)||(c.sizeVariants[0]&&c.sizeVariants[0].sizeId)))||undefined;
+          RB.combo=false;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];
+          const w=rbWingCfg();RB.qty=w?(w.counts[1]||w.counts[0]):1;
+          rbRender();
+        }
+      } // modular chains (Chipotle-style) open at their builder, as before
       return;
     }
     const mem=portionMem[String(f.id)]; // preload the portion you used last time for this food
