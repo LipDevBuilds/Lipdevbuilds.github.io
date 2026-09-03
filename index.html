@@ -1029,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-03.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-03.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2105,13 +2105,57 @@ function dayStrip(opts){
 
 // ===== HOME (Index.tsx + CalorieProgress/DeficitVisual/MacroRing/WaterTracker, exact) =====
 // CalorieProgress.tsx — flat card, NO ring
-function calorieProgress(current,target,note){
+// Calories card: one bar tells the whole day. Fill = eaten (blue to target, amber past it,
+// red past break-even). A flame-tinted segment marks calories EARNED from today's workouts
+// (the discounted payback). Ticks mark Target and Break-even (your daily burn); the shaded
+// band between them is your leeway on a cut ("past target but still losing") or the gaining
+// zone on a bulk ("past break-even, building"). The caption reads the leeway/needed number
+// out loud, goal-aware.
+function calorieProgress(current,target,opts){
+  opts=opts||{};
+  const burn=Math.max(0,Math.round(opts.burn||0)),goal=opts.goal||"maintain",pb=Math.max(0,Math.round(opts.pb||0));
   const percentage=(current/target)*100, isOver=current>target, overBy=current-target;
-  const displayPct=Math.min(percentage,100);
+  const hasBurn=burn>0&&Math.abs(burn-target)>target*0.03;
+  const gaugeMax=Math.max(target,burn,current)*1.06;
+  const X=v=>Math.min(100,Math.max(0,v/gaugeMax*100));
+  const base=Math.max(0,target-pb);
+  // fill segments: eaten up to target (primary) / target→break-even overflow (amber) / beyond (red)
+  const capA=Math.min(current,target),capB=hasBurn?Math.min(current,Math.max(target,burn)):Math.min(current,target);
+  let bar=`<div style="position:relative;height:12px;border-radius:9999px;margin:2px 0 22px" class="bg-muted">`;
+  if(hasBurn){const z0=X(Math.min(target,burn)),z1=X(Math.max(target,burn)); // leeway (cut) / gaining zone (bulk)
+    bar+=`<div style="position:absolute;top:0;bottom:0;left:${z0}%;width:${(z1-z0).toFixed(2)}%;background:hsl(var(--success)/.16);border-radius:2px"></div>`}
+  if(pb>0)bar+=`<div style="position:absolute;top:0;bottom:0;left:${X(base)}%;width:${(X(target)-X(base)).toFixed(2)}%;background:hsl(var(--warning)/.28)"></div>`;
+  bar+=`<div class="bar-anim bg-primary" style="position:absolute;top:0;bottom:0;left:0;border-radius:9999px 0 0 9999px;width:${X(capA)}%"></div>`;
+  if(current>target)bar+=`<div class="bg-warning" style="position:absolute;top:0;bottom:0;left:${X(target)}%;width:${(X(capB)-X(target)).toFixed(2)}%"></div>`;
+  if(current>Math.max(target,burn))bar+=`<div style="position:absolute;top:0;bottom:0;left:${X(Math.max(target,burn))}%;width:${(X(current)-X(Math.max(target,burn))).toFixed(2)}%;background:hsl(var(--destructive))"></div>`;
+  const ticksClose=hasBurn&&Math.abs(X(target)-X(burn))<16; // labels would collide — stagger them
+  const tick=(v,label,cls,drop)=>`<div style="position:absolute;top:-3px;display:flex;flex-direction:column;align-items:center;left:${X(v)}%;transform:translateX(-50%)">
+      <div style="height:${drop?28:18}px;width:2px;border-radius:9999px;${cls==='primary'?'background:hsl(var(--primary))':'background:hsl(var(--muted-foreground)/.6)'}"></div>
+      <span style="font-size:8px;font-weight:600;margin-top:3px;white-space:nowrap" class="${cls==='primary'?'text-primary':'text-muted-foreground'}">${label}</span></div>`;
+  bar+=tick(target,"Target","primary");
+  if(hasBurn)bar+=tick(burn,"Break-even","muted",ticksClose);
+  bar+=`</div>`;
+  if(ticksClose)bar=bar.replace("margin:2px 0 22px","margin:2px 0 34px"); // room for the staggered label
+  // goal-aware leeway / needed line
+  let lee="",leeCls="text-muted-foreground";
+  if(hasBurn){
+    if(goal==="cut"){
+      if(current<=target)lee=`Leeway after target: ${burn-target} cal — still losing until break-even`;
+      else if(current<=burn){lee=`Past target — ${burn-current} cal of leeway left before break-even`;leeCls="text-warning"}
+      else{lee=`${current-burn} cal past break-even — today adds weight`;leeCls="text-over"}
+    }else if(goal==="bulk"){
+      if(current<burn)lee=`Eat ${burn-current} more to break even, ${Math.max(0,target-current)} to target`;
+      else if(current<target){lee=`In the gaining zone — ${target-current} to target`;leeCls="text-success"}
+      else{lee=`Target hit${current>target?` · ${current-target} over`:""}`;leeCls="text-success"}
+    }else{
+      lee=`${Math.abs(burn-current)} cal ${current<=burn?"below":"above"} break-even`;
+      if(current>burn)leeCls="text-warning";
+    }
+  }
   return `<div class="apple-card" style="padding:20px">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px">
       <div>
-        <p style="font-size:13px;font-weight:600;letter-spacing:-.025em;margin:0 0 4px" class="text-muted-foreground">Calories</p>
+        <p style="font-size:13px;font-weight:600;letter-spacing:-.025em;margin:0 0 4px" class="text-muted-foreground">Calories${tipI("The bar is your whole day: blue is what you've eaten, the flame-tinted slice is extra calories earned from today's workouts, and the shaded band between Target and Break-even is your cushion — on a cut you can drift into it and still lose weight; on a bulk you need to eat past break-even to gain. Break-even is your daily burn.")}</p>
         <p style="font-size:42px;font-weight:700;letter-spacing:-.05em;line-height:1;margin:0;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="${isOver?'text-over':'text-foreground'}">${Math.round(current)}</p>
       </div>
       <div style="text-align:right">
@@ -2119,10 +2163,9 @@ function calorieProgress(current,target,note){
         <p style="font-size:24px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:36px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="${isOver?'text-over':'text-primary'}">${isOver?`+${Math.round(overBy)}`:Math.round(Math.max(0,target-current))}</p>
       </div>
     </div>
-    <div style="height:5px;border-radius:9999px;overflow:hidden" class="bg-muted">
-      <div class="bar-anim ${isOver?'bg-over':'bg-primary'}" style="height:100%;border-radius:9999px;width:${displayPct}%"></div>
-    </div>
-    <p style="font-size:11px;margin:8px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${note?` · ${note}${tipI("You earned extra calories from today's workouts, but only a discounted share is added back — machine burn readouts run high, and eating back every burned calorie usually stalls the plan. The discount depends on your goal (stricter on a cut).")}`:""}</p>
+    ${bar}
+    <p style="font-size:11px;margin:6px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("You earned extra calories from today's workouts, but only a discounted share is added back — machine burn readouts run high, and eating back every burned calorie usually stalls the plan. The discount depends on your goal (stricter on a cut).")}`:""}</p>
+    ${lee?`<p style="font-size:11px;margin:4px 0 0;font-weight:500;letter-spacing:-.025em" class="${leeCls}">${lee}</p>`:""}
   </div>`;
 }
 // DeficitVisual.tsx — Target header + confidence chip, gauge with TDEE/Target markers, three pills
@@ -2143,52 +2186,17 @@ function deficitVisual(consumed,target,tdee,confidence){
     const r=currentDeficit/plannedDeficit;                          // 1 = exactly on plan (sign-aware)
     return r>=0.4&&r<=1.6?'text-success':'text-warning';
   })();
-  const trendIco = LUCIDE_C(isDeficit?P_TRENDDOWN:isSurplus?P_TRENDUP:P_MINUS,2,18,paceCls);
-  const fillCls = consumed>tdee?'bg-warning':consumed>target?'bg-over':'bg-success';
-  return `<div class="apple-card" style="padding:16px;margin-top:12px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_TARGET,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Deficit Tracker</p>${tipI("Your deficit is the gap between what you burn in a day and what you eat. Eating under your burn loses weight; over it gains. Green means you're near YOUR plan — not just any loss.")}</div>
-      <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:9999px;${chip}" data-tip="How well the app knows your true daily burn. It starts from a formula and learns from your actual weigh-ins and food logs — confidence rises with consistent logging.">${confidence} confidence</span>
+  const trendIco = LUCIDE_C(isDeficit?P_TRENDDOWN:isSurplus?P_TRENDUP:P_MINUS,2,16,paceCls);
+  // Compact pace strip — the gauge, big number and cell trio moved into the Calories card
+  // above (one bar tells the day); this just answers "how is today tracking vs my plan?"
+  const word=isDeficit?"deficit":isSurplus?"surplus":"even";
+  const planWord=plannedDeficit>0?Math.round(plannedDeficit)+" deficit":plannedDeficit<0?Math.round(-plannedDeficit)+" surplus":"break-even";
+  return `<div class="apple-card" style="padding:12px 16px;margin-top:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <p style="font-size:13px;margin:0;line-height:19px;min-width:0" class="text-foreground">${trendIco} On pace for a <b class="${paceCls}">${Math.abs(Math.round(currentDeficit))} cal ${word}</b> today <span class="text-muted-foreground">· plan: ${planWord}</span>${tipI("Your deficit is the gap between what you burn in a day and what you eat. Eating under your burn loses weight; over it gains. Green means today is tracking near YOUR plan — not just any loss.")}</p>
+      <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:9999px;flex-shrink:0;${chip}" data-tip="How well the app knows your true daily burn. It starts from a formula and learns from your actual weigh-ins and food logs — confidence rises with consistent logging.">${confidence} confidence</span>
     </div>
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px">
-      <div>
-        <p style="font-size:11px;margin:0 0 2px" class="text-muted-foreground">${onTrack?'Deficit if you finish on target':isDeficit?'Deficit so far today':'Surplus so far today'}</p>
-        <div style="display:flex;align-items:center;gap:8px">
-          ${trendIco}
-          <p style="font-size:32px;font-weight:700;letter-spacing:-.05em;line-height:1;margin:0;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="${paceCls}">${Math.abs(Math.round(onTrack?plannedDeficit:currentDeficit))}</p>
-          <span style="font-size:13px;font-weight:500" class="text-muted-foreground">cal</span>
-        </div>
-      </div>
-      <div style="text-align:right">
-        <p style="font-size:10px;margin:0 0 2px" class="text-muted-foreground">If every day looked like today${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
-        <p style="font-size:18px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:1.5" class="${paceCls}">${weeklyChange>0?'-':'+'}${Math.abs(weeklyChange).toFixed(1)}<span style="font-size:11px;font-weight:500;margin-left:2px" class="text-muted-foreground">lb/wk</span></p>
-      </div>
-    </div>
-    <div style="position:relative;height:6px;border-radius:9999px;overflow:visible;margin-bottom:32px" class="bg-muted">
-      <div style="position:absolute;top:-3px;display:flex;flex-direction:column;align-items:center;left:${Math.min(tdeePos,100)}%;transform:translateX(-50%)">
-        <div style="height:12px;width:2px;border-radius:9999px;background:hsl(var(--muted-foreground)/.5)"></div>
-        <span style="font-size:8px;margin-top:4px;white-space:nowrap" class="text-muted-foreground">Burn</span>
-      </div>
-      <div style="position:absolute;top:-4px;display:flex;flex-direction:column;align-items:center;left:${Math.min(targetPos,100)}%;transform:translateX(-50%)">
-        <div style="height:14px;width:2px;border-radius:9999px" class="bg-primary"></div>
-        <span style="font-size:8px;font-weight:500;margin-top:4px;white-space:nowrap" class="text-primary">Target</span>
-      </div>
-      <div class="bar-anim ${fillCls}" style="position:absolute;top:0;left:0;height:100%;border-radius:9999px;width:${Math.min(consumedPos,100)}%"></div>
-    </div>
-    <div style="display:flex;gap:8px" data-tip="Planned deficit: the gap your targets are built around. On pace for: the gap today's eating actually creates so far. Left to eat: calories until you hit today's target. All in calories — no plus/minus signs needed, the labels say which way.">
-      <div style="flex:1;background:hsl(var(--muted)/.5);border-radius:12px;padding:8px 12px;text-align:center">
-        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">Planned deficit</p>
-        <p style="font-size:14px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:21px" class="text-primary">${Math.round(Math.max(0,plannedDeficit))}</p>
-      </div>
-      <div style="flex:1;background:hsl(var(--muted)/.5);border-radius:12px;padding:8px 12px;text-align:center">
-        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">On pace for</p>
-        <p style="font-size:14px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:21px" class="${paceCls}">${Math.abs(Math.round(currentDeficit))}${isSurplus?' over':''}</p>
-      </div>
-      <div style="flex:1;background:hsl(var(--muted)/.5);border-radius:12px;padding:8px 12px;text-align:center">
-        <p style="font-size:9px;margin:0 0 2px" class="text-muted-foreground">Left to eat</p>
-        <p style="font-size:14px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:21px" class="${remaining>0?'text-foreground':'text-over'}">${remaining>0?Math.round(remaining):'Done'}</p>
-      </div>
-    </div>
+    <p style="font-size:11px;margin:6px 0 0;line-height:15px" class="${paceCls}">If every day looked like today: ${weeklyChange>0?"\u2212":"+"}${Math.abs(weeklyChange).toFixed(1)} lb/wk${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
   </div>`;
 }
 // MacroRing.tsx (size=76, r=34, stroke 5); colors — Index.tsx:232-234
@@ -2409,7 +2417,7 @@ function homePage(){
       <p class="apple-section" style="margin:0">Nutrition</p>
       <button data-act="viewmode" class="haptic text-primary" style="font-size:12px;font-weight:600;padding:4px 8px;margin:-4px;background:none;border:0;line-height:18px">${viewMode==='consumed'?'Remaining':'Consumed'}</button>
     </div>
-    ${calorieProgress(totals.calories,targets.calories,pbToday>0?`includes +${pbToday} from workouts`:"")}
+    ${calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday})}
     ${shiftOn&&targets.calories!==baseCals&&!pbToday?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
     ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
