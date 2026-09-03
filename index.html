@@ -1029,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-03.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-03.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3872,6 +3872,22 @@ function openRestaurantBuilder(meal,initialRestaurantId){
 }
 function openRestaurants(meal){openRestaurantBuilder(meal,null)} // legacy entry alias
 function closeRB(){if(rbEl){rbEl.remove();rbEl=null}RB.replaceId=null}
+// Keyboard pinning: when the iOS keyboard opens it SHIFTS the visual viewport, visually
+// shoving fixed overlays (and the restaurant sheet's header + search + top rows) up off
+// screen. Pin the overlay to the visual viewport instead — the sheet shrinks in place, the
+// keyboard overlays it, and the rows you filtered stay visible right under the search box.
+function rbPin(off,h){
+  if(!rbEl)return;
+  if(off>0||h<window.innerHeight-1){rbEl.style.top=off+"px";rbEl.style.height=h+"px";rbEl.style.bottom="auto"}
+  else{rbEl.style.top="";rbEl.style.height="";rbEl.style.bottom=""} // keyboard gone — back to full inset
+  if(document.scrollingElement&&document.scrollingElement.scrollTop)document.scrollingElement.scrollTop=0;
+}
+(function(){
+  const vv=window.visualViewport;if(!vv)return;
+  let raf=0;
+  const onv=()=>{if(!raf)raf=requestAnimationFrame(()=>{raf=0;rbPin(vv.offsetTop||0,Math.round(vv.height))})};
+  vv.addEventListener("resize",onv);vv.addEventListener("scroll",onv);
+})();
 
 function rbRender(keep){
   if(!rbEl)return;
@@ -3884,6 +3900,7 @@ function rbRender(keep){
       const q=f.value.trim().toLowerCase();let hits=0;
       panel.querySelectorAll(".rb-brand").forEach(b=>{const on=!q||(b.dataset.name||"").includes(q);b.style.display=on?"":"none";if(on)hits++});
       const none=panel.querySelector("#rbFindNone");if(none)none.style.display=hits?"none":"";
+      const sc=panel.querySelector(".rb-scroll");if(sc)sc.scrollTop=0; // matches live at the top — keep them in view
     });
   }
   else if(RB.restaurant.menuStyle==="item-select"||!RB.restaurant.modular)panel.innerHTML=rbItemSelHTML(); // DoorDash default: store -> item -> bag
