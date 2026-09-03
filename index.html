@@ -1029,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-02.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-03.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3338,6 +3338,99 @@ const RESTAURANTS_DB = [{"id":"chipotle","name":"Chipotle","logo":"🌯","color"
 // restaurantDatabase.ts:3082
 function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
 
+// ===== Additional chains (researched 2026-09-03 via live web research) =====
+// Kung Fu Tea — values from the chain's own published nutrition (official Menu & Nutrition
+// PDFs + its Nutritionix-powered per-item data). Cold drinks at 100% (standard) sugar,
+// WITHOUT toppings — the two exceptions are the Milk Strike line (published complete, its
+// bubbles already counted; names say so) and any Milk Cap drink (cap counted). Sizes:
+// Medium 16oz / Large 24oz. est:1 -> "Partly estimated" note on the item sheet (a size or
+// macro was derived — e.g. Large reconstructed, PDF calories-only, macros from composition).
+// Toppings are per Medium-drink serving, cross-checked across 2-3 sources; toppings KFT
+// doesn't offer (mini bubbles, plain coffee/konjac jelly, ice cream, lychee popping) are
+// deliberately absent. Drinks with no credible published number were omitted, not invented.
+(function(){
+  const M=(c,p,cb,f)=>({calories:c,protein:p,carbs:cb,fat:f});
+  // [name, category, medCal,p,c,f, lgCal,p,c,f (lgCal 0 = medium only), est]
+  const D=[
+    ["Kung Fu Milk Tea","milk-tea",313,1,73,3,447,2,103,4,1],
+    ["Kung Fu Green Milk Tea","milk-tea",313,1,73,3,447,2,103,4,1],
+    ["Kung Fu Oolong Milk Tea","milk-tea",313,1,73,3,447,2,103,4,1],
+    ["Thai Milk Tea","milk-tea",313,1,73,3,447,2,103,4,1],
+    ["Taro Milk Tea","milk-tea",360,1,85,3,460,1,108,4,0],
+    ["Coconut Milk Tea","milk-tea",460,2,62,24,670,2,91,34,0],
+    ["Honey Milk Tea","milk-tea",330,1,74,3,480,2,109,4,0],
+    ["Coffee Milk Tea","milk-tea",320,1,73,3,450,2,103,4,1],
+    ["Rosehip Milk Tea","milk-tea",260,1,60,2,340,1,80,3,0],
+    ["Matcha Milk Strike (bubbles included)","milk-strike",414,13,64,13,552,17,85,17,1],
+    ["Cocoa Milk Strike (bubbles included)","milk-strike",360,11,55,11,490,15,75,15,1],
+    ["Kung Fu Black Tea","classic-tea",150,0,38,0,190,0,48,0,1],
+    ["Kung Fu Green Tea","classic-tea",150,0,38,0,190,0,48,0,1],
+    ["Kung Fu Oolong Tea","classic-tea",150,0,38,0,190,0,48,0,1],
+    ["Honey Black Tea","classic-tea",54,0,14,0,65,0,16,0,1],
+    ["Honey Green Tea","classic-tea",54,0,14,0,65,0,16,0,1],
+    ["Honey Oolong Tea","classic-tea",54,0,14,0,65,0,16,0,1],
+    ["Winter Melon Tea","classic-tea",38,0,10,0,52,0,13,0,1],
+    ["Longan Jujube Tea","punch",82,0,21,0,122,0,31,0,1],
+    ["Passion Fruit Green Tea","punch",160,0,40,0,205,0,51,0,1],
+    ["Passion Fruit Punch","punch",182,0,46,0,240,0,60,0,1],
+    ["Mango Green Tea","punch",131,0,33,0,183,0,46,0,1],
+    ["Peach Oolong Tea","punch",60,0,15,0,0,0,0,0,1],
+    ["Lychee Punch","punch",208,0,52,0,290,0,72,0,1],
+    ["Grapefruit Green Tea","punch",52,0,13,0,65,0,16,0,1],
+    ["Strawberry Lemonade","punch",129,0,32,0,194,0,49,0,1],
+    ["Mango Slush","slush",270,0,67,0,380,0,95,0,1],
+    ["Passion Fruit Slush","slush",180,0,45,0,250,0,62,0,1],
+    ["Taro Slush","slush",494,1,118,3,603,1,144,4,1],
+    ["Oreo Slush","slush",480,6,88,12,620,8,114,15,1],
+    ["Strawberry Milk Slush","slush",360,3,76,4,530,4,112,6,1],
+    ["Matcha Red Bean Slush","slush",491,6,100,6,738,9,150,9,1],
+    ["Mocha Slush","slush",250,3,48,5,400,5,77,8,1],
+    ["Yogurt Green Tea","yogurt",100,1,23,0,150,2,34,0,1],
+    ["Coffee Latte","espresso",84,4,12,2,152,7,22,4,1],
+    ["Caramel Macchiato","espresso",162,4,28,4,209,5,36,5,1],
+    ["Italian Mocha","espresso",151,4,26,4,253,7,43,7,1],
+  ];
+  // toppings: [name, cal,p,c,f, est] — per serving in a Medium drink
+  const T=[
+    ["Bubbles (Tapioca)",199,0,49,0,0],
+    ["Crystal Bubbles",54,0,13,0,0],
+    ["Nata Jelly",79,0,20,0,0],
+    ["Herbal Jelly",111,0,27,0,1],
+    ["Aloe Jelly",42,0,11,0,1],
+    ["Red Bean",125,4,27,0,1],
+    ["Pudding",87,1,16,2,1],
+    ["Mango Popping Bubbles",115,0,29,0,1],
+    ["Oreo Crumbs",93,1,14,4,1],
+    ["Caramel Coffee Jelly",204,0,50,0,1],
+    ["Milk Cap",216,2,14,17,1],
+  ];
+  const comps=[];
+  D.forEach((d,i)=>{
+    const it={id:"kft-d"+i,name:d[0],category:d[1],macros:M(d[2],d[3],d[4],d[5]),defaultSizeId:"medium",
+      sizeVariants:[{sizeId:"medium",sizeName:"Medium (16oz)",macros:M(d[2],d[3],d[4],d[5])}]};
+    if(d[6])it.sizeVariants.push({sizeId:"large",sizeName:"Large (24oz)",macros:M(d[6],d[7],d[8],d[9])});
+    if(d[10])it.est=true;
+    comps.push(it);
+  });
+  T.forEach((t,i)=>{
+    const it={id:"kft-t"+i,name:t[0],category:"toppings",macros:M(t[1],t[2],t[3],t[4]),isModifier:true,perUnit:"per serving"};
+    if(t[5])it.est=true;
+    comps.push(it);
+  });
+  RESTAURANTS_DB.push({id:"kungfutea",name:"Kung Fu Tea",logo:"🧋",color:"#C41425",modular:false,
+    menuStyle:"item-select",
+    categories:["milk-tea","milk-strike","classic-tea","punch","slush","yogurt","espresso"],
+    categoryConfig:{
+      "milk-tea":{name:"milk-tea",displayName:"Milk Tea",selectMode:"multi"},
+      "milk-strike":{name:"milk-strike",displayName:"Milk Strike",selectMode:"multi"},
+      "classic-tea":{name:"classic-tea",displayName:"Classic Tea",selectMode:"multi"},
+      "punch":{name:"punch",displayName:"Punch",selectMode:"multi"},
+      "slush":{name:"slush",displayName:"Slush",selectMode:"multi"},
+      "yogurt":{name:"yogurt",displayName:"Yogurt",selectMode:"multi"},
+      "espresso":{name:"espresso",displayName:"KF Caffé",selectMode:"multi"}},
+    components:comps});
+})();
+
 // ===== Seasonal menu refresh layer (verified 2026-09-01 via live web research) =====
 // Rows: [name, category, subcategory|0, kcal, protein, carbs, fat, est?] — standard/
 // medium size. Values from published chain nutrition where available (transcribed by
@@ -3605,7 +3698,8 @@ const IC_TRASH14=LUCIDE(P_TRASH2,2,14);
 const RB_PORTION_LABELS={light:"Light",regular:"Regular",double:"Double",half:"Half"};
 const RB_PORTION_CLS={light:"pl",regular:"pr",double:"pd",half:"ph"};
 // isDrinkCategory hard-codes Starbucks slugs (StarbucksItemSelect.tsx:182) — Peet's/TR get 🔥 header
-const RB_DRINK_CATS=["hot-coffees","cold-coffees","frappuccinos","refreshers","hot-teas","cold-teas","more-drinks"];
+const RB_DRINK_CATS=["hot-coffees","cold-coffees","frappuccinos","refreshers","hot-teas","cold-teas","more-drinks",
+  "milk-tea","classic-tea","punch","milk-strike","slush","milk-cap","espresso","yogurt"]; // Kung Fu Tea lines
 
 let rbEl=null;
 const RB={meal:"lunch",restaurant:null,items:[],format:null,
@@ -3731,7 +3825,9 @@ const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures +
   const t=cfg.cust&&cfg.cust[it.category];
   if(t){RB_CUST_TYPES[t].forEach(o=>push(RB_MK(o)));if(cfg.custPlus)cfg.custPlus.forEach(push);}
   const coffee=RB_COFFEE_CATS.has(it.category)||RB_COFFEE_RX.test(it.name);
-  if(coffee){
+  // Kung Fu Tea gets NO generic coffee fixings: its researched topping roster is the real,
+  // complete add-on list (boba-shop model — sugar levels, not cream/sugar packets)
+  if(coffee&&RB.restaurant.id!=="kungfutea"){
     RB_FIX_DRINK.forEach(o=>push(RB_MK(o)));
     (RB_COND_DRINK[RB.restaurant.id]||[]).forEach(o=>push(RB_MK(o)));
   }
