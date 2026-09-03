@@ -1029,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-03.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-03.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -5417,11 +5417,16 @@ function weightPlanSection(){
     bodyFatEstimate:ep.bodyFatEstimate,exerciseFrequency:ep.exerciseFrequency,
     actualWeightData:tr,calorieHistory,calendarEvents:events});
   wpRecActions=[];
-  if(!plan)return `<div class="bg-card" style="border-radius:12px;border:1px solid hsl(var(--primary)/.2);padding:20px;text-align:center">
+  if(!plan){
+    // the ONLY way here is a missing goal weight on a cut/bulk — say exactly that,
+    // acknowledge what IS set, and jump straight to the field (not just "go to Settings")
+    const goalWord=ep.goal==='cut'?'Cutting':ep.goal==='bulk'?'Bulking':String(ep.goal||'');
+    return `<div class="bg-card" style="border-radius:12px;border:1px solid hsl(var(--primary)/.2);padding:20px;text-align:center">
     <div style="width:40px;height:40px;border-radius:9999px;background:hsl(var(--primary)/.1);display:flex;align-items:center;justify-content:center;margin:0 auto 12px">${LUCIDE_C(P_TARGET,2,20,'text-primary')}</div>
-    <p style="font-size:14px;font-weight:600;margin:0 0 4px;line-height:20px" class="text-foreground">Generate Your Weight Plan</p>
-    <p style="font-size:12px;line-height:1.625;margin:0 0 16px" class="text-muted-foreground">Set a goal weight and choose "Cut" or "Bulk" in Settings to generate a personalized plan with projections, timelines, and coaching recommendations.</p>
-    <button data-act="tab" data-t="settings" class="haptic" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;border:0;color:hsl(var(--primary));background:hsl(var(--primary)/.1);border-radius:8px;padding:8px 16px;line-height:16px">${LUCIDE(NAV_PATHS.settings,2,14)} Go to Settings</button></div>`;
+    <p style="font-size:14px;font-weight:600;margin:0 0 4px;line-height:20px" class="text-foreground">One number missing: your goal weight</p>
+    <p style="font-size:12px;line-height:1.625;margin:0 0 16px" class="text-muted-foreground">${goalWord} at ${ep.targetCalories} cal is set ✓ — the plan just needs the finish line. Add your goal weight and the projection, timeline, and recommendations generate instantly.</p>
+    <button data-act="gogoalweight" class="haptic" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border:0;color:hsl(var(--primary-foreground));background:hsl(var(--primary));border-radius:8px;padding:8px 16px;line-height:16px">${LUCIDE(P_TARGET,2,14)} Add goal weight</button></div>`;
+  }
   const ZW=4; // ZOOM_WEEKS
   wpMaxZoom=Math.max(0,plan.projection.length-ZW-1);
   if(wpZoomOffset>wpMaxZoom)wpZoomOffset=wpMaxZoom;
@@ -6837,6 +6842,12 @@ document.addEventListener("click",e=>{
     });
   }
   else if(act==="goprog"){tab="progress";render()}
+  else if(act==="gogoalweight"){ // from the Coach empty state: land ON the field, focused
+    tab="settings";render();          // remount resets settingsOpen to "body" —
+    settingsOpen="goal";render();     // so open the Goal section on a same-tab re-render
+    requestAnimationFrame(()=>{const i=document.querySelector('[data-set="goalWeight"]');
+      if(i){i.scrollIntoView({block:"center"});i.focus()}});
+  }
   else if(act==="restday"){ // Workout.tsx:207-215 markRestDay — toggles TODAY, with toasts
     const td=localDateStr(),i=restDays.indexOf(td);
     if(i>=0){restDays.splice(i,1);toast("Rest day removed")}
@@ -6968,6 +6979,12 @@ document.addEventListener("change",e=>{
     save(steps?"manual_steps":"manual_active_calories",map);
     rerenderSettings();return}
   const el=e.target.closest("[data-set]");if(!el)return;
+  applySetField(el);
+  rerenderSettings(); // refresh derived UI (age caption, height label, calculated targets card)
+  // NOTE: no coached-mode auto-apply — the real app never applies targets on settings changes
+  // (Coach.tsx renders identical Apply flows in coached and collaborative modes).
+});
+function applySetField(el){
   const k=el.dataset.set;
   if(k==="hFt"||k==="hIn"){ // feet+inches dual inputs -> canonical heightCm (Settings.tsx:158-176)
     const wrap=el.closest("[data-hwrap]");
@@ -6977,7 +6994,7 @@ document.addEventListener("change",e=>{
   }
   else if(k==="startWeight"||k==="goalWeight")profile[k]=parseFloat(el.value)||undefined; // real: parseFloat(...) || undefined
   else if(el.type==="range")profile[k]=+el.value;                                         // bodyFatEstimate / exFreq sliders
-  else if(k==="bodyFatEstimate")profile[k]=Math.min(50,Math.max(5,parseInt(el.value)||20)); // typed % clamps to the slider's 5–50 range
+  else if(k==="bodyFatEstimate")profile[k]=Math.min(50,Math.max(5,parseInt(el.value)||20)); // typed % clamps to the slider's 5-50 range
   else if(el.type==="number")profile[k]=parseInt(el.value)||0;                            // heightCm, dailySteps, manual targets
   else{
     const v=el.value;
@@ -6985,9 +7002,15 @@ document.addEventListener("change",e=>{
     profile[k]=v;
   }
   save("profile",profile);
-  rerenderSettings(); // refresh derived UI (age caption, height label, calculated targets card)
-  // NOTE: no coached-mode auto-apply — the real app never applies targets on settings changes
-  // (Coach.tsx renders identical Apply flows in coached and collaborative modes).
+}
+// Commit settings fields AS YOU TYPE, not only on blur. iOS doesn't blur an input when you
+// tap a nav button, so the change event never fired and the typed value (classically the
+// goal weight, entered last) silently vanished on the next render. No re-render here —
+// rebuilding the field mid-typing would close the keyboard.
+document.addEventListener("input",e=>{
+  const el=e.target.closest&&e.target.closest("[data-set]");
+  if(!el||el.type==="range")return; // sliders commit on release (change) — skip drag spam
+  applySetField(el);
 });
 document.addEventListener("input",e=>{
   // Settings sliders — live readout while dragging (full refresh happens on 'change')
