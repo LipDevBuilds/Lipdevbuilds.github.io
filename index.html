@@ -1029,7 +1029,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-03.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-03.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2422,28 +2422,25 @@ function homePage(){
     ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
   </div>
-  <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),isToday,isToday)}</div>
-  ${isToday?`<div class="anim apple-card" style="animation-delay:.2s;margin-top:16px;padding:16px">
+  <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),true,true)}</div>
+  <div class="anim apple-card" style="animation-delay:.2s;margin-top:16px;padding:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_SCALE,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Weight</p></div>
       ${latest?`<div style="display:flex;align-items:center;gap:4px;font-size:12px;line-height:16px">${trendIcon}<span class="${weeklyChange>0?'text-warning':weeklyChange<0?'text-success':'text-muted-foreground'}">${weeklyChange>0?'+':''}${weeklyChange} ${profile.weightUnit}/wk</span></div>`:''}
     </div>
-    ${latest?`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    ${isToday&&latest?`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div>
         <p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;letter-spacing:-.025em;margin:0;line-height:28px" class="text-foreground">${latest.weight} ${profile.weightUnit}</p>
         ${latest.trend?`<p style="font-size:10px;margin:0" class="text-muted-foreground">Trend: ${latest.trend} ${profile.weightUnit}${tipI("A smoothed average of your recent weigh-ins. Day-to-day scale readings swing with water and food in transit — the trend line is your real weight moving underneath that noise, so the coach uses it instead of single readings.")}</p>`:''}
       </div>
       <p style="font-size:10px;margin:0" class="text-muted-foreground">${fmtDate(latest.date)}</p>
     </div>`:''}
+    ${!isToday?`<p style="font-size:20px;font-weight:700;margin:0 0 8px;line-height:28px" class="text-foreground">${dayWeightEntry?`${dayWeightEntry.weight} ${profile.weightUnit}`:`<span class="text-muted-foreground" style="font-size:13px;font-weight:500">No weigh-in for ${fmtDate(selDate)} — add one below</span>`}</p>`:''}
     <div style="display:flex;gap:8px">
-      <input id="wIn" type="number" placeholder="Today's weight (${profile.weightUnit})" class="bg-muted text-foreground" style="flex:1;border-radius:12px;padding:10px 12px;font-size:16px;border:0;outline:none;line-height:24px">
-      <button data-act="logweight" class="bg-primary haptic glow-primary" style="color:hsl(var(--primary-foreground));padding:10px 20px;border-radius:12px;font-size:14px;font-weight:600;border:0;line-height:21px">Log</button>
+      <input id="wIn" type="number" placeholder="${isToday?"Today's":fmtDate(selDate)} weight (${profile.weightUnit})" class="bg-muted text-foreground" style="flex:1;border-radius:12px;padding:10px 12px;font-size:16px;border:0;outline:none;line-height:24px">
+      <button data-act="logweight" class="bg-primary haptic glow-primary" style="color:hsl(var(--primary-foreground));padding:10px 20px;border-radius:12px;font-size:14px;font-weight:600;border:0;line-height:21px">${!isToday&&dayWeightEntry?"Update":"Log"}</button>
     </div>
-  </div>`:''}
-  ${!isToday&&dayWeightEntry?`<div class="anim bg-card" style="animation-delay:.2s;margin-top:16px;border-radius:16px;padding:16px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${LUCIDE_C(P_SCALE,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Weight</p></div>
-    <p style="font-size:20px;font-weight:700;margin:0;line-height:28px" class="text-foreground">${dayWeightEntry.weight} ${profile.weightUnit}</p>
-  </div>`:''}
+  </div>
   ${dayWo.length?`<div class="anim bg-card" style="animation-delay:.22s;margin-top:16px;border-radius:16px;padding:16px">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_ACTIVITY,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Workout</p></div>
@@ -6326,6 +6323,8 @@ function render(){
   // FoodLog remounts re-seed activeMeal by time of day and reset per-meal expand state (FoodLog.tsx:49, MealSection.tsx:143);
   // each page holds its own useState(localDateStr()) so the selected day never leaks across tabs (Index.tsx:28, FoodLog.tsx:42)
   if(tab==="food"&&renderedTab!=="food"){activeMeal=mealByTime();mealOpen={};mealPrevN={};selDate=localDateStr()}
+  // Progress has no day strip — its Log Weight always means today
+  if(tab==="progress"&&renderedTab!=="progress")selDate=localDateStr();
   // Calendar remounts reset selectedDate/viewMonth like fresh React state (Calendar.tsx:32-36)
   if(tab==="calendar"&&renderedTab!=="calendar"){calSel=localDateStr();const cn=new Date();calView={year:cn.getFullYear(),month:cn.getMonth()}}
   // SavedMeals remounts clear the inline-rename state
@@ -6419,7 +6418,7 @@ document.addEventListener("click",e=>{
     // number in the user's display unit (no lb<->kg conversion anywhere), upserted for TODAY;
     // no toast in the real app, and render() rebuilds the page so the input clears.
     const w=parseFloat($("#wIn").value);if(!w||w<=0)return;
-    const d=localDateStr();
+    const d=selDate; // logs to the SELECTED day — forgot-to-weigh backfills work from the day strip
     const e=weights.find(x=>x.date===d);
     if(e)e.weight=w;else{weights.push({date:d,weight:w});weights.sort((a,b)=>a.date<b.date?-1:1)}
     saveWeights();render();
@@ -6520,7 +6519,8 @@ document.addEventListener("click",e=>{
     if(fsSnap)setEntrySrc(nid,fsSnap);
     saveLog();rememberPortion(f.id,a,FS.unit); // next time this food defaults to this portion
     const mealCal=Math.round(foodLog.filter(e=>e.date===selDate&&e.meal===FS.meal).reduce((s,e)=>s+e.macros.calories,0));
-    toast(`Logged '${f.name}' · ${FS_MEAL_LABELS[FS.meal]} now ${mealCal} cal`);
+    const dayTag=selDate===localDateStr()?"":fmtDate(selDate)+" "; // make backfills unmistakable
+    toast(`Logged '${f.name}' · ${dayTag}${FS_MEAL_LABELS[FS.meal]} now ${mealCal} cal`);
     // stay in context for chain-logging: return to whichever list you came from, query & results intact
     FS.selected=null;fsRender();
   }
@@ -7026,8 +7026,9 @@ document.addEventListener("input",e=>{
 $("#fab").innerHTML=IC_PLUS; // lucide Plus, size 26, stroke-width 2.5
 $("#fab").addEventListener("click",()=>{
   // The + always means "log food" — same outcome from Home and Food, so the button
-  // teaches one thing. (It used to merely switch tabs from Home.)
-  if(tab==="home"){tab="food";render();openSearch(mealByTime())}
+  // teaches one thing. If a past day is selected on Home, the log targets THAT day
+  // (the Food tab's remount would otherwise silently reset the selection to today).
+  if(tab==="home"){const d=selDate;tab="food";render();if(selDate!==d){selDate=d;render()}openSearch(mealByTime())}
   else openSearch(activeMeal);          // FoodLog.tsx:147-148 — Food FAB opens search with page state
 });
 // Auth submit — real Supabase email/password. Errors render inline (no re-render, so
