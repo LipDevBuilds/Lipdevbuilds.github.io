@@ -1049,7 +1049,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-04.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-04.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3573,7 +3573,24 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
   const DRK=["cc-dirty-soda","cc-coffee","cc-frappe","cc-tea","cc-lemonade","cc-energy","cc-smoothie","cc-specialty"];
   const MILKC=["cc-coffee","cc-tea","cc-frappe","cc-specialty","cc-smoothie"];
   const DTR=DRK.concat("cc-treats");
+  // Rows: [name,cal,p,c,f,cats,choiceGroup?,isDefault?]. Choice groups mirror the chain's
+  // online-ordering flow (Size → Milk → Temperature/Style → Base → open add-ons); milk
+  // deltas are vs the whole-milk default per ~8 oz portion.
   const T=[
+    ["Whole Milk",0,0,0,0,MILKC,"Milk",1],
+    ["Oat Milk",-30,-6,4,-3,MILKC,"Milk"],
+    ["Almond Milk",-120,-7,-11,-6,MILKC,"Milk"],
+    ["Sweet Cream",210,-1,7,20,MILKC,"Milk"],
+    ["Half & Half",170,-1,-3,20,MILKC,"Milk"],
+    ["Horchata",-10,-6,14,-5,MILKC,"Milk"],
+    ["Iced",0,0,0,0,["cc-coffee","cc-tea"],"Temperature",1],
+    ["Hot",0,0,0,0,["cc-coffee","cc-tea"],"Temperature"],
+    ["Iced",0,0,0,0,["cc-lemonade","cc-energy","cc-treats"],"Iced or Blended",1],
+    ["Blended",0,0,0,0,["cc-lemonade","cc-energy","cc-treats"],"Iced or Blended"],
+    ["Water Base",0,0,0,0,["cc-energy"],"Base",1],
+    ["Green Tea Base",0,0,0,0,["cc-energy"],"Base"],
+    ["Lemonade Base",150,0,40,0,["cc-energy"],"Base"],
+    ["Sugar-Free Lemonade Base",0,0,0,0,["cc-energy"],"Base"],
     ["Popping Boba (Strawberry)",90,0,22,0,DTR],
     ["Popping Boba (Mango)",90,0,22,0,DTR],
     ["Brown Sugar Boba (chewy)",200,0,50,0,DTR],
@@ -3594,15 +3611,6 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
     ["Cinnamon Sugar",25,0,6,0,["cc-treats","cc-food"]],
     ["Cheese Dip",110,3,4,9,["cc-food"]],
     ["Protein Scoop",80,13,3,1.5,["cc-smoothie","cc-coffee","cc-frappe","cc-treats"]], // owner-confirmed 13 g protein per scoop
-    ["Served Hot (no ice)",0,0,0,0,["cc-coffee","cc-tea"]],
-    ["Blended (instead of iced)",0,0,0,0,["cc-lemonade","cc-energy","cc-treats"]],
-    ["Lemonade Base (ReVibe)",150,0,40,0,["cc-energy"]],
-    ["Base: Water / Green Tea / SF Lemonade",0,0,0,0,["cc-energy"]],
-    ["Oat Milk instead of Whole",-30,-6,4,-3,MILKC],
-    ["Almond Milk instead of Whole",-120,-7,-11,-6,MILKC],
-    ["Half & Half instead of Milk",170,-1,-3,20,MILKC],
-    ["Sweet Cream instead of Milk",210,-1,7,20,MILKC],
-    ["Horchata instead of Milk",-10,-6,14,-5,MILKC],
   ];
   const comps=[];
   const R5=v=>Math.round(v/5)*5,R1=v=>Math.round(v*10)/10;
@@ -3624,6 +3632,7 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
   T.forEach((t,i)=>{
     const it={id:"cc-t"+i,name:t[0],category:"cc-addons",macros:M(t[1],t[2],t[3],t[4]),isModifier:true,perUnit:"per serving",est:true};
     if(t[5])it.forCats=t[5];
+    if(t[6]){it.choiceGroup=t[6];if(t[7])it.groupDefault=true}
     comps.push(it);
   });
   RESTAURANTS_DB.push({id:"candycloud",name:"Candy Cloud",logo:"☁️",color:"#F27DB6",modular:false,
@@ -4582,7 +4591,24 @@ function rbISBodyHTML(){
     const mods=rbISModComps();
     if(mods.length){
       const isDrink=RB_DRINK_CATS.includes(RB.cat);
-      h+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">${isDrink?"☕ Customize Your Drink":"🔥 Add-Ons &amp; Extras"}</h4><div style="display:flex;flex-direction:column;gap:4px">${mods.map(comp=>rbStepRow(comp,RB.mods.filter(m=>m.component.id===comp.id).length,rbModSub(comp),"rbmodp","rbmodm",false,false)).join("")}</div></div>`;
+      // Ordering-app layout: single-select choice groups first (Size above → Milk →
+      // Temperature → Base …, in data order), then the open add-on steppers — mirrors
+      // the chain's own online-ordering flow.
+      const groups=[],byG={},loose=[];
+      mods.forEach(c=>{
+        if(c.choiceGroup){if(!byG[c.choiceGroup]){byG[c.choiceGroup]=[];groups.push(c.choiceGroup)}byG[c.choiceGroup].push(c)}
+        else loose.push(c);
+      });
+      groups.forEach(g=>{
+        const opts=byG[g];
+        const picked=opts.find(c=>RB.mods.some(m=>m.component.id===c.id));
+        h+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">${esc(g)}</h4><div style="display:flex;flex-direction:column;gap:4px">${opts.map(c=>{
+          const on=picked?picked.id===c.id:!!c.groupDefault;
+          const d=c.macros.calories;
+          const sub=c.groupDefault?"included":(d===0?"no cal change":`${d>0?"+":""}${d} cal`);
+          return `<button class="rb-modrow${on?" on":""} haptic" data-act="rbcgpick" data-c="${c.id}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${sub}</p></div>${on?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`}).join("")}</div></div>`;
+      });
+      if(loose.length)h+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">${isDrink?"☕ Customize Your Drink":"🔥 Add-Ons &amp; Extras"}</h4><div style="display:flex;flex-direction:column;gap:4px">${loose.map(comp=>rbStepRow(comp,RB.mods.filter(m=>m.component.id===comp.id).length,rbModSub(comp),"rbmodp","rbmodm",false,false)).join("")}</div></div>`;
     }
     h+=`</div>`;
   }else if(hasSubs&&!RB.subcat){
@@ -4763,6 +4789,12 @@ function rbAction(act,el){
     case"rbcombo":{RB.combo=el.dataset.v==="1";if(!RB.combo){RB.comboSide=null;RB.comboDrink=null}rbRender(true);return}
     case"rbcbside":{const c=R.components.find(x=>x.id===el.dataset.c);RB.comboSide=RB.comboSide&&RB.comboSide.id===el.dataset.c?null:c;rbRender(true);return}
 
+    case"rbcgpick":{ // single-select choice group (Milk / Temperature / Base …): picking replaces the group's selection
+      const c=RB.restaurant.components.find(x=>x.id===el.dataset.c);if(!c)return;
+      const grp=RB.restaurant.components.filter(x=>x.choiceGroup===c.choiceGroup).map(x=>x.id);
+      RB.mods=RB.mods.filter(m=>!grp.includes(m.component.id));
+      if(!c.groupDefault)RB.mods.push({component:c});
+      rbRender(true);return}
     case"rbcbcust":{const opts=rbCustFor()||[];const i=RB.custom.findIndex(x=>x.name===el.dataset.n);
       if(i>=0)RB.custom.splice(i,1);else{const o=opts.find(x=>x.name===el.dataset.n);if(o)RB.custom.push(o)}rbRender(true);return}
     case"rbcbextra":{const i=RB.extras.findIndex(e=>e.id===el.dataset.c);if(i>=0)RB.extras.splice(i,1);else{const c=R.components.find(x=>x.id===el.dataset.c);if(c)RB.extras.push(c)}rbRender(true);return}
