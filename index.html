@@ -1049,7 +1049,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-03.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-04.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3456,6 +3456,123 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
     components:comps});
 })();
 
+// ===== Candy Cloud (Candy Cloud Company, candycloudcompany.com) =====
+// Rockford, IL–founded dirty-soda/dessert-drink franchise (14 locations across IL/WI/OH/TN/FL/TX).
+// Menu verified 2026-09-04 across DoorDash/UberEats/order.online storefronts for 8+ locations,
+// official-site snippets, and the brand's Fall 2026 launch posts. The chain publishes NO
+// nutrition data, so EVERY macro row is derived from manufacturer/published component data
+// (12 oz soda label values, Monin purée labels, Coco Lopez coconut cream, Torani syrups,
+// Bossen popping boba spec, Starbucks-published cold foam/frappe/matcha/chai analogs,
+// Culver's/DQ soft-serve, Dunkin munchkins, published grilled-cheese comparables) assembled
+// per each item's listed ingredients — all items carry est so the sheet says so. Drinks are
+// canned-to-order; 16 oz standard assumed (not published). Lattes/espressos: Regular=2 shots,
+// Large=3 shots (published on menus).
+(function(){
+  const M=(c,p,cb,f)=>({calories:c,protein:p,carbs:cb,fat:f});
+  // [name, category, cal, p, c, f, lgCal, lgP, lgC, lgF] — lgCal 0 = single size
+  const D=[
+    ["Cotton Candy Dirty Soda","cc-dirty-soda",270,1,65,3,0,0,0,0],
+    ["Star Berry Dirty Soda","cc-dirty-soda",345,1,74,6,0,0,0,0],
+    ["Dr. Ube","cc-dirty-soda",310,1,71,4,0,0,0,0],
+    ["Strawberry Cloud Pop","cc-dirty-soda",340,1,78,4,0,0,0,0],
+    ["Cherry Lime Fizz","cc-dirty-soda",225,0,59,0,0,0,0,0],
+    ["Coconut Cream Dirty Soda","cc-dirty-soda",295,1,61,6,0,0,0,0],
+    ["Peach Cream Dirty Soda","cc-dirty-soda",310,1,71,4,0,0,0,0],
+    ["Brown Sugar Cream Dirty Soda","cc-dirty-soda",275,1,62,4,0,0,0,0],
+    ["Build Your Own Dirty Soda (soda base)","cc-dirty-soda",150,0,40,0,0,0,0,0],
+    ["Cloud Coffee","cc-coffee",140,3,23,3,0,0,0,0],
+    ["Build Your Own Latte","cc-coffee",240,8,33,8,300,10,41,10],
+    ["Shaken Espresso","cc-coffee",160,2,19,7,220,3,26,9],
+    ["Brown Sugar Shaken Espresso","cc-coffee",200,3,26,9,260,4,33,12],
+    ["Vanilla Bean Cloud Latte","cc-coffee",325,9,41,14,385,11,49,16],
+    ["Skinny Vanilla Latte","cc-coffee",100,9,13,1,110,10,14,1],
+    ["Mocha Cookie Crumble Frappe","cc-frappe",480,6,64,22,0,0,0,0],
+    ["Black Tea Latte","cc-tea",230,8,32,8,0,0,0,0],
+    ["Iced Chai Latte","cc-tea",240,6,45,4,0,0,0,0],
+    ["Green Tea Lemonade","cc-tea",70,0,18,0,0,0,0,0],
+    ["Black Tea + Skinny Lemonade","cc-tea",5,0,1,0,0,0,0,0],
+    ["Iced Matcha Latte","cc-tea",200,7,28,5,0,0,0,0],
+    ["Strawberry Matcha Latte","cc-tea",330,7,56,5,0,0,0,0],
+    ["Blueberry Matcha","cc-tea",300,7,53,5,0,0,0,0],
+    ["House-Made Lemonade","cc-lemonade",150,0,40,0,0,0,0,0],
+    ["Skinny Lemonade (sugar-free)","cc-lemonade",5,0,1,0,0,0,0,0],
+    ["Strawberry Lemonade","cc-lemonade",260,0,67,0,0,0,0,0],
+    ["Blue Coconut Lemonade (with popping boba)","cc-lemonade",370,0,83,5,0,0,0,0],
+    ["Butterfly Lavender Lemonade","cc-lemonade",230,0,60,0,0,0,0,0],
+    ["Mangonade","cc-lemonade",260,0,66,0,0,0,0,0],
+    ["Mango Dragonfruit ReVibe","cc-energy",140,0,35,0,0,0,0,0],
+    ["Peach ReVibe","cc-energy",140,0,35,0,0,0,0,0],
+    ["Skinny Strawberry ReVibe","cc-energy",10,0,2,0,0,0,0,0],
+    ["Skinny Blueberry Açaí ReVibe","cc-energy",10,0,2,0,0,0,0,0],
+    ["Blue Razz White Chocolate ReVibe","cc-energy",230,1,47,5,0,0,0,0],
+    ["Strawberry Banana Smoothie","cc-smoothie",280,2,68,1,0,0,0,0],
+    ["Berry Smoothie","cc-smoothie",260,2,63,1,0,0,0,0],
+    ["Mango Smoothie","cc-smoothie",280,2,68,1,0,0,0,0],
+    ["Horchata (48-Hour Brew)","cc-specialty",250,5,45,6,0,0,0,0],
+    ["Purple Potion (Ube Latte)","cc-specialty",270,8,42,8,0,0,0,0],
+    ["Strawberries N' Cream","cc-specialty",350,10,55,10,0,0,0,0],
+    ["Cotton Candy Shake","cc-treats",700,11,75,42,0,0,0,0],
+    ["Create-Your-Own Shake (vanilla base)","cc-treats",570,11,57,34,0,0,0,0],
+    ["Cookie Butter Dream","cc-treats",790,13,82,47,0,0,0,0],
+    ["Birthday Cake Layered Ice Cream","cc-treats",530,9,80,17,0,0,0,0],
+    ["Dirt Pie Layered Ice Cream","cc-treats",500,9,77,17,0,0,0,0],
+    ["Tropical Burst","cc-treats",540,8,102,11,0,0,0,0],
+    ["Create-Your-Own Layered Ice Cream (base)","cc-treats",350,8,55,11,0,0,0,0],
+    ["Pepperoni Melt","cc-food",660,26,48,40,0,0,0,0],
+    ["Jalapeño Popper Melt","cc-food",690,24,52,42,0,0,0,0],
+    ["Garlic Parm Grilled Cheese","cc-food",590,22,48,34,0,0,0,0],
+    ["Bacon, Egg & Cheese Melt","cc-food",560,24,44,32,0,0,0,0],
+    ["Cinnamon Sugar Donut Bites","cc-food",400,6,52,18,0,0,0,0],
+    ["Garlic Parmesan Pretzel Bites","cc-food",480,10,60,20,0,0,0,0],
+    ["Cake Pop","cc-food",170,2,23,8,0,0,0,0],
+  ];
+  // add-ons/toppings (their own roster — cold foams, bobas, purées; attach on every item sheet)
+  const T=[
+    ["Popping Boba (Strawberry)",90,0,22,0],
+    ["Popping Boba (Mango)",90,0,22,0],
+    ["Tapioca Boba",200,0,50,0],
+    ["Extra Espresso Shot",5,0,1,0],
+    ["Vanilla Cold Foam",105,1,14,6],
+    ["Cotton Candy Foam",90,1,12,4],
+    ["Strawberry Cold Foam",110,1,15,6],
+    ["Marshmallow Cream",50,0,12,1],
+    ["Whipped Cream",110,1,5,11],
+    ["Flavor Syrup (1 oz)",80,0,20,0],
+    ["Sugar-Free Syrup",0,0,0,0],
+    ["Fruit Purée (1 oz)",110,0,27,0],
+    ["Caramel/Brown Sugar Drizzle",45,0,11,0],
+    ["Crunchy Cotton Candy Pieces",60,0,15,0],
+    ["Sprinkles",30,0,5,1],
+    ["Cinnamon Sugar",25,0,6,0],
+  ];
+  const comps=[];
+  D.forEach((d,i)=>{
+    const it={id:"cc-d"+i,name:d[0],category:d[1],macros:M(d[2],d[3],d[4],d[5]),est:true};
+    if(d[6]){ // coffee items publish Regular = 2 shots / Large = 3 shots
+      it.defaultSizeId="regular";
+      it.sizeVariants=[{sizeId:"regular",sizeName:"Regular (2 shots)",macros:M(d[2],d[3],d[4],d[5])},
+        {sizeId:"large",sizeName:"Large (3 shots)",macros:M(d[6],d[7],d[8],d[9])}];
+    }
+    comps.push(it);
+  });
+  T.forEach((t,i)=>comps.push({id:"cc-t"+i,name:t[0],category:"cc-addons",macros:M(t[1],t[2],t[3],t[4]),isModifier:true,perUnit:"per serving",est:true}));
+  RESTAURANTS_DB.push({id:"candycloud",name:"Candy Cloud",logo:"☁️",color:"#F27DB6",modular:false,
+    menuStyle:"item-select",est:true,
+    categories:["cc-dirty-soda","cc-coffee","cc-frappe","cc-tea","cc-lemonade","cc-energy","cc-smoothie","cc-specialty","cc-treats","cc-food"],
+    categoryConfig:{
+      "cc-dirty-soda":{name:"cc-dirty-soda",displayName:"Dirty Sodas",selectMode:"multi"},
+      "cc-coffee":{name:"cc-coffee",displayName:"Coffee",selectMode:"multi"},
+      "cc-frappe":{name:"cc-frappe",displayName:"Frappes",selectMode:"multi"},
+      "cc-tea":{name:"cc-tea",displayName:"Tea & Matcha",selectMode:"multi"},
+      "cc-lemonade":{name:"cc-lemonade",displayName:"Lemonade",selectMode:"multi"},
+      "cc-energy":{name:"cc-energy",displayName:"ReVibe Energy",selectMode:"multi"},
+      "cc-smoothie":{name:"cc-smoothie",displayName:"Smoothies",selectMode:"multi"},
+      "cc-specialty":{name:"cc-specialty",displayName:"Specialty",selectMode:"multi"},
+      "cc-treats":{name:"cc-treats",displayName:"Shakes & Ice Cream",selectMode:"multi"},
+      "cc-food":{name:"cc-food",displayName:"Melts & Bites",selectMode:"multi"}},
+    components:comps});
+})();
+
 // ===== Seasonal menu refresh layer (verified 2026-09-01 via live web research) =====
 // Rows: [name, category, subcategory|0, kcal, protein, carbs, fat, est?] — standard/
 // medium size. Values from published chain nutrition where available (transcribed by
@@ -3463,8 +3580,19 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
 // est:1 marks items whose full split isn't published (calories anchored to confirmed
 // figures, remainder from close comparables) — the item sheet says so. Items merge in
 // only when their category exists; drilled categories auto-group under the subcategory.
+const RB_OWN_ADDONS=new Set(["kungfutea","candycloud"]); // chains whose modifier roster replaces the generic fixings layer
 const RB_SSN_NEW="Fall 2026 — New",RB_SSN_FAV="Fall Favorites";
 const RB_SEASONAL={
+  candycloud:[ // "Hello Fall" collection (launched ~Sept 2026; verified via franchise posts + local press) — derived macros, est
+    ["Brown Sugar Pumpkin Chai","cc-tea",RB_SSN_NEW,395,7,70,10,1],
+    ["Pumpkin Spice Latte","cc-coffee",RB_SSN_NEW,390,9,58,14,1],
+    ["Pumpkin Spice Chai","cc-tea",RB_SSN_NEW,390,7,70,10,1],
+    ["Pumpkin Spice Matcha","cc-tea",RB_SSN_NEW,350,8,53,11,1],
+    ["Butter Pecan Latte","cc-coffee",RB_SSN_NEW,350,8,50,12,1],
+    ["Butter Beer Frappe","cc-frappe",RB_SSN_NEW,490,5,68,22,1],
+    ["Apple Cider Donut Shake","cc-treats",RB_SSN_NEW,820,13,98,40,1],
+    ["Fresh Apple Cider Donuts","cc-food",RB_SSN_NEW,520,6,78,20,1],
+  ],
   starbucks:[
     ["Iced Pumpkin Cream Shaken Espresso","cold-coffees",RB_SSN_NEW,310,4,44,14],
     ["Iced Banana Bread Latte","cold-coffees",RB_SSN_NEW,420,10,56,19],
@@ -3724,7 +3852,8 @@ const RB_PORTION_LABELS={light:"Light",regular:"Regular",double:"Double",half:"H
 const RB_PORTION_CLS={light:"pl",regular:"pr",double:"pd",half:"ph"};
 // isDrinkCategory hard-codes Starbucks slugs (StarbucksItemSelect.tsx:182) — Peet's/TR get 🔥 header
 const RB_DRINK_CATS=["hot-coffees","cold-coffees","frappuccinos","refreshers","hot-teas","cold-teas","more-drinks",
-  "milk-tea","classic-tea","punch","milk-strike","slush","milk-cap","espresso","yogurt"]; // Kung Fu Tea lines
+  "milk-tea","classic-tea","punch","milk-strike","slush","milk-cap","espresso","yogurt", // Kung Fu Tea lines
+  "cc-dirty-soda","cc-coffee","cc-frappe","cc-tea","cc-lemonade","cc-energy","cc-smoothie","cc-specialty"]; // Candy Cloud lines
 
 let rbEl=null;
 const RB={meal:"lunch",restaurant:null,items:[],format:null,
@@ -3875,9 +4004,9 @@ const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures +
   const t=cfg.cust&&cfg.cust[it.category];
   if(t){RB_CUST_TYPES[t].forEach(o=>push(RB_MK(o)));if(cfg.custPlus)cfg.custPlus.forEach(o=>push(o,true));}
   const coffee=RB_COFFEE_CATS.has(it.category)||RB_COFFEE_RX.test(it.name);
-  // Kung Fu Tea gets NO generic coffee fixings: its researched topping roster is the real,
-  // complete add-on list (boba-shop model — sugar levels, not cream/sugar packets)
-  if(coffee&&RB.restaurant.id!=="kungfutea"){
+  // Chains with their own researched add-on roster get NO generic coffee fixings — their
+  // modifier list is the real, complete one (boba/dirty-soda model, not cream/sugar packets)
+  if(coffee&&!RB_OWN_ADDONS.has(RB.restaurant.id)){
     RB_FIX_DRINK.forEach(o=>push(RB_MK(o)));
     (RB_COND_DRINK[RB.restaurant.id]||[]).forEach(o=>push(RB_MK(o),true));
   }
