@@ -1049,7 +1049,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-04.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-04.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3593,7 +3593,7 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
     ["Sprinkles",30,0,5,1,["cc-treats"]],
     ["Cinnamon Sugar",25,0,6,0,["cc-treats","cc-food"]],
     ["Cheese Dip",110,3,4,9,["cc-food"]],
-    ["Protein Scoop",120,25,2,1.5,["cc-smoothie","cc-coffee","cc-frappe","cc-treats"]],
+    ["Protein Scoop",80,13,3,1.5,["cc-smoothie","cc-coffee","cc-frappe","cc-treats"]], // owner-confirmed 13 g protein per scoop
     ["Served Hot (no ice)",0,0,0,0,["cc-coffee","cc-tea"]],
     ["Blended (instead of iced)",0,0,0,0,["cc-lemonade","cc-energy","cc-treats"]],
     ["Lemonade Base (ReVibe)",150,0,40,0,["cc-energy"]],
