@@ -1049,7 +1049,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-04.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-04.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3494,68 +3494,71 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
     ["Signature Iced Latte","cc-coffee",180,2,20,7,230,3,25,9],  // espresso + sweet cream + syrup/drizzle
     ["Create-Your-Own Latte","cc-coffee",240,8,33,8,300,10,41,10],
     ["Shaken Espresso","cc-coffee",160,2,19,7,220,3,26,9],       // served chilled
-    ["Brown Sugar Shaken Breve","cc-coffee",200,3,26,9,260,4,33,12],
-    ["Goldenhour Breve","cc-coffee",360,5,34,21,450,6,43,26],    // espresso, caramel drizzle, vanilla, half & half
+    ["Brown Sugar Shaken Breve","cc-coffee",370,5,41,21,520,7,43,28],
+    ["Goldenhour Breve","cc-coffee",410,5,47,21,570,7,57,28],    // espresso, caramel drizzle, vanilla, half & half
     ["White Chocolate Breve","cc-coffee",385,7,26,28,480,9,33,35],
-    ["Vanilla Bean Latte","cc-coffee",325,9,41,14,385,11,49,16], // vanilla bean cloud cold foam
+    ["Vanilla Bean Latte","cc-coffee",360,8,44,16,500,10,59,21], // vanilla bean cloud cold foam
     ["Skinny Latte","cc-coffee",100,9,13,1,110,10,14,1],
-    ["Honey Oat Latte","cc-coffee",190,2,34,5,240,3,43,6],       // oat milk + espresso + honey
+    ["Honey Oat Latte","cc-coffee",250,2,50,5,350,3,64,7],       // oat milk + espresso + honey
     ["PB&J Latte","cc-coffee",450,13,46,24,540,15,56,29],        // Reese's PB + strawberry cold foam
     ["Brown Butter Cookie Latte","cc-coffee",660,10,80,32,790,12,96,38],
     ["Americano","cc-coffee",10,0,2,0,15,0,3,0],
-    ["Cold Brew","cc-coffee",5,0,1,0,10,0,2,0],
-    ["Mocha Cookie Crumble Frappe","cc-frappe",480,6,64,22,0,0,0,0],
-    ["Salted Caramel Crunch Frappe","cc-frappe",500,6,66,24,0,0,0,0], // whipped cream + toffee bits
-    ["Create-Your-Own Coffee Frappe","cc-frappe",420,5,55,20,0,0,0,0],
+    ["Cold Brew","cc-coffee",0,0,0,0,0,0,0,0],
+    ["Mocha Cookie Crumble Frappe","cc-frappe",460,1,107,3,690,2,160,5],
+    ["Salted Caramel Crunch Frappe","cc-frappe",480,1,98,9,740,2,152,14], // whipped cream + toffee bits
+    ["Create-Your-Own Coffee Frappe","cc-frappe",320,1,70,4,0,0,0,0],
     ["Black Tea Latte","cc-tea",230,8,32,8,0,0,0,0],
-    ["Iced Chai Latte","cc-tea",240,6,45,4,0,0,0,0],
-    ["Salted Caramel Chai Latte","cc-tea",320,6,56,8,0,0,0,0],
+    ["Iced Chai Latte","cc-tea",290,8,45,8,0,0,0,0],
+    ["Salted Caramel Chai Latte","cc-tea",370,8,65,8,0,0,0,0],
     ["Milk Tea Latte","cc-tea",230,8,32,8,0,0,0,0],
     ["Green Tea Lemonade","cc-tea",70,0,18,0,0,0,0,0],
     ["Iced Green Tea","cc-tea",60,0,15,0,0,0,0,0],
     ["Black Tea + Skinny Lemonade","cc-tea",5,0,1,0,0,0,0,0],
     ["Iced Matcha Latte","cc-tea",200,7,28,5,0,0,0,0],
-    ["Strawberry Matcha","cc-tea",330,7,56,5,0,0,0,0],
-    ["Blueberry Matcha","cc-tea",300,7,53,5,0,0,0,0],
-    ["Create-Your-Own Lemonade","cc-lemonade",150,0,40,0,0,0,0,0], // house-made; syrups/fruit/add-ins
+    ["Strawberry Vanilla Matcha","cc-tea",260,8,30,6,0,0,0,0],
+    ["Blueberry Matcha","cc-tea",250,8,28,6,0,0,0,0],
+    ["Create-Your-Own Lemonade","cc-lemonade",250,0,65,0,390,0,101,0], // house-made; syrups/fruit/add-ins
     ["Skinny Lemonade (sugar-free)","cc-lemonade",5,0,1,0,0,0,0,0],
-    ["Strawberry Lemonade","cc-lemonade",260,0,67,0,0,0,0,0],
-    ["Blue Coconut Lemonade","cc-lemonade",280,0,61,5,0,0,0,0],  // coconut cream + blue spirulina (boba is an add-in)
-    ["Butterfly Lavender Lemonade","cc-lemonade",230,0,60,0,0,0,0,0],
+    ["Strawberry Lemonade","cc-lemonade",260,0,66,0,390,0,99,0],
+    ["Blue Coconut Lemonade","cc-lemonade",385,2,85,4,520,2,114,6],  // coconut cream + blue spirulina (boba is an add-in)
+    ["Butterfly Lavender Lemonade","cc-lemonade",230,0,60,0,390,0,101,0],
     ["Mangonade","cc-lemonade",350,0,88,0,0,0,0,0],              // mango purée + mango popping bubbles
-    ["Mango Dragonfruit ReVibe","cc-energy",140,0,35,0,0,0,0,0],
-    ["Peach Ring ReVibe","cc-energy",140,0,35,0,0,0,0,0],
-    ["Orange Crush ReVibe","cc-energy",140,0,35,0,0,0,0,0],
+    ["Mango Dragonfruit ReVibe","cc-energy",110,0,27,0,0,0,0,0],
+    ["Peach Ring ReVibe","cc-energy",110,0,27,0,0,0,0,0],
+    ["Orange Crush ReVibe","cc-energy",110,0,27,0,0,0,0,0],
     ["Skinny Strawberry ReVibe","cc-energy",10,0,2,0,0,0,0,0],
     ["Blueberry Acai ReVibe (sugar-free)","cc-energy",10,0,2,0,0,0,0,0],
     ["Blue Razz White Chocolate ReVibe","cc-energy",230,1,47,5,0,0,0,0],
     ["Strawberry Banana Smoothie","cc-smoothie",320,9,55,8,0,0,0,0], // real fruit + whole-milk base (milk choice via add-ons)
     ["Berry Smoothie","cc-smoothie",300,9,50,8,0,0,0,0],
     ["Mango Smoothie","cc-smoothie",320,9,55,8,0,0,0,0],
-    ["Horchata (48-Hour Brew)","cc-specialty",250,5,45,6,0,0,0,0],
+    ["Horchata (48-Hour Brew)","cc-specialty",370,1,76,5,590,2,121,8],
     ["Purple Potion (Ube Latte)","cc-specialty",270,8,42,8,0,0,0,0],
-    ["Strawberries N' Cream","cc-specialty",350,10,55,10,0,0,0,0],
+    ["Strawberries N' Cream","cc-specialty",400,9,65,11,540,12,88,15],
     ["Frozen Hot Chocolate","cc-specialty",400,8,60,14,0,0,0,0],
     ["Root Beer Float","cc-specialty",340,4,64,8,0,0,0,0],
     ["Brown Sugar Boba","cc-specialty",420,8,68,10,0,0,0,0],     // brown sugar chewy boba milk drink
-    ["Cotton Candy Shake","cc-treats",700,11,75,42,0,0,0,0],
-    ["Mint Shake","cc-treats",650,11,70,38,0,0,0,0],
-    ["Chocolate Cake Shake","cc-treats",800,13,90,44,0,0,0,0],
-    ["Coffee Shake","cc-treats",600,11,62,34,0,0,0,0],
-    ["Create-Your-Own Shake","cc-treats",570,11,57,34,0,0,0,0],
-    ["Cookie Butter Dream","cc-treats",790,13,82,47,0,0,0,0],
+    ["Cotton Candy Shake","cc-treats",330,2,70,5,0,0,0,0],
+    ["Mint Shake","cc-treats",330,2,70,5,0,0,0,0],
+    ["Chocolate Cake Shake","cc-treats",340,2,72,5,0,0,0,0],
+    ["Coffee Shake","cc-treats",300,2,64,4,0,0,0,0],
+    ["Create-Your-Own Shake","cc-treats",270,2,57,4,0,0,0,0],
+    ["Cookie Butter Dream","cc-treats",390,3,70,10,0,0,0,0],
     ["Birthday Cake","cc-treats",530,9,80,17,0,0,0,0],
     ["Dirt Pie","cc-treats",500,9,77,17,0,0,0,0],
     ["Tropical Burst","cc-treats",540,8,102,11,0,0,0,0],
     ["Strawberry Crunch","cc-treats",560,9,84,20,0,0,0,0],       // white cake + strawberry purée + crunch topping
     ["Brown Sugar Boba Ice Cream","cc-treats",560,9,90,16,0,0,0,0],
     ["Better Than Anything","cc-treats",620,10,88,22,0,0,0,0],   // chocolate cake + Heath + caramel + soft serve
+    ["Peanut Butter Cup","cc-treats",640,13,74,30,0,0,0,0],
+    ["Tres Leches Shake","cc-treats",400,4,66,12,0,0,0,0],      // priced at 4+ locations ($8.39-8.99)
     ["Create-Your-Own Layered Ice Cream","cc-treats",350,8,55,11,0,0,0,0],
     ["Classic Grilled Cheese","cc-food",520,18,44,30,0,0,0,0],
     ["Garlic Parm Melt","cc-food",590,22,48,34,0,0,0,0],
     ["Pepperoni Melt","cc-food",660,26,48,40,0,0,0,0],
     ["Jalapeño Popper Melt","cc-food",690,24,52,42,0,0,0,0],
     ["Street Corn Melt","cc-food",640,20,52,38,0,0,0,0],
+    ["Pizza Melt","cc-food",620,24,50,36,0,0,0,0],               // $7.19 on UberEats listings
     ["Bacon, Egg & Cheese Melt","cc-food",560,24,44,32,0,0,0,0],
     ["Egg & Cheese Melt","cc-food",470,18,40,26,0,0,0,0],
     ["Hash Browns","cc-food",220,2,24,13,0,0,0,0],
@@ -3580,37 +3583,46 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
     ["Whole Milk",0,0,0,0,MILKC,"Milk",1],
     ["Oat Milk",-30,-6,4,-3,MILKC,"Milk"],
     ["Almond Milk",-120,-7,-11,-6,MILKC,"Milk"],
-    ["Sweet Cream",210,-1,7,20,MILKC,"Milk"],
-    ["Half & Half",170,-1,-3,20,MILKC,"Milk"],
+    ["Sweet Cream",210,-1,7,20,MILKC,"Milk"],   // "flavored milk" per menu; half & half is the breve BASE, not a milk option
     ["Horchata",-10,-6,14,-5,MILKC,"Milk"],
     ["Iced",0,0,0,0,["cc-coffee","cc-tea"],"Temperature",1],
-    ["Hot",0,0,0,0,["cc-coffee","cc-tea"],"Temperature"],
-    ["Iced",0,0,0,0,["cc-lemonade","cc-energy","cc-treats"],"Iced or Blended",1],
-    ["Blended",0,0,0,0,["cc-lemonade","cc-energy","cc-treats"],"Iced or Blended"],
+    ["Hot",0,0,0,0,["cc-coffee","cc-tea"],"Temperature"], // hot chai/matcha confirmed (nutrition-DB "Hot -" variants)
+    ["Blended",120,0,28,2,["cc-tea"],"Temperature"],       // matcha/chai blended rows run well above iced (published)
+    ["Iced",0,0,0,0,["cc-lemonade","cc-energy","cc-treats","cc-specialty"],"Iced or Blended",1],
+    ["Blended",80,0,20,0,["cc-lemonade","cc-energy","cc-specialty"],"Iced or Blended"], // published blended rows run ~80 cal over iced
+    ["Blended",0,0,0,0,["cc-treats"],"Iced or Blended"],
     ["Water Base",0,0,0,0,["cc-energy"],"Base",1],
     ["Green Tea Base",0,0,0,0,["cc-energy"],"Base"],
     ["Lemonade Base",150,0,40,0,["cc-energy"],"Base"],
     ["Sugar-Free Lemonade Base",0,0,0,0,["cc-energy"],"Base"],
+    ["Regular Sweet",0,0,0,0,DRK,"Sweetness",1],
+    ["Half Sweet",-40,0,-10,0,DRK,"Sweetness"], // sweetness levels confirmed ("half sweet, light ice" orders)
     ["Popping Boba (Strawberry)",90,0,22,0,DTR],
     ["Popping Boba (Mango)",90,0,22,0,DTR],
-    ["Brown Sugar Boba (chewy)",200,0,50,0,DTR],
+    ["Tapioca Boba (chewy)",200,0,50,0,DTR],    // verbatim add-in name from the chain's catering list
     ["Extra Espresso Shot",5,0,1,0,["cc-coffee","cc-frappe","cc-treats"]],
-    ["Vanilla Cold Foam",105,1,14,6,DRK],
+    ["Splash of Sweet Cream",100,1,4,9,DRK],    // catering add-in list, verbatim
+    ["Splash of Oat Sweet Cream",90,1,6,7,DRK],
+    ["Vanilla Bean Cloud Cold Foam",105,1,14,6,DRK],
+    ["Sweet Cream Cold Foam",100,1,13,6,DRK],
+    ["Cookie Butter Cold Foam",130,1,14,8,DRK],
+    ["Chocolate Cold Foam",110,1,15,6,DRK],
+    ["Matcha Cold Foam",100,1,13,6,DRK],
     ["Cotton Candy Foam",90,1,12,4,DRK],
     ["Strawberry Cold Foam",110,1,15,6,DRK],
     ["Marshmallow Cream",50,0,12,1,DTR],
     ["Whipped Cream",110,1,5,11,DTR],
-    ["Flavor Syrup (1 oz)",80,0,20,0,DTR],
+    ["Flavor Syrup (any flavor)",80,0,20,0,DTR], // pistachio, vanilla, salted caramel, …
     ["Sugar-Free Syrup",0,0,0,0,DRK],
     ["Fruit Purée (1 oz)",110,0,27,0,DTR],
-    ["Caramel/Brown Sugar Drizzle",45,0,11,0,DTR],
+    ["Drizzle (caramel, brown sugar, butter pecan…)",45,0,11,0,DTR],
     ["Crunchy Cotton Candy Pieces",60,0,15,0,DTR],
     ["Cake Pieces (layer add-in)",120,1,18,5,["cc-treats"]],
     ["Doughnut Pieces (layer add-in)",120,2,14,6,["cc-treats"]],
     ["Sprinkles",30,0,5,1,["cc-treats"]],
     ["Cinnamon Sugar",25,0,6,0,["cc-treats","cc-food"]],
     ["Cheese Dip",110,3,4,9,["cc-food"]],
-    ["Protein Scoop",80,13,3,1.5,["cc-smoothie","cc-coffee","cc-frappe","cc-treats"]], // owner-confirmed 13 g protein per scoop
+    ["Protein",80,13,3,1.5,["cc-smoothie","cc-coffee","cc-frappe","cc-treats"]], // owner-confirmed 13 g added protein (likely a Fairlife-style protein-milk add — 13 g/cup)
   ];
   const comps=[];
   const R5=v=>Math.round(v/5)*5,R1=v=>Math.round(v*10)/10;
