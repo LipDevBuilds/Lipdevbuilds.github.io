@@ -1049,7 +1049,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-04.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-04.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3464,9 +3464,11 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
 // (12 oz soda label values, Monin purée labels, Coco Lopez coconut cream, Torani syrups,
 // Bossen popping boba spec, Starbucks-published cold foam/frappe/matcha/chai analogs,
 // Culver's/DQ soft-serve, Dunkin munchkins, published grilled-cheese comparables) assembled
-// per each item's listed ingredients — all items carry est so the sheet says so. Drinks are
-// canned-to-order; 16 oz standard assumed (not published). Lattes/espressos: Regular=2 shots,
-// Large=3 shots (published on menus).
+// per each item's listed ingredients — all items carry est so the sheet says so. Sizing
+// (owner-confirmed): almost all drinks come Small or Large (espresso drinks: Small=2 shots,
+// Large=3); Large ≈ 1.4× Small macros (volume scaling, ice-adjusted — ounces unpublished).
+// Lattes/chai/matcha can be served hot (0-cal option); smoothies/lattes offer a milk choice
+// (modeled as swap deltas vs the whole-milk default) and a protein scoop.
 (function(){
   const M=(c,p,cb,f)=>({calories:c,protein:p,carbs:cb,fat:f});
   // [name, category, cal, p, c, f, lgCal, lgP, lgC, lgF] — lgCal 0 = single size
@@ -3505,9 +3507,9 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
     ["Skinny Strawberry ReVibe","cc-energy",10,0,2,0,0,0,0,0],
     ["Skinny Blueberry Açaí ReVibe","cc-energy",10,0,2,0,0,0,0,0],
     ["Blue Razz White Chocolate ReVibe","cc-energy",230,1,47,5,0,0,0,0],
-    ["Strawberry Banana Smoothie","cc-smoothie",280,2,68,1,0,0,0,0],
-    ["Berry Smoothie","cc-smoothie",260,2,63,1,0,0,0,0],
-    ["Mango Smoothie","cc-smoothie",280,2,68,1,0,0,0,0],
+    ["Strawberry Banana Smoothie","cc-smoothie",320,9,55,8,0,0,0,0], // real fruit + whole-milk base (milk choice via add-ons)
+    ["Berry Smoothie","cc-smoothie",300,9,50,8,0,0,0,0],
+    ["Mango Smoothie","cc-smoothie",320,9,55,8,0,0,0,0],
     ["Horchata (48-Hour Brew)","cc-specialty",250,5,45,6,0,0,0,0],
     ["Purple Potion (Ube Latte)","cc-specialty",270,8,42,8,0,0,0,0],
     ["Strawberries N' Cream","cc-specialty",350,10,55,10,0,0,0,0],
@@ -3544,14 +3546,27 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
     ["Crunchy Cotton Candy Pieces",60,0,15,0],
     ["Sprinkles",30,0,5,1],
     ["Cinnamon Sugar",25,0,6,0],
+    ["Protein Scoop",120,25,2,1.5],
+    ["Served Hot (no ice)",0,0,0,0],
+    // milk choice — deltas vs the whole-milk default (per ~8 oz milk portion)
+    ["Oat Milk instead of Dairy",-30,-6,4,-3],
+    ["Almond Milk instead of Dairy",-120,-7,-11,-6],
+    ["Skim Milk instead of Whole",-70,0,0,-8],
   ];
   const comps=[];
+  const R5=v=>Math.round(v/5)*5,R1=v=>Math.round(v*10)/10;
+  const CC_SIZED=new Set(["cc-dirty-soda","cc-coffee","cc-frappe","cc-tea","cc-lemonade","cc-energy","cc-smoothie","cc-specialty"]);
   D.forEach((d,i)=>{
-    const it={id:"cc-d"+i,name:d[0],category:d[1],macros:M(d[2],d[3],d[4],d[5]),est:true};
-    if(d[6]){ // coffee items publish Regular = 2 shots / Large = 3 shots
-      it.defaultSizeId="regular";
-      it.sizeVariants=[{sizeId:"regular",sizeName:"Regular (2 shots)",macros:M(d[2],d[3],d[4],d[5])},
-        {sizeId:"large",sizeName:"Large (3 shots)",macros:M(d[6],d[7],d[8],d[9])}];
+    const base=M(d[2],d[3],d[4],d[5]);
+    const it={id:"cc-d"+i,name:d[0],category:d[1],macros:base,est:true};
+    const coffee=d[1]==="cc-coffee";
+    let lg=null;
+    if(d[6])lg=M(d[6],d[7],d[8],d[9]);                       // coffee: explicit 3-shot Large
+    else if(CC_SIZED.has(d[1]))lg=M(R5(d[2]*1.4),R1(d[3]*1.4),Math.round(d[4]*1.4),R1(d[5]*1.4));
+    if(lg){
+      it.defaultSizeId="small";
+      it.sizeVariants=[{sizeId:"small",sizeName:coffee?"Small (2 shots)":"Small",macros:base},
+        {sizeId:"large",sizeName:coffee?"Large (3 shots)":"Large",macros:lg}];
     }
     comps.push(it);
   });
