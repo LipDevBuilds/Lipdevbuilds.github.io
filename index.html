@@ -551,6 +551,11 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .rb-circ.on{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
 .rb-sfx{font-size:10px;color:hsl(var(--primary));margin-left:6px}
 .rb-chip{padding:4px 12px;border-radius:12px;font-size:11px;font-weight:600;border:1px solid transparent;background:hsl(var(--muted)/.5);color:hsl(var(--muted-foreground))}
+/* Touch-target expansion (Apple HIG 44pt): these controls measured 16-33px tall in the
+   tap-target audit — taps read as scrolls or misses on a real thumb. The visual stays
+   compact; an invisible ::after pad extends each hit area ~10px per side. */
+[data-act="rbqtyset"],[data-act="rbmeal"],[data-act="rbisback"],[data-act="rbdetailback"],[data-act="viewmode"],[data-act="waterunit"],[data-act="wpmode"],[data-act="wpzoom"],[data-act="wpimpl"],[data-act="coachinsights"],[data-act="goprog"],.tip-i{position:relative}
+[data-act="rbqtyset"]::after,[data-act="rbmeal"]::after,[data-act="rbisback"]::after,[data-act="rbdetailback"]::after,[data-act="viewmode"]::after,[data-act="waterunit"]::after,[data-act="wpmode"]::after,[data-act="wpzoom"]::after,[data-act="wpimpl"]::after,[data-act="coachinsights"]::after,[data-act="goprog"]::after,.tip-i::after{content:"";position:absolute;inset:-10px}
 .rb-chip.pr{background:hsl(var(--primary)/.15);color:hsl(var(--primary));border-color:hsl(var(--primary)/.3)}
 .rb-chip.pl{background:hsl(142 71% 45%/.15);color:hsl(142 71% 45%);border-color:hsl(142 71% 45%/.3)}
 .rb-chip.pd{background:hsl(45 93% 47%/.15);color:hsl(45 93% 47%);border-color:hsl(45 93% 47%/.3)}
@@ -1055,7 +1060,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-04.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-04.8"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
