@@ -1060,7 +1060,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-04.8"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-04.9"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3897,6 +3897,60 @@ const RB_SEASONAL={
         if(r.components.some(x=>x.category===cat&&x.subcategory))it.subcategory=sub||RB_SSN_NEW;
         r.components.push(it);
       });
+    });
+  }
+})();
+
+// ===== Menu correction layer (cross-chain comparison audit, 2026-09-04) =====
+// drop: items discontinued from national menus (or phantom entries that never existed);
+// "rx:" prefix = case-insensitive pattern. ren: stale names -> the chain's CURRENT
+// official names (DQ Stackburgers replaced GrillBurgers in 2022; Subway's 2021-22
+// renames; Starbucks' 2025 menu simplification; etc.). Verified additions land via the
+// same audit's macro-research wave.
+const RB_PATCH={
+  starbucks:{drop:["Java Chip Frappuccino®","Iced Banana Bread Matcha"],ren:{"Cannon Ball Drink":"Cannon Ball Energy Drink","Pink Cannon Ball Drink":"Pink Cannon Ball Energy Drink"}},
+  kfc:{drop:["Popcorn Chicken (Small)","Popcorn Chicken (Large)","Popcorn Chicken (Individual)","Chicken Tenders (3pc)"],
+    ren:{"Chicken Tenders (2pc)":"Original Recipe Tenders (2 pc)"}},
+  tacobell:{drop:["Tajin Taco","Tajin Cheesy Gordita Crunch"]},
+  burgerking:{drop:["Chicken Nuggets (8pc)"],ren:{"Chicken Nuggets (8 pc, New Recipe)":"Chicken Nuggets (8 pc)"}},
+  dairyqueen:{ren:{"FlameThrower GrillBurger 1/3 lb":"1/3 lb. FlameThrower Signature Stackburger",
+    "Original Cheeseburger 1/3 lb":"1/3 lb. Original Cheeseburger Signature Stackburger",
+    "Two Cheese Deluxe GrillBurger 1/2 lb":"1/2 lb. Two Cheese Deluxe Signature Stackburger",
+    "Bacon Cheese GrillBurger 1/3 lb":"1/3 lb. Bacon Two Cheese Deluxe Signature Stackburger"}},
+  subway:{drop:["Tomato Basil Wrap"],ren:{'Italian (6")':'Artisan Italian (6")','9-Grain Wheat (6")':'Hearty Multigrain (6")',
+    "Ranch":"Peppercorn Ranch","Sweet Onion Teriyaki":"Sweet Onion","Chicken Teriyaki":"Sweet Onion Chicken Teriyaki"}},
+  whitecastle:{drop:["Impossible Slider"],ren:{"Fish Slider":"Panko Breaded Fish Slider"}},
+  noodlesandco:{drop:["Alfredo MontAmore (Regular)","Zucchini Penne Rosa (Regular)","Zucchini Pad Thai (Regular)","BBQ Pork Mac (Regular)","Baked Cheese Tortelloni (Regular)"],
+    ren:{"Penne Rosa (Regular)":"Rigatoni Rosa (Regular)","Pesto Cavatappi (Regular)":"Basil Pesto Cavatappi (Regular)"}},
+  culvers:{drop:["Colby Jack Pub Burger (Single)","Colby Jack Pub Burger (Double)","Fried Pickles"]},
+  panda:{drop:["SweetFire Chicken Breast","Strawberry Dragonfruit Refresher"]},
+  chipotle:{drop:["Cauliflower Rice","Chili Lime Chips"]},
+  popeyes:{drop:["Fried Pickles","Honey BBQ Chicken Sandwich"]},
+  potbelly:{drop:["Uptown Salad"],ren:{"Meatball (Original)":"Mama's Meatball (Original)"}},
+  panera:{drop:["Toasted Steak & White Cheddar (Whole)"],ren:{"Chicken & Wild Rice Soup (Bowl)":"Cream of Chicken & Wild Rice Soup (Bowl)"}},
+  peets:{drop:["Horchata Cold Brew Oat Latte","Italian Grinder"]},
+  dunkin:{drop:["Grilled Cheese Melt"]},
+  bdubs:{drop:["Beef on Weck Sliders","Buffalo Chips (Regular)","Mini Corn Dogs","Garlic Mushrooms","Traditional Wing — Hot BBQ"],
+    ren:{"Traditional Wing — Blazin'":"Traditional Wing — Blazin' Knockout"}},
+  chickfila:{drop:["Chick-n-Strips (3ct)"]},
+  jimmyjohns:{ren:{"#7 Spicy East":"#7 Spicy East Coast Italian"}},
+  jerseymikes:{ren:{"Meatball & Cheese (Regular)":"#15 Meatball and Cheese (Regular)"}},
+  steaknshake:{ren:{"French Fries (Regular)":"Beef Tallow Fries (Regular)","Double Steakburger Double Cheese (Grass-Fed)":"Double Steakburger w/ Cheese"}},
+  wendys:{ren:{"Natural-Cut Fries (Small)":"Hot & Crispy Fries (Small)","Natural-Cut Fries (Medium)":"Hot & Crispy Fries (Medium)","Natural-Cut Fries (Large)":"Hot & Crispy Fries (Large)"}},
+  mcdonalds:{ren:{"McCrispy Deluxe":"Deluxe McCrispy","Quarter Pounder Deluxe":"Quarter Pounder with Cheese Deluxe"}},
+  wingstop:{ren:{"Regular Fries":"Seasoned Fries (Regular)","Large Fries":"Seasoned Fries (Large)"}},
+  qdoba:{drop:["Spicy Tequila Lime Steak"],ren:{"Grilled Chicken":"Grilled Adobo Chicken"}},
+  firehousesubs:{drop:["rx:smokin' honey"]},
+};
+(function(){
+  for(const [rid,p] of Object.entries(RB_PATCH)){
+    RESTAURANTS_DB.filter(r=>r.id===rid).forEach(r=>{
+      if(p.drop){
+        const exact=new Set(),rxs=[];
+        p.drop.forEach(n=>n.startsWith("rx:")?rxs.push(new RegExp(n.slice(3),"i")):exact.add(n.toLowerCase()));
+        r.components=r.components.filter(c=>!exact.has(c.name.toLowerCase())&&!rxs.some(x=>x.test(c.name)));
+      }
+      if(p.ren)r.components.forEach(c=>{if(p.ren[c.name])c.name=p.ren[c.name]});
     });
   }
 })();
