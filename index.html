@@ -1049,7 +1049,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-04.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-04.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3464,48 +3464,70 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
 // (12 oz soda label values, Monin purée labels, Coco Lopez coconut cream, Torani syrups,
 // Bossen popping boba spec, Starbucks-published cold foam/frappe/matcha/chai analogs,
 // Culver's/DQ soft-serve, Dunkin munchkins, published grilled-cheese comparables) assembled
-// per each item's listed ingredients — all items carry est so the sheet says so. Sizing
-// (owner-confirmed): almost all drinks come Small or Large (espresso drinks: Small=2 shots,
-// Large=3); Large ≈ 1.4× Small macros (volume scaling, ice-adjusted — ounces unpublished).
-// Lattes/chai/matcha can be served hot (0-cal option); smoothies/lattes offer a milk choice
-// (modeled as swap deltas vs the whole-milk default) and a protein scoop.
+// per each item's listed ingredients — all items carry est so the sheet says so. Sizing per
+// the ordering-platform audit + owner confirmation: drinks and layered/shakes come Regular or
+// Large (espresso drinks: Regular=2 shots, Large=3 — published; layered soft serve priced
+// $7.34/$8.34 R/L); Large ≈ 1.4× drinks / 1.3× treats (ounces unpublished). Lattes/breves/
+// chai/matcha serve hot or iced (0-cal option; shaken espresso is chilled-only). Add-ons are
+// scoped to where the chain offers them (forCats), including the audited milk list (whole
+// default; oat/almond/sweet cream/horchata/half & half as swap deltas), the ReVibe base
+// group, iced-or-blended style, layer add-ins, and the owner-confirmed protein scoop.
 (function(){
   const M=(c,p,cb,f)=>({calories:c,protein:p,carbs:cb,fat:f});
-  // [name, category, cal, p, c, f, lgCal, lgP, lgC, lgF] — lgCal 0 = single size
+  // [name, category, cal, p, c, f, lgCal, lgP, lgC, lgF] — lgCal 0 = auto Large for sized cats.
+  // Names are the chain's real menu labels (2-agent ordering-platform audit, 2026-09-04).
   const D=[
     ["Cotton Candy Dirty Soda","cc-dirty-soda",270,1,65,3,0,0,0,0],
-    ["Star Berry Dirty Soda","cc-dirty-soda",345,1,74,6,0,0,0,0],
+    ["Star Berry Dirty Soda","cc-dirty-soda",370,1,86,4,0,0,0,0], // strawberry + strawberry popping boba
     ["Dr. Ube","cc-dirty-soda",310,1,71,4,0,0,0,0],
     ["Strawberry Cloud Pop","cc-dirty-soda",340,1,78,4,0,0,0,0],
     ["Cherry Lime Fizz","cc-dirty-soda",225,0,59,0,0,0,0,0],
-    ["Coconut Cream Dirty Soda","cc-dirty-soda",295,1,61,6,0,0,0,0],
-    ["Peach Cream Dirty Soda","cc-dirty-soda",310,1,71,4,0,0,0,0],
-    ["Brown Sugar Cream Dirty Soda","cc-dirty-soda",275,1,62,4,0,0,0,0],
-    ["Build Your Own Dirty Soda (soda base)","cc-dirty-soda",150,0,40,0,0,0,0,0],
-    ["Cloud Coffee","cc-coffee",140,3,23,3,0,0,0,0],
-    ["Build Your Own Latte","cc-coffee",240,8,33,8,300,10,41,10],
-    ["Shaken Espresso","cc-coffee",160,2,19,7,220,3,26,9],
-    ["Brown Sugar Shaken Espresso","cc-coffee",200,3,26,9,260,4,33,12],
-    ["Vanilla Bean Cloud Latte","cc-coffee",325,9,41,14,385,11,49,16],
-    ["Skinny Vanilla Latte","cc-coffee",100,9,13,1,110,10,14,1],
+    ["Cowboy Coconut","cc-dirty-soda",295,1,61,6,0,0,0,0],      // DP/Coke + vanilla cream + coconut
+    ["Southern Peach","cc-dirty-soda",310,1,71,4,0,0,0,0],       // DP/Coke + vanilla cream + peach
+    ["Brown Sugar Pop","cc-dirty-soda",275,1,62,4,0,0,0,0],      // DP/Coke + vanilla cream + brown sugar drizzle
+    ["Blue Lagoon","cc-dirty-soda",345,1,74,6,0,0,0,0],          // Sprite + blue raspberry + coconut + vanilla cream
+    ["Cherry Bomb","cc-dirty-soda",230,0,60,0,0,0,0,0],          // Coke + cherry + lime
+    ["Orange Dream","cc-dirty-soda",310,1,68,4,0,0,0,0],         // orange creamsicle style
+    ["Watermelon Dirty Soda","cc-dirty-soda",225,0,53,3,0,0,0,0],// fresh watermelon juice + coconut purée + Sprite
+    ["Rocket Pop","cc-dirty-soda",250,0,64,0,0,0,0,0],           // layered blue raspberry lemonade + watermelon juice
+    ["Create-Your-Own Dirty Soda","cc-dirty-soda",150,0,40,0,0,0,0,0], // soda base (Dr Pepper/Coke/Sprite); add syrups & cream
+    ["Signature Iced Latte","cc-coffee",180,2,20,7,230,3,25,9],  // espresso + sweet cream + syrup/drizzle
+    ["Create-Your-Own Latte","cc-coffee",240,8,33,8,300,10,41,10],
+    ["Shaken Espresso","cc-coffee",160,2,19,7,220,3,26,9],       // served chilled
+    ["Brown Sugar Shaken Breve","cc-coffee",200,3,26,9,260,4,33,12],
+    ["Goldenhour Breve","cc-coffee",360,5,34,21,450,6,43,26],    // espresso, caramel drizzle, vanilla, half & half
+    ["White Chocolate Breve","cc-coffee",385,7,26,28,480,9,33,35],
+    ["Vanilla Bean Latte","cc-coffee",325,9,41,14,385,11,49,16], // vanilla bean cloud cold foam
+    ["Skinny Latte","cc-coffee",100,9,13,1,110,10,14,1],
+    ["Honey Oat Latte","cc-coffee",190,2,34,5,240,3,43,6],       // oat milk + espresso + honey
+    ["PB&J Latte","cc-coffee",450,13,46,24,540,15,56,29],        // Reese's PB + strawberry cold foam
+    ["Brown Butter Cookie Latte","cc-coffee",660,10,80,32,790,12,96,38],
+    ["Americano","cc-coffee",10,0,2,0,15,0,3,0],
+    ["Cold Brew","cc-coffee",5,0,1,0,10,0,2,0],
     ["Mocha Cookie Crumble Frappe","cc-frappe",480,6,64,22,0,0,0,0],
+    ["Salted Caramel Crunch Frappe","cc-frappe",500,6,66,24,0,0,0,0], // whipped cream + toffee bits
+    ["Create-Your-Own Coffee Frappe","cc-frappe",420,5,55,20,0,0,0,0],
     ["Black Tea Latte","cc-tea",230,8,32,8,0,0,0,0],
     ["Iced Chai Latte","cc-tea",240,6,45,4,0,0,0,0],
+    ["Salted Caramel Chai Latte","cc-tea",320,6,56,8,0,0,0,0],
+    ["Milk Tea Latte","cc-tea",230,8,32,8,0,0,0,0],
     ["Green Tea Lemonade","cc-tea",70,0,18,0,0,0,0,0],
+    ["Iced Green Tea","cc-tea",60,0,15,0,0,0,0,0],
     ["Black Tea + Skinny Lemonade","cc-tea",5,0,1,0,0,0,0,0],
     ["Iced Matcha Latte","cc-tea",200,7,28,5,0,0,0,0],
-    ["Strawberry Matcha Latte","cc-tea",330,7,56,5,0,0,0,0],
+    ["Strawberry Matcha","cc-tea",330,7,56,5,0,0,0,0],
     ["Blueberry Matcha","cc-tea",300,7,53,5,0,0,0,0],
-    ["House-Made Lemonade","cc-lemonade",150,0,40,0,0,0,0,0],
+    ["Create-Your-Own Lemonade","cc-lemonade",150,0,40,0,0,0,0,0], // house-made; syrups/fruit/add-ins
     ["Skinny Lemonade (sugar-free)","cc-lemonade",5,0,1,0,0,0,0,0],
     ["Strawberry Lemonade","cc-lemonade",260,0,67,0,0,0,0,0],
-    ["Blue Coconut Lemonade (with popping boba)","cc-lemonade",370,0,83,5,0,0,0,0],
+    ["Blue Coconut Lemonade","cc-lemonade",280,0,61,5,0,0,0,0],  // coconut cream + blue spirulina (boba is an add-in)
     ["Butterfly Lavender Lemonade","cc-lemonade",230,0,60,0,0,0,0,0],
-    ["Mangonade","cc-lemonade",260,0,66,0,0,0,0,0],
+    ["Mangonade","cc-lemonade",350,0,88,0,0,0,0,0],              // mango purée + mango popping bubbles
     ["Mango Dragonfruit ReVibe","cc-energy",140,0,35,0,0,0,0,0],
-    ["Peach ReVibe","cc-energy",140,0,35,0,0,0,0,0],
+    ["Peach Ring ReVibe","cc-energy",140,0,35,0,0,0,0,0],
+    ["Orange Crush ReVibe","cc-energy",140,0,35,0,0,0,0,0],
     ["Skinny Strawberry ReVibe","cc-energy",10,0,2,0,0,0,0,0],
-    ["Skinny Blueberry Açaí ReVibe","cc-energy",10,0,2,0,0,0,0,0],
+    ["Blueberry Acai ReVibe (sugar-free)","cc-energy",10,0,2,0,0,0,0,0],
     ["Blue Razz White Chocolate ReVibe","cc-energy",230,1,47,5,0,0,0,0],
     ["Strawberry Banana Smoothie","cc-smoothie",320,9,55,8,0,0,0,0], // real fruit + whole-milk base (milk choice via add-ons)
     ["Berry Smoothie","cc-smoothie",300,9,50,8,0,0,0,0],
@@ -3513,64 +3535,97 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
     ["Horchata (48-Hour Brew)","cc-specialty",250,5,45,6,0,0,0,0],
     ["Purple Potion (Ube Latte)","cc-specialty",270,8,42,8,0,0,0,0],
     ["Strawberries N' Cream","cc-specialty",350,10,55,10,0,0,0,0],
+    ["Frozen Hot Chocolate","cc-specialty",400,8,60,14,0,0,0,0],
+    ["Root Beer Float","cc-specialty",340,4,64,8,0,0,0,0],
+    ["Brown Sugar Boba","cc-specialty",420,8,68,10,0,0,0,0],     // brown sugar chewy boba milk drink
     ["Cotton Candy Shake","cc-treats",700,11,75,42,0,0,0,0],
-    ["Create-Your-Own Shake (vanilla base)","cc-treats",570,11,57,34,0,0,0,0],
+    ["Mint Shake","cc-treats",650,11,70,38,0,0,0,0],
+    ["Chocolate Cake Shake","cc-treats",800,13,90,44,0,0,0,0],
+    ["Coffee Shake","cc-treats",600,11,62,34,0,0,0,0],
+    ["Create-Your-Own Shake","cc-treats",570,11,57,34,0,0,0,0],
     ["Cookie Butter Dream","cc-treats",790,13,82,47,0,0,0,0],
-    ["Birthday Cake Layered Ice Cream","cc-treats",530,9,80,17,0,0,0,0],
-    ["Dirt Pie Layered Ice Cream","cc-treats",500,9,77,17,0,0,0,0],
+    ["Birthday Cake","cc-treats",530,9,80,17,0,0,0,0],
+    ["Dirt Pie","cc-treats",500,9,77,17,0,0,0,0],
     ["Tropical Burst","cc-treats",540,8,102,11,0,0,0,0],
-    ["Create-Your-Own Layered Ice Cream (base)","cc-treats",350,8,55,11,0,0,0,0],
+    ["Strawberry Crunch","cc-treats",560,9,84,20,0,0,0,0],       // white cake + strawberry purée + crunch topping
+    ["Brown Sugar Boba Ice Cream","cc-treats",560,9,90,16,0,0,0,0],
+    ["Better Than Anything","cc-treats",620,10,88,22,0,0,0,0],   // chocolate cake + Heath + caramel + soft serve
+    ["Create-Your-Own Layered Ice Cream","cc-treats",350,8,55,11,0,0,0,0],
+    ["Classic Grilled Cheese","cc-food",520,18,44,30,0,0,0,0],
+    ["Garlic Parm Melt","cc-food",590,22,48,34,0,0,0,0],
     ["Pepperoni Melt","cc-food",660,26,48,40,0,0,0,0],
     ["Jalapeño Popper Melt","cc-food",690,24,52,42,0,0,0,0],
-    ["Garlic Parm Grilled Cheese","cc-food",590,22,48,34,0,0,0,0],
+    ["Street Corn Melt","cc-food",640,20,52,38,0,0,0,0],
     ["Bacon, Egg & Cheese Melt","cc-food",560,24,44,32,0,0,0,0],
+    ["Egg & Cheese Melt","cc-food",470,18,40,26,0,0,0,0],
+    ["Hash Browns","cc-food",220,2,24,13,0,0,0,0],
     ["Cinnamon Sugar Donut Bites","cc-food",400,6,52,18,0,0,0,0],
-    ["Garlic Parmesan Pretzel Bites","cc-food",480,10,60,20,0,0,0,0],
-    ["Cake Pop","cc-food",170,2,23,8,0,0,0,0],
+    ["Cinnamon Sugar Pretzels","cc-food",460,8,88,8,0,0,0,0],
+    ["Garlic Parm Pretzels","cc-food",480,10,60,20,0,0,0,0],
+    ["Pretzel Bites","cc-food",400,8,80,6,0,0,0,0],
+    ["Cake Pop (Confetti)","cc-food",170,2,23,8,0,0,0,0],
+    ["Cake Pop (Cookies & Cream)","cc-food",170,2,23,8,0,0,0,0],
   ];
-  // add-ons/toppings (their own roster — cold foams, bobas, purées; attach on every item sheet)
+  // add-ons/toppings — the chain's real roster, SCOPED to where each is actually offered
+  // (forCats). Milk list per platform audit: whole (default), oat, almond, sweet cream,
+  // horchata, half & half — modeled as swap deltas per ~8 oz milk portion. ReVibes carry
+  // the audited required groups (base choice; iced-or-blended style). Rows: [name,cal,p,c,f,cats].
+  const DRK=["cc-dirty-soda","cc-coffee","cc-frappe","cc-tea","cc-lemonade","cc-energy","cc-smoothie","cc-specialty"];
+  const MILKC=["cc-coffee","cc-tea","cc-frappe","cc-specialty","cc-smoothie"];
+  const DTR=DRK.concat("cc-treats");
   const T=[
-    ["Popping Boba (Strawberry)",90,0,22,0],
-    ["Popping Boba (Mango)",90,0,22,0],
-    ["Tapioca Boba",200,0,50,0],
-    ["Extra Espresso Shot",5,0,1,0],
-    ["Vanilla Cold Foam",105,1,14,6],
-    ["Cotton Candy Foam",90,1,12,4],
-    ["Strawberry Cold Foam",110,1,15,6],
-    ["Marshmallow Cream",50,0,12,1],
-    ["Whipped Cream",110,1,5,11],
-    ["Flavor Syrup (1 oz)",80,0,20,0],
-    ["Sugar-Free Syrup",0,0,0,0],
-    ["Fruit Purée (1 oz)",110,0,27,0],
-    ["Caramel/Brown Sugar Drizzle",45,0,11,0],
-    ["Crunchy Cotton Candy Pieces",60,0,15,0],
-    ["Sprinkles",30,0,5,1],
-    ["Cinnamon Sugar",25,0,6,0],
-    ["Protein Scoop",120,25,2,1.5],
-    ["Served Hot (no ice)",0,0,0,0],
-    // milk choice — deltas vs the whole-milk default (per ~8 oz milk portion)
-    ["Oat Milk instead of Dairy",-30,-6,4,-3],
-    ["Almond Milk instead of Dairy",-120,-7,-11,-6],
-    ["Skim Milk instead of Whole",-70,0,0,-8],
+    ["Popping Boba (Strawberry)",90,0,22,0,DTR],
+    ["Popping Boba (Mango)",90,0,22,0,DTR],
+    ["Brown Sugar Boba (chewy)",200,0,50,0,DTR],
+    ["Extra Espresso Shot",5,0,1,0,["cc-coffee","cc-frappe","cc-treats"]],
+    ["Vanilla Cold Foam",105,1,14,6,DRK],
+    ["Cotton Candy Foam",90,1,12,4,DRK],
+    ["Strawberry Cold Foam",110,1,15,6,DRK],
+    ["Marshmallow Cream",50,0,12,1,DTR],
+    ["Whipped Cream",110,1,5,11,DTR],
+    ["Flavor Syrup (1 oz)",80,0,20,0,DTR],
+    ["Sugar-Free Syrup",0,0,0,0,DRK],
+    ["Fruit Purée (1 oz)",110,0,27,0,DTR],
+    ["Caramel/Brown Sugar Drizzle",45,0,11,0,DTR],
+    ["Crunchy Cotton Candy Pieces",60,0,15,0,DTR],
+    ["Cake Pieces (layer add-in)",120,1,18,5,["cc-treats"]],
+    ["Doughnut Pieces (layer add-in)",120,2,14,6,["cc-treats"]],
+    ["Sprinkles",30,0,5,1,["cc-treats"]],
+    ["Cinnamon Sugar",25,0,6,0,["cc-treats","cc-food"]],
+    ["Cheese Dip",110,3,4,9,["cc-food"]],
+    ["Protein Scoop",120,25,2,1.5,["cc-smoothie","cc-coffee","cc-frappe","cc-treats"]],
+    ["Served Hot (no ice)",0,0,0,0,["cc-coffee","cc-tea"]],
+    ["Blended (instead of iced)",0,0,0,0,["cc-lemonade","cc-energy","cc-treats"]],
+    ["Lemonade Base (ReVibe)",150,0,40,0,["cc-energy"]],
+    ["Base: Water / Green Tea / SF Lemonade",0,0,0,0,["cc-energy"]],
+    ["Oat Milk instead of Whole",-30,-6,4,-3,MILKC],
+    ["Almond Milk instead of Whole",-120,-7,-11,-6,MILKC],
+    ["Half & Half instead of Milk",170,-1,-3,20,MILKC],
+    ["Sweet Cream instead of Milk",210,-1,7,20,MILKC],
+    ["Horchata instead of Milk",-10,-6,14,-5,MILKC],
   ];
   const comps=[];
   const R5=v=>Math.round(v/5)*5,R1=v=>Math.round(v*10)/10;
-  const CC_SIZED=new Set(["cc-dirty-soda","cc-coffee","cc-frappe","cc-tea","cc-lemonade","cc-energy","cc-smoothie","cc-specialty"]);
+  const CC_SIZED=new Set(DTR); // all drinks + layered/shakes have Regular/Large (audited: layered $7.34/$8.34)
   D.forEach((d,i)=>{
     const base=M(d[2],d[3],d[4],d[5]);
     const it={id:"cc-d"+i,name:d[0],category:d[1],macros:base,est:true};
-    const coffee=d[1]==="cc-coffee";
+    const shots=d[1]==="cc-coffee"&&d[0]!=="Cold Brew"; // espresso drinks: Regular=2 shots, Large=3 (published)
     let lg=null;
-    if(d[6])lg=M(d[6],d[7],d[8],d[9]);                       // coffee: explicit 3-shot Large
-    else if(CC_SIZED.has(d[1]))lg=M(R5(d[2]*1.4),R1(d[3]*1.4),Math.round(d[4]*1.4),R1(d[5]*1.4));
+    if(d[6])lg=M(d[6],d[7],d[8],d[9]);
+    else if(CC_SIZED.has(d[1])){const k=d[1]==="cc-treats"?1.3:1.4;lg=M(R5(d[2]*k),R1(d[3]*k),Math.round(d[4]*k),R1(d[5]*k))}
     if(lg){
-      it.defaultSizeId="small";
-      it.sizeVariants=[{sizeId:"small",sizeName:coffee?"Small (2 shots)":"Small",macros:base},
-        {sizeId:"large",sizeName:coffee?"Large (3 shots)":"Large",macros:lg}];
+      it.defaultSizeId="regular";
+      it.sizeVariants=[{sizeId:"regular",sizeName:shots?"Regular (2 shots)":"Regular",macros:base},
+        {sizeId:"large",sizeName:shots?"Large (3 shots)":"Large",macros:lg}];
     }
     comps.push(it);
   });
-  T.forEach((t,i)=>comps.push({id:"cc-t"+i,name:t[0],category:"cc-addons",macros:M(t[1],t[2],t[3],t[4]),isModifier:true,perUnit:"per serving",est:true}));
+  T.forEach((t,i)=>{
+    const it={id:"cc-t"+i,name:t[0],category:"cc-addons",macros:M(t[1],t[2],t[3],t[4]),isModifier:true,perUnit:"per serving",est:true};
+    if(t[5])it.forCats=t[5];
+    comps.push(it);
+  });
   RESTAURANTS_DB.push({id:"candycloud",name:"Candy Cloud",logo:"☁️",color:"#F27DB6",modular:false,
     menuStyle:"item-select",est:true,
     categories:["cc-dirty-soda","cc-coffee","cc-frappe","cc-tea","cc-lemonade","cc-energy","cc-smoothie","cc-specialty","cc-treats","cc-food"],
@@ -3598,13 +3653,16 @@ function getRestaurant(id){ return RESTAURANTS_DB.find(r => r.id === id); }
 const RB_OWN_ADDONS=new Set(["kungfutea","candycloud"]); // chains whose modifier roster replaces the generic fixings layer
 const RB_SSN_NEW="Fall 2026 — New",RB_SSN_FAV="Fall Favorites";
 const RB_SEASONAL={
-  candycloud:[ // "Hello Fall" collection (launched ~Sept 2026; verified via franchise posts + local press) — derived macros, est
+  candycloud:[ // Fall 2026 collection (live official menu + franchise launch posts, audited 2026-09-04) — derived macros, est
     ["Brown Sugar Pumpkin Chai","cc-tea",RB_SSN_NEW,395,7,70,10,1],
-    ["Pumpkin Spice Latte","cc-coffee",RB_SSN_NEW,390,9,58,14,1],
-    ["Pumpkin Spice Chai","cc-tea",RB_SSN_NEW,390,7,70,10,1],
-    ["Pumpkin Spice Matcha","cc-tea",RB_SSN_NEW,350,8,53,11,1],
+    ["Pumpkin Spice (espresso, chai, or matcha)","cc-coffee",RB_SSN_NEW,390,9,58,14,1], // one menu item with a base choice
     ["Butter Pecan Latte","cc-coffee",RB_SSN_NEW,350,8,50,12,1],
     ["Butter Beer Frappe","cc-frappe",RB_SSN_NEW,490,5,68,22,1],
+    ["Apple Chai","cc-tea",RB_SSN_NEW,280,4,58,4,1],                 // Edwards Apple Orchard cider + salted caramel chai
+    ["Hot Apple Cider","cc-specialty",RB_SSN_NEW,280,1,60,6,1],     // apple butter, caramel drizzle, cinnamon, whipped cream
+    ["Caramel Apple ReVibe","cc-energy",RB_SSN_NEW,180,0,44,0,1],
+    ["Apple Cider Slush Float","cc-treats",RB_SSN_NEW,450,4,80,10,1],
+    ["Apple Cider Donut Ice Cream","cc-treats",RB_SSN_NEW,560,7,84,22,1],
     ["Apple Cider Donut Shake","cc-treats",RB_SSN_NEW,820,13,98,40,1],
     ["Fresh Apple Cider Donuts","cc-food",RB_SSN_NEW,520,6,78,20,1],
   ],
@@ -4306,7 +4364,9 @@ function rbLog(){
 }
 
 // ----- item-select mode (StarbucksItemSelect.tsx — starbucks, peets, texas-roadhouse) -----
-const rbISModComps=()=>RB.restaurant.components.filter(c=>c.isModifier);
+// modifiers can declare forCats (category allow-list) so add-ons only appear where the
+// chain actually offers them — no boba steppers on a grilled cheese. No forCats = universal.
+const rbISModComps=()=>RB.restaurant.components.filter(c=>c.isModifier&&(!c.forCats||!RB.item||c.forCats.includes(RB.item.category)));
 const rbISSideItems=()=>{const R=RB.restaurant;if(!R.sidesCategory)return[];
   return R.components.filter(c=>c.category===R.sidesCategory&&!c.isModifier)};
 const rbISCatItems=()=>RB.restaurant.components.filter(c=>c.category===RB.cat&&!c.isModifier);
