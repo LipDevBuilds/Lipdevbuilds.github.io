@@ -195,6 +195,20 @@ select.input{appearance:none;-webkit-appearance:none}
 .mrow-name{font-size:14px;font-weight:500;letter-spacing:-.025em;color:hsl(var(--foreground));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;line-height:21px}
 .mrow-sub{font-size:11px;font-weight:500;color:hsl(var(--muted-foreground));margin:2px 0 0}
 .mrow-menu{padding:8px;margin:-4px;background:none;border:0;color:hsl(var(--muted-foreground));display:flex}
+.mrow-n{color:hsl(var(--primary));font-weight:600}
+.mrow-chev{padding:8px 4px;margin:-4px 0;background:none;border:0;color:hsl(var(--muted-foreground));display:flex;transition:transform .2s}
+.mrow-chev.closed{transform:rotate(-90deg)}
+.mrow.has-bd::after{display:none} /* the drop-down carries the separator */
+.mbd-w{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .25s cubic-bezier(.25,.1,.25,1),opacity .25s cubic-bezier(.25,.1,.25,1);position:relative}
+.mbd-w.open{grid-template-rows:1fr;opacity:1}
+.mbd-w::after{content:"";position:absolute;left:16px;right:0;bottom:0;height:.5px;background:hsl(var(--border)/.2)}
+.mbd{overflow:hidden;min-height:0}
+.mbd-l{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:6px 16px 6px 30px;position:relative}
+.mbd-l::before{content:"";position:absolute;left:19px;top:0;bottom:0;width:1.5px;background:hsl(var(--border)/.5)}
+.mbd-l:first-child{padding-top:2px}.mbd-l:last-child{padding-bottom:12px}
+.mbd-n{font-size:12.5px;color:hsl(var(--foreground));margin:0;line-height:17px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mbd-m{font-size:11px;color:hsl(var(--muted-foreground));margin:0;flex-shrink:0;line-height:17px}
+.mbd-l.adj .mbd-n{color:hsl(var(--muted-foreground));font-style:italic}
 .madd{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 16px;border:0;border-top:.5px solid hsl(var(--border)/.3);background:none;font-size:13px;font-weight:600;color:hsl(var(--primary))}
 .cfd-trigger{width:100%;margin:4px 0 16px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:16px;border:1px dashed hsl(var(--border)/.4);background:none;font-size:13px;color:hsl(var(--muted-foreground));transition:color .15s,border-color .15s}
 /* legacy .entry rows still used by restaurant cart + workout summary */
@@ -1084,7 +1098,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-05.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-05.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2561,6 +2575,63 @@ const IC_ZAP14=LUCIDE('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/
 const svLabel=e=>{const u=String(e.servingUnit||"").trim();
   if(!u||/^servings?$/i.test(u))return e.sv!==1?`${e.sv}× · `:"";
   return `${e.sv} ${esc(u)} · `};
+// ----- Logged-entry breakdown: a basket, combo, built bowl or wing order is logged as ONE entry, so the
+// log row shows the total. The provenance snapshot still knows every piece — rebuild the pieces with their
+// own macros so a row can drop down into "what was in it". Returns null when there is nothing to unfold.
+let entryOpen=new Set(); // ids currently expanded (session-only, like the meal cards)
+const M4=(o,k=1)=>({calories:Math.round(o.calories*k),protein:Math.round(o.protein*k*10)/10,carbs:Math.round(o.carbs*k*10)/10,fat:Math.round(o.fat*k*10)/10});
+function entryBreakdown(e){
+  const s=entrySrc[e.id];if(!s||!s.rid)return null;
+  const R=rbEntry(s.rid);if(!R)return null;
+  const byId=id=>R.components.find(c=>c.id===id);
+  const lines=[];const push=(name,m,k=1)=>{if(name&&m)lines.push({name,m:M4(m,k)})};
+  const drinkMacros=name=>{ // meal drink by its logged name: per-size chain table → fountain roster → the chain's own drink rows
+    const meal=RB_MEAL[s.rid];if(meal){const mm=/^(.*) \((.*)\)$/.exec(name);if(mm){const d=meal.drinks.find(x=>x[0]===mm[1]),i=meal.sizes.findIndex(z=>z[1]===mm[2]);if(d&&i>=0&&d[1+i]){const v=d[1+i];return{calories:v[0],protein:v[1],carbs:v[2],fat:v[3]}}}}
+    const cfg=RB_BRAND[s.rid]||{};const row=[...(RB_FOUNTAIN[cfg.soda||"coke"]||[]),...(RB_DRINK_EXTRA[s.rid]||[])].find(o=>o[0]===name);if(row)return{calories:row[1],protein:row[2],carbs:row[3],fat:row[4]};
+    const c=R.components.find(x=>x.name===name);return c?c.macros:null};
+  if(s.t==="rbi"){
+    let c=byId(s.cid),sz=s.sizeId;
+    if(!c){c=R.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c){const i=c.sizeAlias.indexOf(s.cid);sz=c.sizeVariants[i+1]&&c.sizeVariants[i+1].sizeId}}
+    if(!c)return null;
+    const q=s.qty||1,v=sz&&c.sizeVariants?c.sizeVariants.find(x=>x.sizeId===sz):null;
+    push(`${v&&v.sizeName?v.sizeName+" ":""}${c.name}`,(v||c).macros,q);
+    (s.mods||[]).forEach(m=>{const mc=byId(m.id);if(!mc)return;const b=mc.bySize&&sz&&mc.bySize[sz];const mm=b?{calories:b[0],protein:b[1],carbs:b[2],fat:b[3]}:mc.macros;push(`${(m.n||1)>1?m.n+"× ":""}${mc.name}`,mm,(m.n||1)*q)});
+    (s.sides||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q)});
+    (s.extras||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q)});
+    if(s.combo){
+      if(s.comboSide){let x=byId(s.comboSide),vv=null;
+        if(!x){x=R.components.find(y=>y.sizeAlias&&y.sizeAlias.includes(s.comboSide));if(x){const i=x.sizeAlias.indexOf(s.comboSide);vv=x.sizeVariants[i+1]}}
+        else if(x.sizeVariants&&s.comboSideSz)vv=x.sizeVariants.find(y=>y.sizeId===s.comboSideSz);
+        if(x)push(vv?`${x.name} (${vv.sizeName})`:x.name,(vv||x).macros,q)}
+      if(s.drink){const dm=drinkMacros(s.drink);if(dm)push(s.drink,dm,q)}
+    }
+    if(s.custom&&s.custom.length){ // customizations were logged by name only → they are whatever the total does not account for
+      const sum=lines.reduce((a,l)=>({calories:a.calories+l.m.calories,protein:a.protein+l.m.protein,carbs:a.carbs+l.m.carbs,fat:a.fat+l.m.fat}),{calories:0,protein:0,carbs:0,fat:0});
+      lines.push({name:s.custom.join(", "),m:M4({calories:e.macros.calories-sum.calories,protein:e.macros.protein-sum.protein,carbs:e.macros.carbs-sum.carbs,fat:e.macros.fat-sum.fat}),adj:true});
+    }
+  }else if(s.t==="rbm"){
+    const fmt=s.format&&R.mealFormats?R.mealFormats.find(f=>f.name===s.format):null;
+    (s.items||[]).forEach(it=>{const c=byId(it.id);if(!c)return;
+      let base=c.macros;if(c.sizeVariants&&it.sz){const v=c.sizeVariants.find(x=>x.sizeId===it.sz);if(v)base=v.macros}
+      let k=getPortionMultiplier(it.portion||"regular");if(fmt&&fmt.mult&&(!fmt.scale||fmt.scale.includes(c.category)))k*=fmt.mult;
+      const pre=it.portion==="double"?"2× ":it.portion==="half"?"½ ":it.portion==="light"?"Light ":"";
+      const sv=c.sizeVariants&&it.sz?(c.sizeVariants.find(x=>x.sizeId===it.sz)||{}).sizeName:null;
+      push(`${pre}${c.name}${sv?` (${sv})`:""}`,base,k)});
+  }else if(s.t==="wing"){
+    const spec=RB_WINGS[s.rid],D=RB_WING_DATA[s.rid];if(!spec||!D)return null;
+    const P=spec.products.find(p=>p.id===s.product)||spec.products[0],S=P.sizes.find(z=>z.n===s.n)||P.sizes[0];
+    const tl=id=>{const t=spec.types.find(x=>x.id===id);return t?t.label:id};
+    (s.alloc||[]).forEach(r=>{const m=(D.per[r.t]||{})[r.f]||((D.est||{})[r.t]||{})[r.f];if(m)push(`${r.n} ${r.f} (${tl(r.t)})`,{calories:m[0],protein:m[1],carbs:m[2],fat:m[3]},r.n)});
+    const side=name=>R.components.find(c=>c.category==="sides"&&c.name.toLowerCase()===String(name).toLowerCase());
+    Object.entries(s.dips||{}).forEach(([n,k])=>{const c=side(n);if(c)push(`${k>1?k+"× ":""}${n}`,c.macros,k)});
+    (s.inc||[]).forEach(n=>{if(n&&n!=="none"){const c=side(n);if(c)push(n,c.macros)}});
+    if(S.veg&&spec.veg){const c=side(spec.veg);if(c)push(`${S.veg>1?S.veg+"× ":""}${spec.veg}`,c.macros,S.veg)}
+    Object.entries(s.sides||{}).forEach(([id,k])=>{const c=byId(id);if(c)push(`${k>1?k+"× ":""}${c.name}`,c.macros,k)});
+    const dr=(D.drinks||RB_FOUNTAIN.coke||[]);(s.drinks||[]).forEach(n=>{if(n&&n!=="none"){const o=dr.find(x=>x[0]===n);if(o)push(n,{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]})}});
+  }else return null;
+  return lines.length>=2?lines:null;
+}
+const macroLine=m=>`${m.calories} cal · ${Math.round(m.protein)}P · ${Math.round(m.carbs)}C · ${Math.round(m.fat)}F`;
 function mealSection(m){
   const items=entriesFor(selDate).filter(e=>e.meal===m);
   const n=items.length;
@@ -2581,13 +2652,14 @@ function mealSection(m){
       ${n?`<span class="mh-chev${open?"":" closed"}">${IC_CHEVDOWN18}</span>`:`<span class="mh-plus">${IC_PLUS20}</span>`}
     </button>
     ${n?`<div class="mentries-w${open?" open":""}"><div class="mentries">
-      <div class="mrows">${items.map(e=>`<div class="mrow">
-        <div class="mrow-l">
+      <div class="mrows">${items.map(e=>{const bd=entryBreakdown(e),bo=bd&&entryOpen.has(e.id);
+        return `<div class="mrow${bd?" has-bd":""}">
+        ${bd?`<button class="rowbtn mrow-l haptic" data-act="ebreak" data-id="${e.id}" aria-expanded="${bo?"true":"false"}">`:`<div class="mrow-l">`}
           <p class="mrow-name">${esc(e.name)}</p>
-          <p class="mrow-sub tnum">${svLabel(e)}${e.macros.calories} cal · ${e.macros.protein}P · ${e.macros.carbs}C · ${e.macros.fat}F</p>
-        </div>
+          <p class="mrow-sub tnum">${svLabel(e)}${e.macros.calories} cal · ${e.macros.protein}P · ${e.macros.carbs}C · ${e.macros.fat}F${bd?` · <span class="mrow-n">${bd.length} items</span>`:""}</p>
+        ${bd?`</button><button class="mrow-chev haptic${bo?"":" closed"}" data-act="ebreak" data-id="${e.id}" aria-label="Show what was in it">${IC_CHEVDOWN18}</button>`:`</div>`}
         <button class="mrow-menu haptic" data-act="emenu" data-id="${e.id}">${IC_MORE18}</button>
-      </div>`).join("")}</div>
+      </div>${bd?`<div class="mbd-w${bo?" open":""}" data-bid="${e.id}"><div class="mbd">${bd.map(l=>`<div class="mbd-l${l.adj?" adj":""}"><p class="mbd-n">${esc(l.name)}</p><p class="mbd-m tnum">${macroLine(l.m)}</p></div>`).join("")}</div></div>`:""}`}).join("")}</div>
       <div style="display:flex;align-items:stretch">
         <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}">${IC_PLUS14} Add Food</button>
         <button class="madd haptic" style="flex:0 0 52px" data-act="tplsavemeal" data-meal="${m}" aria-label="Save as meal">${LUCIDE('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',2,15)}</button>
@@ -7661,6 +7733,12 @@ document.addEventListener("click",e=>{
     const open=mealOpen[k]=!cur;
     const w=el.parentElement.querySelector(".mentries-w");if(w)w.classList.toggle("open",open);
     const ch=el.querySelector(".mh-chev");if(ch)ch.classList.toggle("closed",!open);
+  }
+  else if(act==="ebreak"){ // unfold a logged basket / combo / build into its pieces, animated in place
+    const id=el.dataset.id;const open=!entryOpen.has(id);if(open)entryOpen.add(id);else entryOpen.delete(id);
+    const row=el.closest(".mrow");const w=row&&row.nextElementSibling;if(w&&w.classList.contains("mbd-w"))w.classList.toggle("open",open);
+    const ch=row&&row.querySelector(".mrow-chev");if(ch)ch.classList.toggle("closed",!open);
+    const b=row&&row.querySelector('[data-act="ebreak"].rowbtn');if(b)b.setAttribute("aria-expanded",open?"true":"false");
   }
   else if(act==="copydaysheet"){openCopyDay()}
   else if(act==="cfdshift"){ // FoodLog.tsx:101-105 — step ±1 day without limit
