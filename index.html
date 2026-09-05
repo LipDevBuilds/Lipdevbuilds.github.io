@@ -388,6 +388,9 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .prog-nav{background:none;border:0;padding:4px;color:hsl(var(--muted-foreground));display:flex}.prog-nav:disabled{opacity:.25}
 .bell{position:relative;padding:7px 10px}
 .bell-n{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:hsl(var(--destructive));color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;box-shadow:0 0 0 2px hsl(var(--background))}
+.coach-say,.coach-note{position:relative}.coach-x{position:absolute;top:8px;right:-6px;background:none;border:0;padding:6px;color:hsl(var(--muted-foreground));opacity:.55;line-height:0}.coach-say .coach-x{top:6px;right:2px}
+.coach-note.out,.coach-say.out{transition:transform .2s ease,opacity .2s ease;transform:translateX(-48px);opacity:0}
+.sw-line{display:flex;align-items:center;gap:5px;background:none;border:0;padding:0 0 10px;margin-top:-4px;font-size:11px;font-weight:500;color:hsl(var(--water))}
 .coach-note{padding:12px 0;border-top:.5px solid hsl(var(--border)/.4)}.coach-note.new .coach-card-t{color:hsl(var(--foreground))}.coach-note:first-of-type{border-top:0}
 .toast.coach{gap:10px;border-color:hsl(var(--primary)/.35)}
 .navdot{position:absolute;top:2px;right:8px;width:8px;height:8px;border-radius:4px;background:hsl(var(--destructive));box-shadow:0 0 0 2px hsl(var(--background))}
@@ -956,7 +959,8 @@ let weights=load("weights",[]);    // WeightEntry[]: {date,weight} — RAW in th
 const saveWeights=()=>save("weights",weights);
 const weightOn=d=>{const e=weights.find(x=>x.date===d);return e?e.weight:null};
 let water=load("water",{});        // {date:[ml,...]} per-add events; undo pops the last add
-const waterOn=d=>(water[d]||[]).reduce((a,b)=>a+b,0);
+const waterManualOn=d=>(water[d]||[]).reduce((a,b)=>a+b,0);
+const waterOn=d=>waterManualOn(d)+waterAutoOn(d); // hand-logged glasses + the water inside what was logged (smart water)
 let workouts=load("workouts",[]);  // real WorkoutSession[]: {id,date,name,startTime,endTime,duration,exercises[{id,exerciseName,muscleGroup,category,sets[{id,weight,reps}],caloriesBurned}],totalCaloriesBurned,category,muscleGroups[],notes}
 // custom FoodItem objects — same shape as defaults plus isCustom:true (useNutrition custom_foods rows);
 // normalize legacy rows that predate the flag so search tags them source 'custom'
@@ -1139,7 +1143,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2333,7 +2337,126 @@ const WATER_QUICK={ml:[{ml:250,label:'250'},{ml:500,label:'500'},{ml:750,label:'
                    oz:[{ml:237,label:'8'},{ml:355,label:'12'},{ml:473,label:'16'}],
                    cups:[{ml:237,label:'1'},{ml:473,label:'2'},{ml:710,label:'3'}]};
 const waterConvert=(ml,u)=>(ml/WATER_UNITS[u].factor).toFixed(WATER_UNITS[u].decimals);
-function waterTracker(currentMl,goalMl,canAdd,canUndo){   // canAdd/canUndo = isToday
+// ===== SMART WATER — the water inside what you log =====
+// A drink is liquid volume × density minus what is dissolved in it (protein, carbs, fat, alcohol); a soup or a
+// melon is its mass minus the same solids. Ice takes a share of a fountain cup, foam and headspace a share of a
+// hot one, and a per-kind cap keeps a thick shake from reading like a glass of water. Everything is computed
+// from the log on the fly — nothing is stored — so edits and deletes stay honest and hand-logged glasses are
+// never touched. Scope is drinks and wet dishes only (the ~20% of daily water that dry food carries is not
+// counted, which is what a "water" goal means to most people).
+const SW_ML_PER_OZ=29.5735;
+const SW_FILL={fountain:.70,iced:.72,hot:.92,blended:.95,bottle:1,food:1};              // beverage share of the nominal cup
+const SW_DENSITY={soda:1.04,juice:1.05,milk:1.03,shake:1.10,water:1.00,alcohol:1.00,soup:1.00,food:1.00}; // g per ml
+const SW_KIND={ // fill / density / cap (largest share of the liquid or mass that can be water) / default portion (ml or g) when no size is known
+  water:{fill:"bottle",den:"water",cap:1,def:500},soda:{fill:"fountain",den:"soda",cap:.99,def:21*SW_ML_PER_OZ},
+  juice:{fill:"bottle",den:"juice",cap:.92,def:240},coffee:{fill:"hot",den:"water",cap:.99,def:12*SW_ML_PER_OZ},
+  icedcoffee:{fill:"iced",den:"water",cap:.99,def:16*SW_ML_PER_OZ},milk:{fill:"hot",den:"milk",cap:.97,def:16*SW_ML_PER_OZ},
+  icedmilk:{fill:"iced",den:"milk",cap:.97,def:16*SW_ML_PER_OZ},shake:{fill:"blended",den:"shake",cap:.70,def:16*SW_ML_PER_OZ},
+  smoothie:{fill:"blended",den:"juice",cap:.82,def:16*SW_ML_PER_OZ},alcohol:{fill:"bottle",den:"alcohol",cap:.95,def:355},
+  soup:{fill:"food",den:"soup",cap:.95,def:12*SW_ML_PER_OZ},stew:{fill:"food",den:"soup",cap:.85,def:10*SW_ML_PER_OZ},
+  porridge:{fill:"food",den:"food",cap:.85,def:250},yogurt:{fill:"food",den:"food",cap:.88,def:170},
+  fruit:{fill:"food",den:"food",cap:.92,def:150},veg:{fill:"food",den:"food",cap:.94,def:100},
+  frozen:{fill:"food",den:"food",cap:.65,def:130},gel:{fill:"food",den:"food",cap:.90,def:120}};
+const SW_SOUP_OZ={cup:8,small:8,regular:10,medium:12,bowl:12,large:12,bread:12};
+const SW_PORTION_G={"apple slices":34,"fruit cup":200,"mandarin":90,"clementine":75,"side salad":150,"garden salad":150,"house salad":150};
+// Fountain and coffee cup ounces by size label. McDonald's, Starbucks, Peet's, Dunkin' and Kung Fu Tea publish their cups;
+// the rest use the common QSR cup set (16 / 21 / 30) and carry est on any tier scaled from it.
+const RB_CUP_OZ={
+  _qsr:{kids:12,value:16,small:16,medium:21,regular:21,large:30,"x-large":40,xlarge:40},
+  mcdonalds:{small:16,medium:21,large:30,pub:true},wendys:{small:20,medium:30,large:40},chickfila:{small:14,medium:20,large:28},
+  tacobell:{small:16,medium:20,regular:20,large:30},chipotle:{medium:22,large:32,lab:{medium:"Regular"}},panera:{small:16,medium:20,regular:20,large:30},
+  raisingcanes:{regular:22},panda:{medium:22,large:32},fiveguys:{regular:20,large:32},
+  starbucks:{short:8,tall:12,grande:16,venti:20,trenta:30,solo:1,doppio:2,pub:true},starbucksCold:{tall:12,grande:16,venti:24,trenta:30},
+  peets:{small:12,medium:16,large:20,single:1,double:2,triple:3,pub:true},dunkin:{small:10,medium:14,large:20,pub:true},dunkinCold:{small:16,medium:24,large:32},
+  kungfutea:{medium:16,large:24,pub:true},candycloud:{regular:16,large:24},
+  _shake:{mini:6,short:12,small:12,regular:16,medium:16,large:21}}; // shakes, malts, concretes, blizzards
+const smartWaterOn=()=>profile.smartWater!==false;
+const SW_SIZE_WORDS=/^(short|tall|grande|venti|trenta|small|medium|large|regular|mini|kids?|value|x-?large|giant|solo|doppio|cup|bowl|bread bowl)\b/i;
+function swSizeLabel(name){ // "(Medium)", "Medium (16oz) Milk Tea", "Grande Caffè Latte", "(Regular, 22 oz)"
+  const n=String(name);let m;const paren=[...n.matchAll(/\(([^)]*)\)/g)].map(x=>x[1]);
+  for(const p of paren){const w=p.split(",").map(x=>x.trim());for(const x of w){if(SW_SIZE_WORDS.test(x))return x.toLowerCase().replace(/\s*\(.*$/,"")}}
+  if((m=SW_SIZE_WORDS.exec(n.trim())))return m[1].toLowerCase();return null}
+function swCupOz(rid,label,cold,kind){
+  if(!label)return null;const l=label.toLowerCase();
+  if(kind==="shake"||kind==="frozen")return RB_CUP_OZ._shake[l]||null;
+  const t=(cold&&RB_CUP_OZ[rid+"Cold"])||RB_CUP_OZ[rid]||null;
+  return (t&&t[l])||RB_CUP_OZ._qsr[l]||null}
+function swClassify(name,cat){ // → a SW_KIND key, or null for anything that is not a drink or a wet dish
+  const full=String(name).toLowerCase().replace(/^[^:]{2,40}: /,"");
+  const bare=full.replace(/\s*\([^)]*\)/g," ").replace(/\d+\s*×\s*/g,"").replace(/\s+/g," ").trim();
+  const c=String(cat||"").toLowerCase();
+  if(/\b(powder|creamer|syrup|seeds?|dried|jerky|bar|bars|cereal|granola|bunches|crunch|nuts|oil|aminos|extract|mix|pods?|k-cup|whey|casein|isolate|gainer|chips|crackers)\b/.test(full))return null;
+  if(/\b(broth|consomm\S*|miso soup|tom yum|pho|ramen|udon|wonton soup|egg drop)\b/.test(bare))return "soup";
+  if(/\b(soup|bisque|chowder|gazpacho|minestrone|gumbo)\b/.test(bare))return /\b(cream of|cheddar|cheese|potato|chowder|bisque|lasagna|mac)\b/.test(bare)?"stew":"soup";
+  if(/\bchili\b/.test(bare)&&!/\b(fries|dog|dogs|burger|sauce|oil|flakes|lime|crisp|cheddar fries|mac)\b/.test(bare))return "stew";
+  if(/\b(congee|jook|porridge)\b/.test(bare))return "porridge";
+  if(/\b(stew|curry)\b/.test(bare))return "stew";
+  if(/\b(oatmeal|oats|grits|cream of wheat|muesli)\b/.test(bare)&&!/\b(cookie|cookies)\b/.test(bare))return "porridge";
+  if(/\b(yogurt|yoghurt|skyr|parfait|kefir)\b/.test(bare))return /\b(frozen|froyo|peanut buster|ice cream)\b/.test(bare)?"frozen":"yogurt";
+  if(/\b(jello|jell-o|gelatin|popsicle|ice pops?|sorbet|italian ice|lemon ice|shaved ice|snow cone)\b/.test(bare))return "gel";
+  if(/\b(smoothie|smoothies)\b/.test(bare)||c==="cc-smoothie")return "smoothie";
+  if(/\b(shake|shakes|malt|malts|frappuccino|frapp[eé]s?|blizzard|concrete|mixer|freeze|frosty|float|slush|slushie|icee|frozen (?:coffee|chocolate|lemonade|hot chocolate|matcha|latte))\b/.test(bare)||/^(frozen|cc-frappe|frappuccinos|frappes|blizzards|shakes|slush)$/.test(c)){
+    if(/\b(pre-?mixed|premier|core power|muscle milk|fairlife|ready to drink|rtd)\b/.test(full))return "milk";return "shake"}
+  if(/\b(custard|ice cream|gelato|sundae|scoop|scoops|dish)\b/.test(bare)&&!/\bcone\b/.test(bare))return "frozen";
+  if(/\b(beer|ipa|lager|ale|stout|pilsner|wine|ros[eé]|champagne|prosecco|hard seltzer|hard cider|cocktail|margarita|mojito|mimosa|sangria|vodka|whiskey|whisky|bourbon|rum|tequila|gin|liqueur|draft)\b/.test(bare)&&!/\b(ginger ale|root beer)\b/.test(bare))return "alcohol";
+  if(/\b(water|dasani|smartwater|la croix|lacroix|topo chico|bubly|perrier|pellegrino|sparkling|mineral|seltzer|hint)\b/.test(bare)&&!/\bwater chestnut/.test(bare))return "water";
+  if(/\b(latte|cappuccino|macchiato|flat white|mocha|hot chocolate|hot cocoa|cocoa|chai|matcha|milk tea|bubble tea|boba|thai tea|horchata|eggnog|protein shake|protein drink|milk|breve|cortado|core power|premier protein|orgain|ensure|boost|slimfast|fairlife)\b/.test(bare)||/^(milk-tea|milk-strike|milk-cap)$/.test(c))
+    return /\b(iced|cold|frozen)\b/.test(bare)||/^(cold-coffees|iced-drinks|iced-coffee|cold-teas)$/.test(c)?"icedmilk":"milk";
+  if(/\b(coffee|americano|espresso|brew|nitro|drip|roast|refresher|refreshers|tea|teas|kombucha|yerba|mate|energy|celsius|red bull|monster|bang|alani)\b/.test(bare)||/^(hot-coffees|hot-coffee|hot-teas|classic-tea|cc-tea|cc-energy|espresso)$/.test(c))
+    return /\b(iced|cold|nitro|refresher|refreshers|energy|celsius|red bull|monster|bang|alani|sweet tea)\b/.test(bare)||/^(cold-coffees|cold-teas|iced-coffee|iced-drinks|refreshers|cc-energy)$/.test(c)?"icedcoffee":"coffee";
+  if(/\b(juice|oj|cider|nectar)\b/.test(bare))return "juice";
+  if(/\b(lemonade|limeade|agua fresca|punch|ade|soda|pop|cola|coke|pepsi|sprite|dr pepper|mtn dew|mountain dew|starry|fanta|root beer|baja|hi-c|gatorade|powerade|bodyarmor|prime|olipop|poppi|izze|jarritos|ginger ale|tonic|dirty soda|kool-aid|arizona|snapple|vitamin ?water|propel|liquid death|drink|drinks)\b/.test(bare)||/^(drinks|beverages|cc-dirty-soda|cc-skinny|cc-specialty|cc-lemonade|more-drinks)$/.test(c))return "soda";
+  if(/\b(watermelon|melon|cantaloupe|honeydew|orange|oranges|grapefruit|grapes?|strawberr(?:y|ies)|blueberr(?:y|ies)|raspberr(?:y|ies)|blackberr(?:y|ies)|berries|pineapple|peach|peaches|plums?|mango|papaya|kiwi|pears?|cherries|nectarine|apricot|fruit cup|fruit salad|apple slices|mandarin|clementine|tangerine|pomegranate|dragonfruit|lychee)\b/.test(bare)
+    &&!/\b(chicken|beef|pork|duck|glaze|sauce|pie|cake|tart|muffin|jam|jelly|cobbler|crisp|scone|danish|roll)\b/.test(bare))return "fruit";
+  if(/\b(cucumber|celery|lettuce|romaine|iceberg|tomato|tomatoes|zucchini|radish|spinach|bell pepper|side salad|garden salad|house salad|pickles?)\b/.test(bare)&&!/\b(sauce|chips|fried|paste|ketchup|wrap|sandwich|burger)\b/.test(bare))return "veg";
+  return null}
+function swVolume(p,kind,rid){ // → {ml, cup}: liquid volume (ml) or food mass (g); cup=true when it is a nominal cup that ice/foam share
+  const K=SW_KIND[kind],name=String(p.name),k=p.k||1;
+  if(p.food){const f=p.food;const per=+f.servingSize||0;const u=(f.servingUnits||STANDARD_UNITS).find(x=>x.unit===f.servingUnit);const g=u?per*u.grams:(f.servingUnit==="ml"||f.servingUnit==="g"?per:0);if(g>0)return{ml:g*(p.sv||1),cup:false}}
+  let m;
+  if((m=/(\d+(?:\.\d+)?)\s*(?:fl\.? ?)?oz\b/i.exec(name)))return{ml:+m[1]*SW_ML_PER_OZ*k,cup:true};
+  if((m=/(\d+(?:\.\d+)?)\s*(?:ml|g)\b/i.exec(name)))return{ml:+m[1]*k,cup:false};
+  if((m=/(\d+)\s*scoop/i.exec(name)))return{ml:(+m[1]===1?130:+m[1]*125)*k,cup:false};
+  const bare=name.toLowerCase().replace(/^[^:]{2,40}: /,"").replace(/\s*\([^)]*\)/g,"").trim();
+  for(const key in SW_PORTION_G)if(bare.includes(key))return{ml:SW_PORTION_G[key]*k,cup:false};
+  const isCup=/^(soda|juice|coffee|icedcoffee|milk|icedmilk|shake|smoothie|water|alcohol)$/.test(kind);
+  const lab=swSizeLabel(name);
+  if(lab){const oz=isCup?swCupOz(rid,lab,/^(iced|soda|smoothie)/.test(kind),kind):(SW_SOUP_OZ[lab]||null);if(oz)return{ml:oz*SW_ML_PER_OZ*k,cup:isCup}}
+  return{ml:K.def*k,cup:isCup}}
+function swPieceMl(p,rid){
+  const kind=swClassify(p.name,p.cat);if(!kind)return 0;const K=SW_KIND[kind];
+  const v=swVolume(p,kind,rid);if(!(v.ml>0))return 0;
+  const liquid=v.ml*(v.cup?SW_FILL[K.fill]:1);
+  const m=p.m||{},Pn=+m.protein||0,C=+m.carbs||0,F=+m.fat||0;
+  const eth=kind==="alcohol"?Math.max(0,(+m.calories||0)-4*Pn-4*C-9*F)/7:0; // ethanol grams from the calories the macros cannot explain
+  const w=liquid*SW_DENSITY[K.den]-Pn-C-F-eth;
+  return Math.max(0,Math.min(w,liquid*K.cap))}
+function entryWaterPieces(e){ // [{name,ml}] for one logged row
+  const s=entrySrc[e.id]||(e.foodId==="quick-add"?rbSrcFromName(e):null);const rid=s&&s.rid||null;
+  let pieces=rid?entryPieces(e):null;
+  if(!pieces||!pieces.length){const f=e.foodId&&e.foodId!=="quick-add"?allFoods().find(x=>x.id===e.foodId):null;pieces=[{name:e.name,m:e.macros,food:f||null,sv:e.sv||1,k:1}]}
+  return pieces.filter(p=>!p.adj).map(p=>({name:p.name,ml:swPieceMl(p,rid)})).filter(x=>x.ml>=5)}
+function entryWaterMl(e){return entryWaterPieces(e).reduce((a,x)=>a+x.ml,0)}
+function waterAutoOn(d){if(!smartWaterOn())return 0;return Math.round(entriesFor(d).reduce((a,e)=>a+entryWaterMl(e),0))}
+function swSheetHTML(date){
+  const on=smartWaterOn(),cfg=WATER_UNITS[waterUnit];
+  const rows=on?entriesFor(date).flatMap(e=>entryWaterPieces(e)):[];const tot=rows.reduce((a,x)=>a+x.ml,0);
+  const seg=(v,l)=>`<button class="seg-btn haptic${on===v?" on":""}" data-act="swset" data-v="${v}">${l}</button>`;
+  return `<div style="padding:8px 20px 24px" id="swSheet">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 8px"><div style="display:flex;align-items:center;gap:10px">${LUCIDE_C(P_DROPLETS,2,18,'text-water')}<p style="font-size:16px;font-weight:700;margin:0;line-height:22px" class="text-foreground">Water in what you log</p></div><div style="display:flex;gap:6px">${seg(true,"On")}${seg(false,"Off")}</div></div>
+    <p style="font-size:12px;line-height:1.5;margin:0 0 12px" class="text-muted-foreground">Drinks, soups and watery foods count toward today's water: the liquid in the cup minus ice, foam and whatever is dissolved in it (sugar, protein, fat, alcohol). Glasses you add by hand are kept apart and never changed.</p>
+    ${on?(rows.length?rows.map(r=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:.5px solid hsl(var(--border)/.4);font-size:13px"><span class="text-foreground" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span><span class="tnum text-water" style="font-weight:600;flex-shrink:0">+${waterConvert(r.ml,waterUnit)} ${cfg.label}</span></div>`).join("")
+      +`<div style="display:flex;justify-content:space-between;padding:10px 0 0;border-top:.5px solid hsl(var(--border));font-size:13px;font-weight:700"><span class="text-foreground">From the log</span><span class="tnum text-water">+${waterConvert(tot,waterUnit)} ${cfg.label}</span></div>`
+      :`<p style="font-size:12.5px;margin:0" class="text-muted-foreground">Nothing wet logged yet today.</p>`)
+      :`<p style="font-size:12.5px;margin:0" class="text-muted-foreground">Off — only the glasses you add count.</p>`}
+  </div>`}
+function setsWater(){const on=smartWaterOn(),cfg=WATER_UNITS[waterUnit];
+  return `<div style="display:flex;flex-direction:column;gap:14px">
+    <div><p class="set-label" style="margin:0 0 6px">Daily goal</p><p style="font-size:13px;margin:0" class="text-foreground">${waterConvert(waterGoal(),waterUnit)} ${cfg.label} <span class="text-muted-foreground" style="font-size:11px">· 35 ml per kg, plus activity and training days</span></p></div>
+    <div><p class="set-label" style="margin:0 0 6px">Smart water</p><div style="display:flex;gap:6px"><button class="seg-btn haptic${on?" on":""}" data-act="swset" data-v="true">On</button><button class="seg-btn haptic${!on?" on":""}" data-act="swset" data-v="false">Off</button></div>
+      <p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">Counts the water inside logged drinks, soups and watery foods — the cup minus ice and whatever is dissolved in it. Hand-logged glasses are kept apart and never changed.</p></div>
+  </div>`}
+function waterTracker(currentMl,goalMl,canAdd,canUndo,autoMl=0,manualMl=currentMl){   // canAdd/canUndo = isToday; autoMl = smart water inside the log
   const pct=Math.min((currentMl/goalMl)*100,100), remaining=Math.max(0,goalMl-currentMl);
   const cfg=WATER_UNITS[waterUnit], amounts=WATER_QUICK[waterUnit];
   return `<div class="apple-card" style="padding:16px">
@@ -2343,7 +2466,7 @@ function waterTracker(currentMl,goalMl,canAdd,canUndo){   // canAdd/canUndo = is
         <div class="bg-muted" style="display:flex;border-radius:12px;padding:2px">
           ${['ml','oz','cups'].map(u=>`<button data-act="waterunit" data-u="${u}" class="haptic" style="padding:4px 8px;font-size:11px;font-weight:500;border-radius:10px;border:0;transition:all .15s;${waterUnit===u?'background:hsl(var(--background));color:hsl(var(--foreground));box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)':'background:none;color:hsl(var(--muted-foreground))'}">${WATER_UNITS[u].label}</button>`).join('')}
         </div>
-        ${currentMl>0&&canUndo?`<button data-act="waterundo" class="haptic text-muted-foreground" style="padding:8px;margin:-4px;background:none;border:0">${LUCIDE_C(P_UNDO2,2,14)}</button>`:''}
+        ${manualMl>0&&canUndo?`<button data-act="waterundo" class="haptic text-muted-foreground" style="padding:8px;margin:-4px;background:none;border:0">${LUCIDE_C(P_UNDO2,2,14)}</button>`:''}
       </div>
     </div>
     <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">
@@ -2351,6 +2474,7 @@ function waterTracker(currentMl,goalMl,canAdd,canUndo){   // canAdd/canUndo = is
       <span style="font-size:14px;font-weight:500;line-height:20px" class="text-muted-foreground">/ ${waterConvert(goalMl,waterUnit)} ${cfg.label}</span>
       <span style="font-size:11px;color:hsl(var(--muted-foreground)/.6);margin-left:auto">${waterConvert(remaining,waterUnit)} ${cfg.label} left</span>
     </div>
+    ${autoMl>0?`<button class="sw-line haptic" data-act="swinfo">${LUCIDE_C(P_DROPLETS,2,11)}<span>+${waterConvert(autoMl,waterUnit)} ${cfg.label} from drinks &amp; food</span></button>`:""}
     <div style="height:6px;border-radius:9999px;overflow:hidden;margin-bottom:16px" class="bg-muted">
       <div class="bar-anim-06 bg-water" style="height:100%;border-radius:9999px;width:${pct}%"></div>
     </div>
@@ -2458,7 +2582,7 @@ function homePage(){
   const targets={calories:G.kcal,protein:G.p,carbs:G.c,fat:G.f};
   const pbToday=burnPayback(selDate);
   const ex=expenditure();
-  const dayWaterMl=waterOn(selDate);
+  const dayWaterMl=waterOn(selDate),dayWaterAuto=waterAutoOn(selDate),dayWaterManual=waterManualOn(selDate);
   const dayWo=workouts.filter(w=>w.date===selDate);
   const dayEvents=eventsOn(selDate);
   const tr=trended();
@@ -2538,7 +2662,7 @@ function homePage(){
     ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
   </div>
-  <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),true,true)}</div>
+  <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),true,true,dayWaterAuto,dayWaterManual)}</div>
   <div class="anim apple-card" style="animation-delay:.2s;margin-top:16px;padding:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_SCALE,2,16,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Weight</p></div>
@@ -2617,30 +2741,30 @@ const svLabel=e=>{const u=String(e.servingUnit||"").trim();
 // own macros so a row can drop down into "what was in it". Returns null when there is nothing to unfold.
 let entryOpen=new Set(); // ids currently expanded (session-only, like the meal cards)
 const M4=(o,k=1)=>({calories:Math.round(o.calories*k),protein:Math.round(o.protein*k*10)/10,carbs:Math.round(o.carbs*k*10)/10,fat:Math.round(o.fat*k*10)/10});
-function entryBreakdown(e){
+function entryPieces(e){ // every itemizable piece of a logged row as {name,m,cat,k}: the drop-down shows them, smart water reads them
   const s=entrySrc[e.id]||(e.foodId==="quick-add"?rbSrcFromName(e):null);if(!s||!s.rid)return null;
   const R=rbEntry(s.rid);if(!R)return null;
   const byId=id=>R.components.find(c=>c.id===id);
-  const lines=[];const push=(name,m,k=1)=>{if(name&&m)lines.push({name,m:M4(m,k)})};
+  const lines=[];const push=(name,m,k=1,cat)=>{if(name&&m)lines.push({name,m:M4(m,k),cat,k})};
   const drinkMacros=name=>{ // meal drink by its logged name: per-size chain table → fountain roster → the chain's own drink rows
     const meal=RB_MEAL[s.rid];if(meal){const mm=/^(.*) \((.*)\)$/.exec(name);if(mm){const d=meal.drinks.find(x=>x[0]===mm[1]),i=meal.sizes.findIndex(z=>z[1]===mm[2]);if(d&&i>=0&&d[1+i]){const v=d[1+i];return{calories:v[0],protein:v[1],carbs:v[2],fat:v[3]}}}}
     const cfg=RB_BRAND[s.rid]||{};const row=[...(RB_FOUNTAIN[cfg.soda||"coke"]||[]),...(RB_DRINK_EXTRA[s.rid]||[])].find(o=>o[0]===name);if(row)return{calories:row[1],protein:row[2],carbs:row[3],fat:row[4]};
     const c=R.components.find(x=>x.name===name);return c?c.macros:null};
   if(s.t==="rbi"){
     let c=byId(s.cid),sz=s.sizeId;
-    if(!c){c=R.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c){const i=c.sizeAlias.indexOf(s.cid);sz=c.sizeVariants[i+1]&&c.sizeVariants[i+1].sizeId}}
+    if(!c){c=R.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c){const i=c.sizeAlias.indexOf(s.cid);sz=(c.sizeAliasSz&&c.sizeAliasSz[s.cid])||(c.sizeVariants[i+1]&&c.sizeVariants[i+1].sizeId)}}
     if(!c)return null;
     const q=s.qty||1,v=sz&&c.sizeVariants?c.sizeVariants.find(x=>x.sizeId===sz):null;
-    push(`${v&&v.sizeName?v.sizeName+" ":""}${c.name}`,(v||c).macros,q);
-    (s.mods||[]).forEach(m=>{const mc=byId(m.id);if(!mc)return;const b=mc.bySize&&sz&&mc.bySize[sz];const mm=b?{calories:b[0],protein:b[1],carbs:b[2],fat:b[3]}:mc.macros;push(`${(m.n||1)>1?m.n+"× ":""}${mc.name}`,mm,(m.n||1)*q)});
-    (s.sides||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q)});
-    (s.extras||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q)});
+    push(`${v&&v.sizeName?v.sizeName+" ":""}${c.name}`,(v||c).macros,q,c.category);
+    (s.mods||[]).forEach(m=>{const mc=byId(m.id);if(!mc)return;const b=mc.bySize&&sz&&mc.bySize[sz];const mm=b?{calories:b[0],protein:b[1],carbs:b[2],fat:b[3]}:mc.macros;push(`${(m.n||1)>1?m.n+"× ":""}${mc.name}`,mm,(m.n||1)*q,mc.category)});
+    (s.sides||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q,x.category)});
+    (s.extras||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q,x.category)});
     if(s.combo){
       if(s.comboSide){let x=byId(s.comboSide),vv=null;
         if(!x){x=R.components.find(y=>y.sizeAlias&&y.sizeAlias.includes(s.comboSide));if(x){const i=x.sizeAlias.indexOf(s.comboSide);vv=x.sizeVariants[i+1]}}
         else if(x.sizeVariants&&s.comboSideSz)vv=x.sizeVariants.find(y=>y.sizeId===s.comboSideSz);
-        if(x)push(vv?`${x.name} (${vv.sizeName})`:x.name,(vv||x).macros,q)}
-      if(s.drink){const dm=drinkMacros(s.drink);if(dm)push(s.drink,dm,q)}
+        if(x)push(vv?`${x.name} (${vv.sizeName})`:x.name,(vv||x).macros,q,x.category)}
+      if(s.drink){const dm=drinkMacros(s.drink);if(dm)push(s.drink,dm,q,"drinks")}
     }
     if(s.custom&&s.custom.length){ // customizations were logged by name only → they are whatever the total does not account for
       const sum=lines.reduce((a,l)=>({calories:a.calories+l.m.calories,protein:a.protein+l.m.protein,carbs:a.carbs+l.m.carbs,fat:a.fat+l.m.fat}),{calories:0,protein:0,carbs:0,fat:0});
@@ -2653,7 +2777,7 @@ function entryBreakdown(e){
       let k=getPortionMultiplier(it.portion||"regular");if(fmt&&fmt.mult&&(!fmt.scale||fmt.scale.includes(c.category)))k*=fmt.mult;
       const pre=it.portion==="double"?"2× ":it.portion==="half"?"½ ":it.portion==="light"?"Light ":"";
       const sv=c.sizeVariants&&it.sz?(c.sizeVariants.find(x=>x.sizeId===it.sz)||{}).sizeName:null;
-      push(`${pre}${c.name}${sv?` (${sv})`:""}`,base,k)});
+      push(`${pre}${c.name}${sv?` (${sv})`:""}`,base,k,c.category)});
   }else if(s.t==="wing"){
     const spec=RB_WINGS[s.rid],D=RB_WING_DATA[s.rid];if(!spec||!D)return null;
     const P=spec.products.find(p=>p.id===s.product)||spec.products[0],S=P.sizes.find(z=>z.n===s.n)||P.sizes[0];
@@ -2663,10 +2787,13 @@ function entryBreakdown(e){
     Object.entries(s.dips||{}).forEach(([n,k])=>{const c=side(n);if(c)push(`${k>1?k+"× ":""}${n}`,c.macros,k)});
     (s.inc||[]).forEach(n=>{if(n&&n!=="none"){const c=side(n);if(c)push(n,c.macros)}});
     if(S.veg&&spec.veg){const c=side(spec.veg);if(c)push(`${S.veg>1?S.veg+"× ":""}${spec.veg}`,c.macros,S.veg)}
-    Object.entries(s.sides||{}).forEach(([id,k])=>{const c=byId(id);if(c)push(`${k>1?k+"× ":""}${c.name}`,c.macros,k)});
-    const dr=(D.drinks||RB_FOUNTAIN.coke||[]);(s.drinks||[]).forEach(n=>{if(n&&n!=="none"){const o=dr.find(x=>x[0]===n);if(o)push(n,{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]})}});
+    Object.entries(s.sides||{}).forEach(([id,k])=>{const c=byId(id);if(c)push(`${k>1?k+"× ":""}${c.name}`,c.macros,k,c.category)});
+    const dr=(D.drinks||RB_FOUNTAIN.coke||[]);(s.drinks||[]).forEach(n=>{if(n&&n!=="none"){const o=dr.find(x=>x[0]===n);if(o)push(n,{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]},1,"drinks")}});
   }else return null;
-  if(lines.length<2)return null;
+  return lines;
+}
+function entryBreakdown(e){
+  const lines=entryPieces(e);if(!lines||lines.length<2)return null;
   // pieces must add up to the row: anything the snapshot could not itemize (legacy names, edited totals) shows as one honest remainder line
   const sum=lines.reduce((a,l)=>({calories:a.calories+l.m.calories,protein:a.protein+l.m.protein,carbs:a.carbs+l.m.carbs,fat:a.fat+l.m.fat}),{calories:0,protein:0,carbs:0,fat:0});
   const dc=e.macros.calories-sum.calories;
@@ -2843,6 +2970,7 @@ function swipeTo(z,dir){ // dir: 1 = forward (swiped left), -1 = back (swiped ri
   else if(zone==="prog")fire("prognav",{dir}); // drag the timeline: swipe right reveals older history, swipe left comes back toward today
   else if(zone==="coachcard"){coachUI.open=false;coachUI.flash=null;coachMount()}
   else if(zone==="coachfeed")fire("coach:go",{t:"coach"});
+  else if(zone==="coachnote"){if(dir===1)coachAct("coach:remove",z)} // swipe a note away
 }
 function mealByTime(){const h=new Date().getHours();return h<11?"breakfast":h<15?"lunch":h<21?"dinner":"snack"}
 // FoodLog page state (FoodLog.tsx:49): seeded by meal-by-time, updated by openSearch
@@ -4386,7 +4514,7 @@ function rbResizeCombo(){ // keep the same side / drink when the meal size chang
 const RB_DRINK_EXTRA={ // brand-signature fountain items
   mcdonalds:[["Hi-C Orange Lavaburst (Medium)",240,0,64,0]],
   tacobell:[["Mtn Dew Baja Blast (Medium)",280,0,74,0],["Mtn Dew Baja Blast (Large)",420,0,110,0]],
-  culvers:[["Culver's Root Beer (Medium)",260,0,68,0]],
+  culvers:[["Signature Root Beer (Medium)",300,0,81,0]],
   chickfila:[["Chick-fil-A Lemonade (Medium)",220,0,58,0],["Chick-fil-A Diet Lemonade (Medium)",50,0,13,0]],
 };
 function rbDrinkOptions(){ // full meal-drink lineup: fountain roster + signatures + the brand's own data drinks
@@ -4757,13 +4885,24 @@ const RB_FIX={
     add:[{n:"Crinkle Cut Fries",c:"sides",sz:[["Regular",360,4,52,15],["Large",430,5,62,18],["Family",1320,16,191,54]],def:"Regular",est:true},
       {n:"Wisconsin Cheese Curds",c:"sides",sz:[["Regular",510,20,51,25],["Large",980,34,91,54]],def:"Regular"},
       {n:"Onion Rings",c:"sides",sz:[["Regular",400,6,44,22],["Large",800,12,88,44]],def:"Regular"},
-      {n:"Vanilla Concrete Mixer (Short)",c:"custard",m:[680,12,67,40]}]},
+      {n:"Vanilla Concrete Mixer (Short)",c:"custard",m:[680,12,67,40]},
+      // the rest of the drink board: float, coffee, cocoa, milks and juices (est where Culver's does not publish)
+      {n:"Root Beer Float (Regular)",c:"drinks",m:[520,8,84,16],est:true},{n:"Coffee",c:"drinks",m:[5,0,0,0]},{n:"Hot Chocolate",c:"drinks",m:[220,4,36,7],est:true},
+      {n:"1% Milk (8 oz)",c:"drinks",m:[100,8,12,2]},{n:"Chocolate Milk (8 oz)",c:"drinks",m:[160,8,26,3],est:true},{n:"Orange Juice (8 oz)",c:"drinks",m:[110,2,26,0]},{n:"Apple Juice (8 oz)",c:"drinks",m:[120,0,29,0]}]},
+  chipotle:{addCats:{drinks:"Drinks"},add:[{n:"Mexican Coca-Cola (12 oz)",c:"drinks",m:[150,0,39,0]},{n:"Izze Sparkling Blackberry (12 oz)",c:"drinks",m:[90,0,22,0],est:true},{n:"Izze Sparkling Clementine (12 oz)",c:"drinks",m:[90,0,22,0],est:true},
+      {n:"Tractor Organic Lemonade",c:"drinks",sz:[["Regular",190,0,48,0],["Large",280,0,70,0]],def:"Regular",est:true},{n:"Tractor Mandarin Cardamom",c:"drinks",sz:[["Regular",160,0,40,0],["Large",230,0,58,0]],def:"Regular",est:true},
+      {n:"Apple Juice (10 oz)",c:"drinks",m:[140,0,34,0],est:true},{n:"Organic Whole Milk (8 oz)",c:"drinks",m:[150,8,12,8]}]},
   freddys:{drop:["Shoestring Fries (Regular)"],add:[{n:"Shoestring Fries",c:"sides",sz:[["Regular",400,7,48,21],["Large",520,7,62,27]],def:"Regular"}]},
   whitecastle:{drop:["French Fries (Small)","French Fries (Regular)"],add:[{n:"French Fries",c:"sides",sz:[["Small",330,3,32,21],["Medium",590,5,57,39],["Large (Sack)",770,8,76,49]],def:"Medium"}]},
   burgerking:{drop:["Onion Rings (Small)"],add:[{n:"Onion Rings",c:"sides",sz:[["Small",280,4,37,13],["Medium",360,4,48,16],["Large",520,7,70,24]],def:"Medium"}]},
   subway:{set:{"Artisan Italian":[210,8,39,2],"Hearty Multigrain":[200,9,36,3]}},
   starbucks:{drop:["Espresso Macchiato"],add:[{n:"Espresso Macchiato",c:"hot-coffees",sz:[["Solo",10,1,1,0],["Doppio",15,1,2,0]],def:"Doppio"}],set:{"Cortado":[90,5,8,4.5],"Pistachio Cortado":[150,5,22,5]}},
-  panera:{drop:["Caesar Salad (Whole)","Caesar Salad (Half)"],add:[{n:"Caesar Salad",c:"salads",sz:[["Half",210,6,12,15],["Whole",410,12,24,30]],def:"Whole"}]},
+  panera:{drop:["Caesar Salad (Whole)","Caesar Salad (Half)"],addCats:{drinks:"Drinks"},add:[{n:"Caesar Salad",c:"salads",sz:[["Half",210,6,12,15],["Whole",410,12,24,30]],def:"Whole"},
+      // 2026 drink board: lemonades and teas replaced the charged sips; values est from Panera's posted ranges
+      {n:"Agave Lemonade",c:"drinks",sz:[["Regular",190,0,48,0],["Large",290,0,72,0]],def:"Regular",est:true},{n:"Blueberry Lavender Lemonade",c:"drinks",sz:[["Regular",160,0,40,0],["Large",240,0,60,0]],def:"Regular",est:true},
+      {n:"Pomegranate Hibiscus Tea",c:"drinks",sz:[["Regular",100,0,25,0],["Large",150,0,38,0]],def:"Regular",est:true},{n:"Tropical Green Tea",c:"drinks",sz:[["Regular",80,0,20,0],["Large",120,0,30,0]],def:"Regular",est:true},
+      {n:"Citrus Punch",c:"drinks",sz:[["Regular",190,0,47,0],["Large",290,0,71,0]],def:"Regular",est:true},{n:"Coffee (Light Roast)",c:"drinks",m:[5,0,0,0]},{n:"Cold Brew",c:"drinks",m:[5,0,1,0]},
+      {n:"Caffe Latte (16 oz)",c:"drinks",m:[190,12,18,7],est:true},{n:"Hot Chocolate (16 oz)",c:"drinks",m:[380,12,58,12],est:true}]},
   jerseymikes:{ren:{"#56 Big Kahuna Chicken Cheese Steak (Regular)":"#55 Big Kahuna Chicken Cheese Steak (Regular)"},set:{"#55 Big Kahuna Chicken Cheese Steak (Regular)":[740,45,69,32]},est:["#55 Big Kahuna Chicken Cheese Steak (Regular)"],
     ladder:{match:/ \(Regular\)$/,cats:["cold-subs","hot-subs"],sizes:[["Mini",0.62,true],["Regular",1],["Giant",2]],def:"Regular"},catNames:{"cold-subs":"Cold Subs","hot-subs":"Hot Subs"}},
   jimmyjohns:{set:{"#12 Beach Club":[850,45,75,39],"#13 Gourmet Veggie Club":[1020,47,72,60]},ladder:{match:/^#\d+ |^The J\.J\./,cats:["originals","favorites"],sizes:[["8-inch Original",1],["16-inch Giant",2]],def:"8-inch Original"}},
@@ -4782,7 +4921,8 @@ const RB_FIX={
     {n:"Diet Lemonade",c:"drinks",sz:[["Small",45,0,12,0],["Medium",60,0,16,0],["Large",80,0,21,0]],def:"Medium",est:true},
     {n:"Chick-fil-A Lemonade (Medium)",c:"drinks",m:[220,0,58,0],est:true},{n:"Unsweetened Iced Tea",c:"drinks",m:[0,0,0,0]},
     {n:"Coca-Cola (Medium)",c:"drinks",m:[200,0,55,0]},{n:"Diet Coke",c:"drinks",m:[0,0,0,0]},{n:"Coke Zero Sugar",c:"drinks",m:[0,0,0,0]},{n:"Sprite (Medium)",c:"drinks",m:[190,0,51,0]},{n:"Dr Pepper (Medium)",c:"drinks",m:[200,0,54,0]},{n:"Bottled Water",c:"drinks",m:[0,0,0,0]}]},
-  "texas-roadhouse":{setSize:{"New York Strip":{"8oz":[420,57,1,22]}},set:{"Chicken Critters":[480,45,26,21],"Jr. Chicken Tenders":[360,31,24,16],"Ranger Chicken Critters Basket":[340,32,19,15]}},
+  "texas-roadhouse":{setSize:{"New York Strip":{"8oz":[420,57,1,22]}},set:{"Chicken Critters":[480,45,26,21],"Jr. Chicken Tenders":[360,31,24,16],"Ranger Chicken Critters Basket":[340,32,19,15]},
+    addCats:{drinks:"Drinks"},add:[{n:"Legendary Margarita (Regular)",c:"drinks",m:[270,0,36,0],est:true},{n:"Domestic Draft Beer (16 oz)",c:"drinks",m:[200,2,13,0],est:true},{n:"House Wine (6 oz)",c:"drinks",m:[150,0,5,0],est:true}]},
   panda:{add:[
     {n:"Watermelon Mango Refresher (24 oz)",c:"drinks",m:[210,0,53,0]},{n:"Peach Lychee Refresher (24 oz)",c:"drinks",m:[210,0,53,0]},{n:"Pomegranate Pineapple Lemonade (24 oz)",c:"drinks",m:[240,0,57,0]},
     {n:"Coca-Cola (Medium)",c:"drinks",m:[200,0,55,0]},{n:"Sprite (Medium)",c:"drinks",m:[190,0,51,0]},{n:"Dr Pepper (Medium)",c:"drinks",m:[200,0,54,0]},{n:"Barq's Root Beer (Medium)",c:"drinks",m:[220,0,60,0]},
@@ -4837,19 +4977,41 @@ const RB_SIZE_ORDER=["value","jr","jr.","kid","kids","mini","small","short","cup
     });
   });
 })();
+// Builders without a combo step still sell drinks: the bottler each chain pours (Panera pours Pepsi; the rest Coca-Cola).
+const RB_FOUNTAIN_ALSO={chipotle:"coke",subway:"coke",qdoba:"coke",panera:"pepsi",noodlesandco:"coke","texas-roadhouse":"coke"};
 (function(){ // every counter chain sells fountain drinks à la carte too — a Drinks tab with the bottler's published roster
   const isSoda=n=>/coca-cola|coke|pepsi|sprite|dr pepper|mtn dew|starry|fanta|root beer|lemonade|iced tea|sweet tea|bottled water|hi-c|baja/i.test(n);
-  const ids=new Set(Object.entries(RB_BRAND).filter(([id,c])=>c.combo).map(([id])=>id).concat(Object.keys(RB_WINGS)));
+  const ids=new Set(Object.entries(RB_BRAND).filter(([id,c])=>c.combo).map(([id])=>id).concat(Object.keys(RB_WINGS),Object.keys(RB_FOUNTAIN_ALSO)));
   ids.forEach(rid=>RESTAURANTS_DB.filter(r=>r.id===rid).forEach(r=>{
-    const cfg=RB_BRAND[rid]||{};
+    const cfg=RB_BRAND[rid]||{},soda=cfg.soda||RB_FOUNTAIN_ALSO[rid]||"coke";
     let cat=r.categories.find(c=>/^drinks?$|beverages?/i.test(c));
     r.categoryConfig=r.categoryConfig||{};
     if(!cat){cat="drinks";r.categories.push(cat);r.categoryConfig[cat]=Object.assign({name:cat,selectMode:"multi",displayName:"Drinks"},r.categoryConfig[cat]||{})}
     const W=RB_WING_DATA[rid];
-    const rows=W&&W.drinks?W.drinks:(RB_FOUNTAIN[cfg.soda||"coke"]||[]).concat(RB_DRINK_EXTRA[rid]||[]);
-    rows.forEach(o=>{if(r.components.some(c=>c.name.toLowerCase()===o[0].toLowerCase()||(isSoda(c.name)&&c.category===cat&&c.name.replace(/ \(.*\)$/,"").toLowerCase()===o[0].replace(/ \(.*\)$/,"").toLowerCase())))return;
+    const rows=W&&W.drinks?W.drinks:(RB_FOUNTAIN[soda]||[]).concat(RB_DRINK_EXTRA[rid]||[]);
+    const base=n=>n.replace(/ \(.*\)$/,"").toLowerCase(); // a second explicit size of the same drink is welcome (the size ladder below groups them); a sized row or an unsized one already covers it
+    rows.forEach(o=>{if(r.components.some(c=>c.name.toLowerCase()===o[0].toLowerCase()||(isSoda(c.name)&&c.category===cat&&base(c.name)===base(o[0])&&(c.sizeVariants||!RB_SIZE_SUFFIX.test(c.name)))))return;
       r.components.push({id:`dk-${rid}-${rbSlug(o[0])}`,name:o[0],category:cat,macros:{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]}})});
   }));
+})();
+(function(){ // fountain sizes: one row per drink with Small / Medium / Large chips. Medium is the roster's published cup;
+  // a tier the chain did not publish scales by its cup ounces (RB_CUP_OZ) and carries est, like every other scaled size.
+  const isFountain=n=>/coca-cola|coke|pepsi|sprite|dr pepper|mtn dew|mountain dew|starry|fanta|root beer|lemonade|iced tea|sweet tea|hi-c|baja|punch|limeade/i.test(n);
+  RESTAURANTS_DB.forEach(r=>{const cat=r.categories.find(c=>/^drinks?$|beverages?/i.test(c));if(!cat||RB_WINGS[r.id]||RB_MEAL[r.id])return;
+    const cup=RB_CUP_OZ[r.id]||RB_CUP_OZ._qsr;const tiers=["small","medium","large"].filter(t=>cup[t]);if(tiers.length<2)return;
+    const groups={};
+    r.components.forEach(c=>{if(c.category!==cat||c.isModifier||c.sizeVariants||!isFountain(c.name))return;const m=/^(.*?) \((Small|Medium|Large)\)$/i.exec(c.name);if(!m)return;const k=m[1].toLowerCase();(groups[k]=groups[k]||[]).push([c,m[1],m[2].toLowerCase()])});
+    Object.values(groups).forEach(rows=>{
+      const by={};rows.forEach(([c,b,l])=>{by[l]=c});const refLab=by.medium?"medium":by.large?"large":"small",ref=by[refLab];
+      const head=ref,base=rows[0][1];
+      const sc=k=>({calories:Math.round(ref.macros.calories*k/5)*5,protein:Math.round(ref.macros.protein*k),carbs:Math.round(ref.macros.carbs*k),fat:Math.round(ref.macros.fat*k)});
+      head.sizeVariants=tiers.map(t=>{const L=(cup.lab&&cup.lab[t])||t[0].toUpperCase()+t.slice(1);const own=by[t];return own?{sizeId:t,sizeName:L,macros:own.macros}:{sizeId:t,sizeName:L,macros:sc(cup[t]/cup[refLab]),est:true}});
+      head.defaultSizeId=by.medium?"medium":tiers[0];head.name=base;head.macros=head.sizeVariants.find(v=>v.sizeId===head.defaultSizeId).macros;
+      if(head.sizeVariants.some(v=>v.est))head.estSizes=true;
+      head.sizeAlias=[];head.sizeAliasSz={};rows.forEach(([c,b,l])=>{if(c!==head){head.sizeAlias.push(c.id);head.sizeAliasSz[c.id]=l}});
+      const dead=new Set(head.sizeAlias);r.components=r.components.filter(c=>!dead.has(c.id));
+    });
+  });
 })();
 (function(){ // Subway app: pick the size first (6-inch / Footlong), then build — Footlong doubles the build, not the chips/cookie/drink
   RESTAURANTS_DB.filter(r=>r.id==="subway").forEach(r=>{
@@ -6933,7 +7095,7 @@ function coachTick(reason){
   if(tab==="auth"||tab==="notfound")return;
   const now=new Date();let added=0;
   const cands=coachCandidates(now).filter(c=>!coachMem.seen[c.id]&&!coachMuted(c.kind,now)&&!(coachMem.snooze[c.id]>now.getTime()));
-  const today=localDateStr(now);const nudgesToday=coachMem.inbox.filter(m=>COACH_NUDGE_KINDS.has(m.kind)&&m.day===today).length;
+  const today=localDateStr(now);const nudgesToday=coachMem.inbox.filter(m=>COACH_NUDGE_KINDS.has(m.kind)&&m.day===today).length+((coachMem.rm||{})[today]||0); // removed nudges still spend the day's budget
   let budget=Math.max(0,3-nudgesToday);
   cands.sort((a,b)=>a.prio-b.prio).forEach(c=>{
     if(COACH_NUDGE_KINDS.has(c.kind)){if(budget<=0)return;budget--}
@@ -6961,7 +7123,8 @@ function coachReact(reason,today){
   if(!/^(food_log|weights|workouts|water|checkins)$/.test(reason))return;
   const tgt=targetsFor(today),tod=coachDayTotals(today);
   if(reason==="food_log"){const left=Math.round(tgt.kcal-tod.calories);if(!entriesFor(today).length)return;
-    coachWhisper(left>=0?`Logged — ${left} cal left today${tgt.p-tod.protein>0?`, ${Math.round(tgt.p-tod.protein)}g protein to go`:""}.`:`Logged — ${-left} cal over target. Tomorrow resets.`)}
+    const last=entriesFor(today).slice().sort((a,b)=>(b.ts||0)-(a.ts||0))[0];const wml=last?Math.round(entryWaterMl(last)):0;const wtxt=wml>=50?` +${waterConvert(wml,waterUnit)} ${WATER_UNITS[waterUnit].label} water.`:"";
+    coachWhisper((left>=0?`Logged — ${left} cal left today${tgt.p-tod.protein>0?`, ${Math.round(tgt.p-tod.protein)}g protein to go`:""}.`:`Logged — ${-left} cal over target. Tomorrow resets.`)+wtxt)}
   else if(reason==="weights"){const tr=trended(),w=weights.find(x=>x.date===today);if(!w)return;const wc=getWeightChangeRate(tr,14);
     coachWhisper(`${w.weight} ${profile.weightUnit} saved${tr.length>=3?` — trend ${wc>0?"+":""}${wc} ${profile.weightUnit}/wk`:""}.`)}
   else if(reason==="workouts"){const c=workouts.filter(w=>w.date===today).reduce((a,w)=>a+(w.totalCaloriesBurned||0),0);if(c>0)coachWhisper(`Session in — ${c} cal earned and folded into today.`)}
@@ -6988,6 +7151,12 @@ function coachAct(act,el){
   switch(act){
     case"coach:open":case"coach:inbox":coachInboxOpen();return;
     case"coach:close":closeSheet();return;
+    case"coach:remove":{if(!m)return; // × or swipe-left: the note is gone; an unanswered nudge counts as a dismissal for the back-off memory
+      if((m.state==="new"||m.state==="read")&&m.actions.length)coachOutcome(m.kind,false);
+      if(COACH_NUDGE_KINDS.has(m.kind)&&m.day){coachMem.rm=coachMem.rm||{};coachMem.rm[m.day]=(coachMem.rm[m.day]||0)+1}
+      coachMem.inbox=coachMem.inbox.filter(x=>x.id!==id);coachSave();
+      const node=el.closest(".coach-note,.coach-say");const fin=()=>{renderNav();coachBellRefresh();coachInboxRefresh();if(tab==="coach")coachHeroRefresh()};
+      if(node){node.classList.add("out");setTimeout(fin,200)}else fin();return}
     case"coach:go":closeSheet();if(m)coachMark(id,"done");tab=el.dataset.t||"coach";render();return;
     case"coach:apply":{const ok=coachApplyTargets();if(m){coachMark(id,ok?"done":"read");coachOutcome(m.kind,true)}closeSheet();toast(ok?"Targets applied":"Nothing to apply yet");render();return}
     case"coach:snooze":{const h=+el.dataset.h||24;if(m){coachMem.snooze[m.id.replace(/-\d{4}-.*$|-\d{4}-W\d+$/,"")+"-"+localDateStr()]=Date.now()+h*36e5;coachMem.seen[m.id]=undefined;delete coachMem.seen[m.id];coachMem.snooze[m.id]=Date.now()+h*36e5;coachMark(id,"snoozed");coachOutcome(m.kind,false)}coachSave();renderNav();coachBellRefresh();coachInboxRefresh();if(tab==="coach")coachHeroRefresh();return}
@@ -7048,7 +7217,7 @@ function coachInboxHTML(){
   return `<div style="padding:8px 20px 24px" id="coachInbox">
     <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0 12px"><div style="display:flex;align-items:center;gap:10px">${coachAvatar(30,true)}<div><p style="font-size:16px;font-weight:700;margin:0;line-height:22px" class="text-foreground">Notifications</p><p style="font-size:11px;margin:0" class="text-muted-foreground">${list.length?`${list.length} note${list.length!==1?"s":""} from ${COACH_NAME}`:"Nothing yet"}</p></div></div>
       <div style="display:flex;gap:6px"><button class="apple-pill bg-secondary haptic" data-act="coach:checkin" style="border:0;color:hsl(var(--secondary-foreground))">Check in</button>${list.length?`<button class="apple-pill bg-secondary haptic" data-act="coach:clear" style="border:0;color:hsl(var(--secondary-foreground))">Clear</button>`:""}</div></div>
-    ${list.length?list.map(m=>`<div class="coach-note${m.state==="new"?" new":""}"><div style="display:flex;align-items:flex-start;gap:10px"><span class="coach-row-i">${kindIcon[m.kind]||"○"}</span><div style="flex:1;min-width:0"><p class="coach-card-t">${esc(m.title)}<span class="coach-ago">${coachAgo(m.ts)}</span></p><p class="coach-card-b">${esc(m.body)}</p>
+    ${list.length?list.map(m=>`<div class="coach-note${m.state==="new"?" new":""}" data-swipe="coachnote" data-id="${m.id}"><button class="coach-x haptic" data-act="coach:remove" data-id="${m.id}" aria-label="Dismiss">${LUCIDE_C(P_X,2,13)}</button><div style="display:flex;align-items:flex-start;gap:10px;padding-right:22px"><span class="coach-row-i">${kindIcon[m.kind]||"○"}</span><div style="flex:1;min-width:0"><p class="coach-card-t">${esc(m.title)}<span class="coach-ago">${coachAgo(m.ts)}</span></p><p class="coach-card-b">${esc(m.body)}</p>
       ${m.state==="done"||m.state==="dismissed"||m.state==="snoozed"?`<p class="coach-state" style="margin:6px 0 0">${m.state==="done"?"Done":m.state==="snoozed"?"Snoozed":"Dismissed"}</p>`:m.actions.length?`<div class="coach-acts">${coachActionsHTML(m)}</div>`:""}</div></div></div>`).join("")
       :`<p style="font-size:12.5px;line-height:1.55;margin:0" class="text-muted-foreground">Log a meal or a weigh-in and I'll start talking. Or check in now and I'll plan today around how you feel.</p>`}
   </div>`;
@@ -7065,7 +7234,7 @@ function coachHeroHTML(){
     <div style="display:flex;align-items:center;gap:14px">${coachAvatar(56,true)}
       <div style="flex:1;min-width:0"><p style="font-size:18px;font-weight:700;margin:0;line-height:24px" class="text-foreground">${COACH_NAME}</p><p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground"><span class="coach-live"></span>${esc(status)}</p></div>
       <button class="apple-pill bg-secondary haptic" data-act="coach:checkin" style="border:0;color:hsl(var(--secondary-foreground))">${ci?"Update check-in":"Check in"}</button></div>
-    ${latest?`<div class="coach-say"><p class="coach-card-t">${esc(latest.title)}<span class="coach-ago">${coachAgo(latest.ts)}</span></p><p class="coach-card-b coach-type" data-full="${esc(latest.body)}">${esc(latest.body)}</p><div class="coach-acts">${latest.state==="done"||latest.state==="dismissed"?`<span class="coach-state">${latest.state==="done"?"Done":"Dismissed"}</span>`:coachActionsHTML(latest)}</div></div>`
+    ${latest?`<div class="coach-say" data-swipe="coachnote" data-id="${latest.id}"><button class="coach-x haptic" data-act="coach:remove" data-id="${latest.id}" aria-label="Dismiss">${LUCIDE_C(P_X,2,13)}</button><p class="coach-card-t" style="padding-right:22px">${esc(latest.title)}<span class="coach-ago">${coachAgo(latest.ts)}</span></p><p class="coach-card-b coach-type" data-full="${esc(latest.body)}">${esc(latest.body)}</p><div class="coach-acts">${latest.state==="done"||latest.state==="dismissed"?`<span class="coach-state">${latest.state==="done"?"Done":"Dismissed"}</span>`:coachActionsHTML(latest)}</div></div>`
       :`<div class="coach-say"><p class="coach-card-b">${(()=>{const c=coachingData();return c?esc(c.message):"Log a meal or a weigh-in and I'll start talking. Or check in now and I'll plan today around how you feel."})()}</p></div>`}
     ${inbox.length>1?`<button class="haptic text-primary" data-act="coach:inbox" style="background:none;border:0;padding:10px 0 0;font-size:12px;font-weight:600">All notes${unread?` · ${unread} new`:""}</button>`:""}
   </div>`;
@@ -7703,6 +7872,7 @@ function settingsPage(animate=true){
   ${accSection("coachagent",P_WO_ZAP,"Your Coach",coachSettingsHTML(),animate)}
   ${accSection("health",P_HEART,"Health &amp; Activity Data",setsHealth(),animate)}
   ${accSection("targets",P_FLAME,"Daily Targets",setsTargets(),animate)}
+  ${accSection("water",P_DROPLETS,"Water",setsWater(),animate)}
   <div style="margin-top:24px;display:flex;flex-direction:column;gap:12px">
     <p class="text-muted-foreground" style="font-size:12px;margin:0;line-height:16px">${sbSess?esc(sbSess.user.email):"Not signed in — data stays on this device"}</p>
     ${sbSess?`<p class="text-muted-foreground" style="font-size:11px;margin:0;line-height:15px">${esc(syncLine())} · <button class="haptic" data-act="syncnow" style="background:none;border:0;padding:0;font-size:11px;color:hsl(var(--primary));line-height:15px">Sync now</button></p>`:""}
@@ -7854,6 +8024,8 @@ document.addEventListener("click",e=>{
   else if(act==="waterunit"){waterUnit=el.dataset.u;render()}                               // WaterTracker.tsx unit toggle
   else if(act==="wateradd"){(water[selDate]=water[selDate]||[]).push(+el.dataset.ml);save("water",water);render()} // per-add events
   else if(act==="waterundo"){const a=water[selDate];if(a&&a.length){a.pop();if(!a.length)delete water[selDate];save("water",water);render()}}
+  else if(act==="swinfo")openSheet(swSheetHTML(selDate));
+  else if(act==="swset"){profile.smartWater=el.dataset.v==="true";save("profile",profile);closeSheet();if(tab==="settings")rerenderSettings();else render()}
   else if(act==="logweight"){
     // Progress.tsx:16-21 / Index.tsx:97 + useWeight.ts:31-39 addWeight — store the RAW typed
     // number in the user's display unit (no lb<->kg conversion anywhere), upserted for TODAY;
