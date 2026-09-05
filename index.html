@@ -383,6 +383,25 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .coach-row-i{width:14px;text-align:center;font-size:11px;color:hsl(var(--primary));line-height:18px;flex-shrink:0}
 .coach-row-t{display:block;font-size:13px;font-weight:600;line-height:18px;color:hsl(var(--muted-foreground))}
 .coach-row-b{display:block;font-size:11px;line-height:15px;color:hsl(var(--muted-foreground));overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+@keyframes coachNod{0%{transform:translateY(0) scale(1)}30%{transform:translateY(-6px) scale(1.08)}60%{transform:translateY(0) scale(.97)}100%{transform:translateY(0) scale(1)}}
+@keyframes coachSpark{0%,88%,100%{opacity:1}92%{opacity:.35}96%{opacity:1}}
+@keyframes coachWhisperIn{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes coachDots{0%,80%,100%{transform:translateY(0);opacity:.35}40%{transform:translateY(-3px);opacity:1}}
+@keyframes coachGlow{0%,100%{filter:drop-shadow(0 0 0 hsl(var(--primary)/0))}50%{filter:drop-shadow(0 0 6px hsl(var(--primary)/.8))}}
+@keyframes paneFromRight{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes paneFromLeft{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+.coach-orb svg{animation:coachSpark 7s linear infinite}
+.coach-fab.nod{animation:coachNod .6s cubic-bezier(.25,.8,.35,1)}
+.coach-whisper{position:absolute;left:52px;bottom:6px;max-width:calc(100vw - 100px);background:hsl(var(--card));border:1px solid hsl(var(--primary)/.3);border-radius:14px 14px 14px 4px;padding:8px 12px;font-size:12px;font-weight:500;line-height:16px;color:hsl(var(--foreground));box-shadow:0 8px 24px rgba(0,0,0,.35);animation:coachWhisperIn .25s cubic-bezier(.25,.8,.35,1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s}
+.coach-whisper.out{opacity:0}
+.coach-dots{display:inline-flex;gap:4px;padding:4px 0}.coach-dots i{width:6px;height:6px;border-radius:3px;background:hsl(var(--primary));animation:coachDots 1s ease-in-out infinite}.coach-dots i:nth-child(2){animation-delay:.15s}.coach-dots i:nth-child(3){animation-delay:.3s}
+.coach-strip{width:100%;display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 12px;border-radius:14px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--foreground));text-align:left}
+.coach-strip.new{border-color:hsl(var(--primary)/.35);background:hsl(var(--primary)/.06)}
+.coach-strip-t{flex:1;min-width:0;font-size:12.5px;font-weight:500;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.coach-strip-n{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.navbtn.alive svg{animation:coachGlow 2.4s ease-in-out infinite}
+.swipe-pane.from-right{animation:paneFromRight .22s cubic-bezier(.25,.8,.35,1)}.swipe-pane.from-left{animation:paneFromLeft .22s cubic-bezier(.25,.8,.35,1)}
+.prog-nav{background:none;border:0;padding:4px;color:hsl(var(--muted-foreground));display:flex}.prog-nav:disabled{opacity:.25}
 .navdot{position:absolute;top:2px;right:8px;width:8px;height:8px;border-radius:4px;background:hsl(var(--destructive));box-shadow:0 0 0 2px hsl(var(--background))}
 .navbtn{position:relative}
 .toast{position:fixed;left:16px;width:calc(100% - 32px);max-width:358px;bottom:16px;pointer-events:none;background:#000;border:1px solid hsl(var(--border));display:flex;align-items:center;gap:6px;text-align:left;border-radius:8px;padding:16px;font-size:13px;font-weight:500;color:hsl(var(--foreground));z-index:60;animation:enter .25s;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1)}
@@ -1132,7 +1151,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2193,7 +2212,7 @@ function dayStrip(opts){
       <span class="ds-num">${date.getDate()}</span>
       <span class="ds-dots">${dots}</span></button>`;
   }).join('');
-  return `<div class="daystrip">
+  return `<div class="daystrip" data-swipe="dsweek">
     <div class="ds-head">
       <button class="ds-chev" data-act="dsweek" data-dir="-1" aria-label="Previous week">${IC_CHEV_L}</button>
       <div class="ds-mid">
@@ -2534,6 +2553,7 @@ function homePage(){
     ${calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday})}
     ${shiftOn&&targets.calories!==baseCals&&!pbToday?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
     ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
+    ${typeof coachStripHTML==="function"&&coachPref("coachDock",true)?coachStripHTML():""}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
   </div>
   <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),true,true)}</div>
@@ -2816,6 +2836,31 @@ function uiPrompt(title,body,value,opts){opts=opts||{};
     <button class="dlg-btn pr haptic" data-act="dlgok">${esc(opts.ok||"Save")}</button></div></div>`,res,true));
 }
 
+// ===== swipe gestures — the app's gesture culture: horizontal swipes travel through time =====
+// Any element carrying data-swipe="<zone>" pans with a horizontal swipe. Real thumbs scroll
+// vertically and swipe horizontally, so a gesture only counts when it is clearly sideways.
+(function(){
+  let st=null;
+  const zoneOf=t=>t&&t.closest?t.closest("[data-swipe]"):null;
+  const start=(x,y,t)=>{const z=zoneOf(t);if(!z||t.closest("input,textarea,select,.no-scrollbar,.rb-tabs"))return;st={x,y,t:Date.now(),z}};
+  const end=(x,y)=>{if(!st)return;const dx=x-st.x,dy=y-st.y,dt=Date.now()-st.t,z=st.z;st=null;
+    if(dt>800||Math.abs(dx)<44||Math.abs(dx)<Math.abs(dy)*1.8)return;
+    swipeTo(z,dx<0?1:-1)}; // swipe left = forward in time (next), swipe right = back
+  document.addEventListener("touchstart",e=>{const t=e.touches[0];start(t.clientX,t.clientY,e.target)},{passive:true});
+  document.addEventListener("touchend",e=>{const t=e.changedTouches[0];end(t.clientX,t.clientY)},{passive:true});
+  document.addEventListener("pointerdown",e=>{if(e.pointerType==="mouse")start(e.clientX,e.clientY,e.target)});
+  document.addEventListener("pointerup",e=>{if(e.pointerType==="mouse")end(e.clientX,e.clientY)});
+})();
+function swipeTo(z,dir){ // dir: 1 = forward (swiped left), -1 = back (swiped right)
+  const zone=z.dataset.swipe;
+  const fire=(act,attrs)=>{const b=document.createElement("button");b.dataset.act=act;Object.entries(attrs).forEach(([k,v])=>b.dataset[k]=v);b.hidden=true;document.body.appendChild(b);b.click();b.remove()};
+  if(zone==="dsweek")fire("dsweek",{dir});
+  else if(zone==="calnav")fire("calnav",{n:dir});
+  else if(zone==="wpnav"){if(!wpZoomed){wpZoomed=true;wpZoomOffset=0;render();return}fire("wpnav",{dir})}
+  else if(zone==="prog")fire("prognav",{dir}); // drag the timeline: swipe right reveals older history, swipe left comes back toward today
+  else if(zone==="coachcard"){coachUI.open=false;coachUI.flash=null;coachMount()}
+  else if(zone==="coachfeed")fire("coach:go",{t:"coach"});
+}
 function mealByTime(){const h=new Date().getHours();return h<11?"breakfast":h<15?"lunch":h<21?"dinner":"snack"}
 // FoodLog page state (FoodLog.tsx:49): seeded by meal-by-time, updated by openSearch
 let activeMeal=mealByTime();
@@ -6221,25 +6266,37 @@ function rcPointer(e){
 }
 document.addEventListener("pointermove",rcPointer);
 document.addEventListener("pointerdown",rcPointer);
+let progWin={span:30,off:0,dir:0}; // weight timeline window: entries per screen and how far back you've swiped
 function progressPage(){
   const tr=trended(),unit=profile.weightUnit;
   const latest=tr.length?tr[tr.length-1]:null;                 // useWeight.ts:49-51 latestWeight
   const weeklyChange=getWeightChangeRate(tr,14);               // useWeight.ts:54 weeklyChange
-  // Weight Trend data — last 30 ENTRIES, not a 30-day date filter (Progress.tsx:36-40).
+  // Weight Trend — a window of ENTRIES (7 / 30 / 90 / all) you swipe left and right through.
   // Label uses new Date('YYYY-MM-DD') = UTC parse, exactly like the real app.
-  const wd=tr.slice(-30).map(e=>({label:new Date(e.date).toLocaleDateString("en-US",{month:"short",day:"numeric"}),weight:e.weight,trend:e.trend}));
+  const span=progWin.span===0?tr.length:progWin.span;const maxOff=Math.max(0,tr.length-span);if(progWin.off>maxOff)progWin.off=maxOff;
+  const hi=tr.length-progWin.off,lo=Math.max(0,hi-span);
+  const wd=tr.slice(lo,hi).map(e=>({label:new Date(e.date).toLocaleDateString("en-US",{month:"short",day:"numeric"}),weight:e.weight,trend:e.trend,date:e.date}));
   let weightCard="";
-  if(wd.length>1){                                             // Progress.tsx:81 — card omitted entirely when <2 entries
+  if(tr.length>1){                                             // Progress.tsx:81 — card omitted entirely when <2 entries
     const vals=wd.flatMap(e=>[e.weight,e.trend]);
     const nt=niceTicks(Math.min(...vals)-2,Math.max(...vals)+2,5); // round, evenly spaced axis labels
     const yMin=nt.lo,yMax=nt.hi,yTicks=nt.ticks;
-    weightCard=`<div class="enter-up apple-card" style="animation-delay:.1s;padding:16px;margin-bottom:20px">
-    <h3 class="text-foreground" style="font-size:14px;font-weight:600;margin:0 0 12px;line-height:20px">Weight Trend</h3>
-    ${rcChart({labels:wd.map(e=>e.label),series:[
+    const first=wd[0],last=wd[wd.length-1];const delta=wd.length>1?Math.round((last.trend-first.trend)*10)/10:0;
+    const older=lo>0,newer=progWin.off>0;
+    const chip=(v,l)=>`<button class="seg-btn haptic${progWin.span===v?" on":""}" data-act="progspan" data-v="${v}" style="flex:0 0 auto;padding:5px 10px;font-size:11px">${l}</button>`;
+    weightCard=`<div class="enter-up apple-card" style="animation-delay:.1s;padding:16px;margin-bottom:20px" data-swipe="prog">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+      <h3 class="text-foreground" style="font-size:14px;font-weight:600;margin:0;line-height:20px">Weight Trend</h3>
+      <div style="display:flex;gap:4px">${chip(7,"7")}${chip(30,"30")}${chip(90,"90")}${chip(0,"All")}</div></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <button class="haptic prog-nav" data-act="prognav" data-dir="-1"${older?"":" disabled"} aria-label="Earlier">${IC_CHEV_L}</button>
+      <p style="font-size:11px;margin:0;line-height:16px;text-align:center" class="text-muted-foreground">${first?first.label:""}${last&&last!==first?` – ${last.label}`:""}${wd.length>1?` · <span class="${delta<0?"text-success":delta>0?"text-warning":""}" style="font-weight:600">${delta>0?"+":""}${delta} ${unit}</span>`:""}</p>
+      <button class="haptic prog-nav" data-act="prognav" data-dir="1"${newer?"":" disabled"} aria-label="Later">${IC_CHEV_R}</button></div>
+    <div class="swipe-pane${progWin.dir<0?" from-right":progWin.dir>0?" from-left":""}">${rcChart({labels:wd.map(e=>e.label),series:[
       {name:"weight",vals:wd.map(e=>e.weight),stroke:"hsl(220, 10%, 50%)",w:1,dotR:2},
       {name:"trend",vals:wd.map(e=>e.trend),stroke:"hsl(110, 100%, 55%)",w:2,dotR:0}],
-      yMin,yMax,yTicks,yFmt:String})}
-    <p class="text-muted-foreground" style="font-size:10px;margin:8px 0 0;line-height:14px;text-align:center">Dots: what the scale said · <span style="color:hsl(110, 100%, 55%)">green line</span>: your real weight underneath the daily ups and downs</p></div>`;
+      yMin,yMax,yTicks,yFmt:String})}</div>
+    <p class="text-muted-foreground" style="font-size:10px;margin:8px 0 0;line-height:14px;text-align:center">Swipe to travel the timeline · dots: what the scale said · <span style="color:hsl(110, 100%, 55%)">green line</span>: your real weight underneath the daily ups and downs</p></div>`;
   }
   // Calorie History — last 14 calendar days (Progress.tsx:24-34); `|| undefined` makes
   // unlogged AND zero-calorie days a gap (connectNulls=false breaks the green line)
@@ -6634,7 +6691,7 @@ function weightPlanSection(){
       <div class="bg-muted" style="display:flex;align-items:center;gap:4px;border-radius:8px;padding:2px">${modeBtn('weight','Weight')}${modeBtn('macros','Calories')}</div>
       <button data-act="wpzoom" class="haptic" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;color:hsl(var(--primary));background:hsl(var(--primary)/.1);border:0;border-radius:8px;padding:6px 10px">${wpZoomed?LUCIDE(P_ZOOMOUT,2,12)+' Full view':LUCIDE(P_ZOOMIN,2,12)+' Closer look'}</button></div>
     ${zoomNav}
-    ${wpChartMode==='weight'?wpChartSVG(chartData,'weight',wpZoomed,ep.goalWeight):wpChartSVG(mView,'macros',wpZoomed,0)}
+    <div data-swipe="wpnav">${wpChartMode==='weight'?wpChartSVG(chartData,'weight',wpZoomed,ep.goalWeight):wpChartSVG(mView,'macros',wpZoomed,0)}</div>
     ${wpCapped?`<p style="font-size:10px;margin:4px 0 0;text-align:center" class="text-muted-foreground">First 12 weeks of ${plan.projection.length-1} — Closer look pages the full plan</p>`:""}
     ${legend}${infoBox}</div>`;
   // Plan Recommendations — dismissal is in-memory only (per page mount), keyed by rec title
@@ -6907,8 +6964,38 @@ function coachTick(reason){
   for(const k in coachMem.seen)if(now.getTime()-coachMem.seen[k]>60*864e5)delete coachMem.seen[k];
   if(added){coachUI.flash=coachMem.inbox[0].id;clearTimeout(coachUI.flashT);coachUI.flashT=setTimeout(()=>{coachUI.flash=null;coachMount()},7000)}
   if(added||reason==="boot")coachSave();
-  renderNav();coachMount();if(tab==="coach"&&added)coachHeroRefresh();
+  renderNav();coachMount();if(tab==="coach"){if(added)coachHeroRefresh(true)}
+  coachReact(reason,today);coachStripRefresh();
 }
+// ---- reactions: the coach notices what you just did and says so, briefly (a whisper, not an inbox note)
+let coachWhisperT=null,coachLastWhisper=0;
+function coachWhisper(text){
+  const dock=document.getElementById("coachDock");if(!dock||dock.hidden)return;
+  if(Date.now()-coachLastWhisper<3000)return;coachLastWhisper=Date.now();
+  dock.querySelectorAll(".coach-whisper").forEach(x=>x.remove());
+  const w=document.createElement("div");w.className="coach-whisper";w.textContent=text;dock.appendChild(w);
+  const fab=dock.querySelector(".coach-fab");if(fab){fab.classList.remove("nod");void fab.offsetWidth;fab.classList.add("nod")}
+  clearTimeout(coachWhisperT);coachWhisperT=setTimeout(()=>{w.classList.add("out");setTimeout(()=>w.remove(),300)},3200);
+}
+function coachReact(reason,today){
+  if(!/^(food_log|weights|workouts|water|checkins)$/.test(reason))return;
+  const tgt=targetsFor(today),tod=coachDayTotals(today);
+  if(reason==="food_log"){const left=Math.round(tgt.kcal-tod.calories);if(!entriesFor(today).length)return;
+    coachWhisper(left>=0?`Logged — ${left} cal left today${tgt.p-tod.protein>0?`, ${Math.round(tgt.p-tod.protein)}g protein to go`:""}.`:`Logged — ${-left} cal over target. Tomorrow resets.`)}
+  else if(reason==="weights"){const tr=trended(),w=weights.find(x=>x.date===today);if(!w)return;const wc=getWeightChangeRate(tr,14);
+    coachWhisper(`${w.weight} ${profile.weightUnit} saved${tr.length>=3?` — trend ${wc>0?"+":""}${wc} ${profile.weightUnit}/wk`:""}.`)}
+  else if(reason==="workouts"){const c=workouts.filter(w=>w.date===today).reduce((a,w)=>a+(w.totalCaloriesBurned||0),0);if(c>0)coachWhisper(`Session in — ${c} cal earned and folded into today.`)}
+  else if(reason==="water"){const g=waterGoal(),ml=waterOn(today);if(g>0)coachWhisper(`Water ${Math.min(100,Math.round(ml/g*100))}% of today's goal.`)}
+  else if(reason==="checkins")coachWhisper("Check-in saved. I'll re-read your burn from here.");
+}
+// the home-page presence strip: a live line from the coach under the nutrition cards
+function coachStripHTML(){
+  const today=localDateStr(),unread=coachMem.inbox.find(m=>m.state==="new");
+  let line;if(unread)line=unread.title;else{const tgt=targetsFor(today),tod=coachDayTotals(today),left=Math.round(tgt.kcal-tod.calories),pl=Math.round(tgt.p-tod.protein);
+    line=!entriesFor(today).length?"Nothing logged yet — I'm here when you are.":left>=0?`${left} cal left today${pl>0?` · ${pl}g protein to go`:" · protein's done"}.`:`${-left} cal past target — tomorrow resets.`}
+  return `<button class="coach-strip haptic${unread?" new":""}" data-act="coach:open" data-swipe="coachfeed" id="coachStrip">${coachAvatar(24,true)}<span class="coach-strip-t">${esc(line)}</span>${unread?`<span class="coach-strip-n">${coachUnread()}</span>`:""}${IC_CHEVR13}</button>`;
+}
+function coachStripRefresh(){const el=document.getElementById("coachStrip");if(el)el.outerHTML=coachStripHTML()}
 // ---- optional AI voice (backend coach-voice function; fail-soft, cached per message)
 function coachVoice(c){
   if(coachPref("coachVoice","standard")!=="ai"||!aiOn()||coachMem.voice[c.id])return;
@@ -6992,7 +7079,7 @@ function coachMount(){
   const unread=coachUnread();const byId=id=>id?coachMem.inbox.find(x=>x.id===id):null;
   const m=coachUI.flash?byId(coachUI.flash):(coachUI.open?(byId(coachUI.card)||coachMem.inbox.find(x=>x.state==="new")||coachMem.inbox[0]):null);
   const showCard=!!m&&(coachUI.open||coachUI.flash);
-  dock.innerHTML=`${showCard?`<div class="coach-card enter-up" role="dialog" aria-label="Coach">
+  dock.innerHTML=`${showCard?`<div class="coach-card enter-up" role="dialog" aria-label="Coach" data-swipe="coachcard">
       <div style="display:flex;align-items:flex-start;gap:10px">${coachAvatar(30,true)}<div style="flex:1;min-width:0"><p class="coach-card-t">${esc(m.title)}<span class="coach-ago">${coachAgo(m.ts)}</span></p><p class="coach-card-b">${esc(m.body)}</p></div><button class="coach-x haptic" data-act="coach:close" aria-label="Close">${IC_X20}</button></div>
       <div class="coach-acts">${coachActionsHTML(m)}<button class="coach-act ghost haptic" data-act="coach:go" data-t="coach">Open ${COACH_NAME}${unread>1?` · ${unread}`:""}</button></div>
     </div>`:""}
@@ -7014,9 +7101,12 @@ function coachHeroHTML(){
       ${inbox.slice(1).map(x=>`<button class="coach-row haptic${x.state==="new"?" new":""}" data-act="coach:read" data-id="${x.id}"><span class="coach-row-i">${kindIcon[x.kind]||"○"}</span><span style="flex:1;min-width:0"><span class="coach-row-t">${esc(x.title)}</span><span class="coach-row-b">${esc(x.body)}</span></span><span class="coach-ago">${coachAgo(x.ts)}</span></button>`).join("")}</div>`:""}
   </div>`;
 }
-function coachHeroRefresh(){const h=document.getElementById("coachHero");if(h){h.outerHTML=coachHeroHTML();coachTypewriter()}}
+function coachHeroRefresh(think){const h=document.getElementById("coachHero");if(!h)return;
+  if(think){coachUI.typeTok=(coachUI.typeTok||0)+1;coachUI.typed=null;const say=h.querySelector(".coach-say .coach-card-b");if(say){say.innerHTML='<span class="coach-dots"><i></i><i></i><i></i></span>';setTimeout(()=>{const h2=document.getElementById("coachHero");if(h2){h2.outerHTML=coachHeroHTML();coachTypewriter()}},700);return}}
+  h.outerHTML=coachHeroHTML();coachTypewriter()}
 function coachTypewriter(){const el=document.querySelector("#coachHero .coach-type");if(!el)return;const full=el.dataset.full||el.textContent;if(coachUI.typed===full)return;coachUI.typed=full;
-  el.textContent="";let i=0;const step=()=>{if(!el.isConnected)return;i+=Math.max(1,Math.round(full.length/60));el.textContent=full.slice(0,i);if(i<full.length)setTimeout(step,22)};step()}
+  const tok=coachUI.typeTok=(coachUI.typeTok||0)+1; // a newer typewriter or a thinking pause cancels this one
+  el.textContent="";let i=0;const step=()=>{if(!el.isConnected||coachUI.typeTok!==tok)return;i+=Math.max(1,Math.round(full.length/60));el.textContent=full.slice(0,i);if(i<full.length)setTimeout(step,22)};step()}
 // settings block
 function coachSettingsHTML(){
   const voice=coachPref("coachVoice","standard"),nud=coachPref("coachNudges",true),dock=coachPref("coachDock",true);
@@ -7127,7 +7217,7 @@ function calendarPage(){
       <p class="muted" style="font-size:12px;margin:0;line-height:16px">${isFuture?"Future day — no food data yet":"No food logged this day"}</p>
       ${isToday?`<button style="font-size:10px;color:hsl(var(--primary));font-weight:500;margin-top:4px;background:none;border:0;padding:0" data-act="tab" data-t="food">Go to Food Log →</button>`:""}
     </div>`;
-  return `<div class="page">
+  return `<div class="page" data-swipe="calnav"">
   <div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
       <span style="display:flex;color:hsl(var(--primary))">${LUCIDE(P_CAL,2,22)}</span>
@@ -7686,8 +7776,8 @@ function renderNav(){
   $("#nav").innerHTML=
     `<div class="navrow">`+TABS.map(([id,label])=>{
       const on=tab===id;
-      const dot=id==="coach"&&typeof coachUnread==="function"&&coachUnread()>0?'<i class="navdot"></i>':"";
-      return `<button class="navbtn${on?" on":""}" data-act="tab" data-t="${id}">`+dot
+      const alive=id==="coach"&&typeof coachUnread==="function"&&coachUnread()>0;const dot=alive?'<i class="navdot"></i>':"";
+      return `<button class="navbtn${on?" on":""}${alive?" alive":""}" data-act="tab" data-t="${id}">`+dot
         +LUCIDE(NAV_PATHS[id],on?2:1.5,24)
         +`<span>${label}</span></button>`;
     }).join("")+`</div>`;
@@ -7701,7 +7791,7 @@ function render(){
   // each page holds its own useState(localDateStr()) so the selected day never leaks across tabs (Index.tsx:28, FoodLog.tsx:42)
   if(tab==="food"&&renderedTab!=="food"){activeMeal=mealByTime();mealOpen={};mealPrevN={};selDate=localDateStr()}
   // Progress has no day strip — its Log Weight always means today
-  if(tab==="progress"&&renderedTab!=="progress")selDate=localDateStr();
+  if(tab==="progress"&&renderedTab!=="progress"){selDate=localDateStr();progWin.off=0;progWin.dir=0}
   // Calendar remounts reset selectedDate/viewMonth like fresh React state (Calendar.tsx:32-36)
   if(tab==="calendar"&&renderedTab!=="calendar"){calSel=localDateStr();const cn=new Date();calView={year:cn.getFullYear(),month:cn.getMonth()}}
   // SavedMeals remounts clear the inline-rename state
@@ -7753,6 +7843,9 @@ document.addEventListener("click",e=>{
     selDate=localDateStr(d);render();
   }
   else if(act==="dstoday"){selDate=localDateStr();render()}
+  else if(act==="progspan"){progWin.span=+el.dataset.v;progWin.off=0;progWin.dir=0;render()}
+  else if(act==="prognav"){const tr=trended(),span=progWin.span||tr.length,step=Math.max(1,Math.round(span*0.8));const dir=+el.dataset.dir;
+    progWin.off=dir<0?Math.min(Math.max(0,tr.length-span),progWin.off+step):Math.max(0,progWin.off-step);progWin.dir=dir;render();progWin.dir=0}
   else if(act==="authtoggle"){authSignUp=!authSignUp;authNotice=null;render()}
   else if(act==="authforgot"){ // sends the GoTrue reset email; the link lands back here and opens the set-password dialog
     const em=($("#authEmail")&&$("#authEmail").value.trim())||"";
