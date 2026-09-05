@@ -1143,7 +1143,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2356,7 +2356,8 @@ const SW_KIND={ // fill / density / cap (largest share of the liquid or mass tha
   soup:{fill:"food",den:"soup",cap:.95,def:12*SW_ML_PER_OZ},stew:{fill:"food",den:"soup",cap:.85,def:10*SW_ML_PER_OZ},
   porridge:{fill:"food",den:"food",cap:.85,def:250},yogurt:{fill:"food",den:"food",cap:.88,def:170},
   fruit:{fill:"food",den:"food",cap:.92,def:150},veg:{fill:"food",den:"food",cap:.94,def:100},
-  frozen:{fill:"food",den:"food",cap:.65,def:130},gel:{fill:"food",den:"food",cap:.90,def:120}};
+  frozen:{fill:"food",den:"food",cap:.65,def:130},gel:{fill:"food",den:"food",cap:.90,def:120},
+  liquid:{fill:"bottle",den:"water",cap:.98,def:240}}; // anything measured in ml that no word names
 const SW_SOUP_OZ={cup:8,small:8,regular:10,medium:12,bowl:12,large:12,bread:12};
 const SW_PORTION_G={"apple slices":34,"fruit cup":200,"mandarin":90,"clementine":75,"side salad":150,"garden salad":150,"house salad":150};
 // Fountain and coffee cup ounces by size label. McDonald's, Starbucks, Peet's, Dunkin' and Kung Fu Tea publish their cups;
@@ -2381,35 +2382,49 @@ function swCupOz(rid,label,cold,kind){
   if(kind==="shake"||kind==="frozen")return RB_CUP_OZ._shake[l]||null;
   const t=(cold&&RB_CUP_OZ[rid+"Cold"])||RB_CUP_OZ[rid]||null;
   return (t&&t[l])||RB_CUP_OZ._qsr[l]||null}
-function swClassify(name,cat){ // → a SW_KIND key, or null for anything that is not a drink or a wet dish
-  const full=String(name).toLowerCase().replace(/^[^:]{2,40}: /,"");
-  const bare=full.replace(/\s*\([^)]*\)/g," ").replace(/\d+\s*×\s*/g,"").replace(/\s+/g," ").trim();
-  const c=String(cat||"").toLowerCase();
-  if(/\b(powder|creamer|syrup|seeds?|dried|jerky|bar|bars|cereal|granola|bunches|crunch|nuts|oil|aminos|extract|mix|pods?|k-cup|whey|casein|isolate|gainer|chips|crackers)\b/.test(full))return null;
+// What a chain files under a drink heading is a drink even when the name is a brand flourish ("Dr. Ube", "The Black Tie");
+// the category decides the fallback kind when no word in the name does.
+const SW_CAT_KIND={drinks:"soda",beverages:"soda","more-drinks":"soda","cc-dirty-soda":"soda","cc-lemonade":"soda","cc-skinny":"soda","cc-specialty":"soda",punch:"soda",
+  "hot-coffees":"coffee","hot-coffee":"coffee","hot-teas":"coffee","classic-tea":"coffee",espresso:"coffee","cc-tea":"coffee",
+  "cold-coffees":"icedcoffee","iced-coffee":"icedcoffee","iced-drinks":"icedcoffee","cold-teas":"icedcoffee",refreshers:"icedcoffee","cc-energy":"icedcoffee",
+  frappuccinos:"shake",frappes:"shake",frozen:"shake","cc-frappe":"shake",shakes:"shake",blizzards:"shake",slush:"shake","cc-smoothie":"smoothie",
+  mccafe:"milk","milk-tea":"milk","milk-strike":"milk","milk-cap":"milk",yogurt:"icedmilk","cc-coffee":"milk",custard:"frozen","cc-treats":"frozen"};
+const SW_DRY=/\b(powder|creamer|syrup|seeds?|dried|jerky|bar|bars|cereal|granola|honey bunches|grape nuts|trail mix|snack mix|oil|ghee|lard|shortening|aminos|extract|pods?|k-cup|whey|casein|isolate|gainer|chips|crackers|sour cream|cream cheese)\b/;
+function swStrongDrink(bare,c){ // words that make something a drink whatever else is in the name ("Cookies & Cream Milkshake")
+  const cold=/\b(iced|cold|frozen|nitro)\b/.test(bare)||/^(cold-coffees|iced-drinks|iced-coffee|cold-teas|refreshers|cc-energy)$/.test(c);
+  if(/\b(protein shake|protein smoothie|meal replacement|pre-?mixed|premier protein|core power|muscle milk|fairlife|ready to drink|rtd)\b/.test(bare))return cold?"icedmilk":"milk";
+  if(/\b(smoothie|smoothies|acai bowl|smoothie bowl)\b/.test(bare)||c==="cc-smoothie")return "smoothie";
+  if(/\b(shakes?|milkshakes?|malts?|frappuccinos?|frappes?|blizzards?|concretes?|mixer|freeze|frosty|floats?|slush|slushie|icee|coolatta|frozen (?:coffee|chocolate|lemonade|hot chocolate|matcha|latte|mocha))\b/.test(bare))return "shake";
+  if(/\b(custard|ice cream|gelato|sundaes?|scoops?|dish|cones?|icedream|dilly bar|banana split|mcflurry|layered ice cream)\b/.test(bare))return "frozen";
+  if(/\b(beer|ipa|lager|ale|stout|pilsner|wine|rose|champagne|prosecco|hard seltzer|hard cider|cocktail|margarita|mojito|mimosa|sangria|vodka|whiskey|whisky|bourbon|rum|tequila|gin|liqueur|draft)\b/.test(bare)&&!/\b(ginger ale|root beer)\b/.test(bare))return "alcohol";
+  if(/\b(water|dasani|smartwater|la croix|lacroix|topo chico|bubly|perrier|pellegrino|sparkling|mineral|seltzer|hint)\b/.test(bare)&&!/\bwater chestnut/.test(bare))return "water";
+  if(/\b(latte|cappuccino|macchiato|flat white|mocha|hot chocolate|hot cocoa|cocoa|chai|matcha|milk tea|bubble tea|boba|thai tea|horchata|eggnog|milk|kefir|breve|cortado|orgain|ensure|boost|slimfast|heavy cream|whipping cream|half and half|half & half)\b/.test(bare)||/^(milk-tea|milk-strike|milk-cap)$/.test(c))return cold?"icedmilk":"milk";
+  if(/\b(coffee|americano|espresso|brew|nitro|drip|roast|refresher|refreshers|tea|teas|kombucha|yerba|mate|energy|celsius|red bull|monster|bang|alani|revibe)\b/.test(bare)||/^(hot-coffees|hot-coffee|hot-teas|classic-tea|cc-tea|cc-energy|espresso)$/.test(c)&&/\b(black|green|oolong|earl|herbal|chamomile|peppermint|shaken)\b/.test(bare))
+    return cold||/\b(refresher|refreshers|energy|celsius|red bull|monster|bang|alani|revibe|sweet tea)\b/.test(bare)?"icedcoffee":"coffee";
+  if(/\b(juice|oj|cider|nectar)\b/.test(bare))return "juice";
+  if(/\b(lemonade|limeade|agua fresca|punch|ade|soda|pop|cola|coke|pepsi|sprite|dr pepper|mtn dew|mountain dew|starry|fanta|root beer|baja|hi-c|gatorade|powerade|bodyarmor|prime|olipop|poppi|izze|jarritos|ginger ale|tonic|dirty soda|kool-aid|arizona|snapple|vitamin ?water|propel|liquid death|electrolyte|hydration|fizz|drink|drinks)\b/.test(bare))return "soda";
+  return null}
+function swWetFood(bare){
   if(/\b(broth|consomm\S*|miso soup|tom yum|pho|ramen|udon|wonton soup|egg drop)\b/.test(bare))return "soup";
   if(/\b(soup|bisque|chowder|gazpacho|minestrone|gumbo)\b/.test(bare))return /\b(cream of|cheddar|cheese|potato|chowder|bisque|lasagna|mac)\b/.test(bare)?"stew":"soup";
   if(/\bchili\b/.test(bare)&&!/\b(fries|dog|dogs|burger|sauce|oil|flakes|lime|crisp|cheddar fries|mac)\b/.test(bare))return "stew";
   if(/\b(congee|jook|porridge)\b/.test(bare))return "porridge";
   if(/\b(stew|curry)\b/.test(bare))return "stew";
   if(/\b(oatmeal|oats|grits|cream of wheat|muesli)\b/.test(bare)&&!/\b(cookie|cookies)\b/.test(bare))return "porridge";
-  if(/\b(yogurt|yoghurt|skyr|parfait|kefir)\b/.test(bare))return /\b(frozen|froyo|peanut buster|ice cream)\b/.test(bare)?"frozen":"yogurt";
+  if(/\b(yogurt|yoghurt|skyr|parfait|cottage cheese|ricotta|pudding|applesauce|apple sauce|mousse)\b/.test(bare))return /\b(frozen|froyo|peanut buster)\b/.test(bare)?"frozen":"yogurt";
   if(/\b(jello|jell-o|gelatin|popsicle|ice pops?|sorbet|italian ice|lemon ice|shaved ice|snow cone)\b/.test(bare))return "gel";
-  if(/\b(smoothie|smoothies)\b/.test(bare)||c==="cc-smoothie")return "smoothie";
-  if(/\b(shake|shakes|malt|malts|frappuccino|frapp[eé]s?|blizzard|concrete|mixer|freeze|frosty|float|slush|slushie|icee|frozen (?:coffee|chocolate|lemonade|hot chocolate|matcha|latte))\b/.test(bare)||/^(frozen|cc-frappe|frappuccinos|frappes|blizzards|shakes|slush)$/.test(c)){
-    if(/\b(pre-?mixed|premier|core power|muscle milk|fairlife|ready to drink|rtd)\b/.test(full))return "milk";return "shake"}
-  if(/\b(custard|ice cream|gelato|sundae|scoop|scoops|dish)\b/.test(bare)&&!/\bcone\b/.test(bare))return "frozen";
-  if(/\b(beer|ipa|lager|ale|stout|pilsner|wine|ros[eé]|champagne|prosecco|hard seltzer|hard cider|cocktail|margarita|mojito|mimosa|sangria|vodka|whiskey|whisky|bourbon|rum|tequila|gin|liqueur|draft)\b/.test(bare)&&!/\b(ginger ale|root beer)\b/.test(bare))return "alcohol";
-  if(/\b(water|dasani|smartwater|la croix|lacroix|topo chico|bubly|perrier|pellegrino|sparkling|mineral|seltzer|hint)\b/.test(bare)&&!/\bwater chestnut/.test(bare))return "water";
-  if(/\b(latte|cappuccino|macchiato|flat white|mocha|hot chocolate|hot cocoa|cocoa|chai|matcha|milk tea|bubble tea|boba|thai tea|horchata|eggnog|protein shake|protein drink|milk|breve|cortado|core power|premier protein|orgain|ensure|boost|slimfast|fairlife)\b/.test(bare)||/^(milk-tea|milk-strike|milk-cap)$/.test(c))
-    return /\b(iced|cold|frozen)\b/.test(bare)||/^(cold-coffees|iced-drinks|iced-coffee|cold-teas)$/.test(c)?"icedmilk":"milk";
-  if(/\b(coffee|americano|espresso|brew|nitro|drip|roast|refresher|refreshers|tea|teas|kombucha|yerba|mate|energy|celsius|red bull|monster|bang|alani)\b/.test(bare)||/^(hot-coffees|hot-coffee|hot-teas|classic-tea|cc-tea|cc-energy|espresso)$/.test(c))
-    return /\b(iced|cold|nitro|refresher|refreshers|energy|celsius|red bull|monster|bang|alani|sweet tea)\b/.test(bare)||/^(cold-coffees|cold-teas|iced-coffee|iced-drinks|refreshers|cc-energy)$/.test(c)?"icedcoffee":"coffee";
-  if(/\b(juice|oj|cider|nectar)\b/.test(bare))return "juice";
-  if(/\b(lemonade|limeade|agua fresca|punch|ade|soda|pop|cola|coke|pepsi|sprite|dr pepper|mtn dew|mountain dew|starry|fanta|root beer|baja|hi-c|gatorade|powerade|bodyarmor|prime|olipop|poppi|izze|jarritos|ginger ale|tonic|dirty soda|kool-aid|arizona|snapple|vitamin ?water|propel|liquid death|drink|drinks)\b/.test(bare)||/^(drinks|beverages|cc-dirty-soda|cc-skinny|cc-specialty|cc-lemonade|more-drinks)$/.test(c))return "soda";
   if(/\b(watermelon|melon|cantaloupe|honeydew|orange|oranges|grapefruit|grapes?|strawberr(?:y|ies)|blueberr(?:y|ies)|raspberr(?:y|ies)|blackberr(?:y|ies)|berries|pineapple|peach|peaches|plums?|mango|papaya|kiwi|pears?|cherries|nectarine|apricot|fruit cup|fruit salad|apple slices|mandarin|clementine|tangerine|pomegranate|dragonfruit|lychee)\b/.test(bare)
     &&!/\b(chicken|beef|pork|duck|glaze|sauce|pie|cake|tart|muffin|jam|jelly|cobbler|crisp|scone|danish|roll)\b/.test(bare))return "fruit";
-  if(/\b(cucumber|celery|lettuce|romaine|iceberg|tomato|tomatoes|zucchini|radish|spinach|bell pepper|side salad|garden salad|house salad|pickles?)\b/.test(bare)&&!/\b(sauce|chips|fried|paste|ketchup|wrap|sandwich|burger)\b/.test(bare))return "veg";
+  if(/\b(cucumber|celery|lettuce|romaine|iceberg|tomato|tomatoes|zucchini|radish|spinach|bell pepper|side salad|garden salad|house salad|pickles?|salsa|pico de gallo|guacamole)\b/.test(bare)&&!/\b(sauce|chips|fried|paste|ketchup|wrap|sandwich|burger)\b/.test(bare))return "veg";
   return null}
+function swClassify(name,cat){ // → a SW_KIND key, or null for anything that is neither a drink nor a wet dish
+  const full=String(name).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[®™]/g,"").replace(/^[^:]{2,40}: /,"");
+  const bare=full.replace(/\s*\([^)]*\)/g," ").replace(/\d+\s*×\s*/g,"").replace(/\s+/g," ").trim();
+  const c=String(cat||"").toLowerCase(),catKind=SW_CAT_KIND[c]||null;
+  const strong=swStrongDrink(bare,c);if(strong)return strong;   // 1. unmistakable drink words
+  if(SW_DRY.test(bare)||/\([^)]*\b(dried|dry|powder|mix)\b[^)]*\)/.test(full))return catKind; // 2. dry goods borrowing a wet word — unless the chain files it as a drink
+  const food=swWetFood(bare);if(food)return catKind||food;        // 3. wet dishes (a "Mango Yogurt" on a tea board is the drink)
+  return catKind}                                                 // 4. whatever the board says it is
 function swVolume(p,kind,rid){ // → {ml, cup}: liquid volume (ml) or food mass (g); cup=true when it is a nominal cup that ice/foam share
   const K=SW_KIND[kind],name=String(p.name),k=p.k||1;
   if(p.food){const f=p.food;const per=+f.servingSize||0;const u=(f.servingUnits||STANDARD_UNITS).find(x=>x.unit===f.servingUnit);const g=u?per*u.grams:(f.servingUnit==="ml"||f.servingUnit==="g"?per:0);if(g>0)return{ml:g*(p.sv||1),cup:false}}
@@ -2424,7 +2439,10 @@ function swVolume(p,kind,rid){ // → {ml, cup}: liquid volume (ml) or food mass
   if(lab){const oz=isCup?swCupOz(rid,lab,/^(iced|soda|smoothie)/.test(kind),kind):(SW_SOUP_OZ[lab]||null);if(oz)return{ml:oz*SW_ML_PER_OZ*k,cup:isCup}}
   return{ml:K.def*k,cup:isCup}}
 function swPieceMl(p,rid){
-  const kind=swClassify(p.name,p.cat);if(!kind)return 0;const K=SW_KIND[kind];
+  if(p.mod)return 0; // a pump of syrup or a splash in someone else's cup has no cup of its own
+  let kind=swClassify(p.name,p.cat);
+  if(!kind&&p.food&&p.food.servingUnit==="ml"&&!SW_DRY.test(String(p.name).toLowerCase()))kind="liquid";
+  if(!kind)return 0;const K=SW_KIND[kind];
   const v=swVolume(p,kind,rid);if(!(v.ml>0))return 0;
   const liquid=v.ml*(v.cup?SW_FILL[K.fill]:1);
   const m=p.m||{},Pn=+m.protein||0,C=+m.carbs||0,F=+m.fat||0;
@@ -2755,7 +2773,7 @@ function entryPieces(e){ // every itemizable piece of a logged row as {name,m,ca
   const s=entrySrc[e.id]||(e.foodId==="quick-add"?rbSrcFromName(e):null);if(!s||!s.rid)return null;
   const R=rbEntry(s.rid);if(!R)return null;
   const byId=id=>R.components.find(c=>c.id===id);
-  const lines=[];const push=(name,m,k=1,cat)=>{if(name&&m)lines.push({name,m:M4(m,k),cat,k})};
+  const lines=[];const push=(name,m,k=1,cat,mod)=>{if(name&&m)lines.push({name,m:M4(m,k),cat,k,mod:mod||undefined})};
   const drinkMacros=name=>{ // meal drink by its logged name: per-size chain table → fountain roster → the chain's own drink rows
     const meal=RB_MEAL[s.rid];if(meal){const mm=/^(.*) \((.*)\)$/.exec(name);if(mm){const d=meal.drinks.find(x=>x[0]===mm[1]),i=meal.sizes.findIndex(z=>z[1]===mm[2]);if(d&&i>=0&&d[1+i]){const v=d[1+i];return{calories:v[0],protein:v[1],carbs:v[2],fat:v[3]}}}}
     const cfg=RB_BRAND[s.rid]||{};const roster=[...(RB_FOUNTAIN[cfg.soda||"coke"]||[]),...(RB_DRINK_EXTRA[s.rid]||[])];const row=roster.find(o=>o[0]===name)||roster.find(o=>o[0]===rbDrinkLegacyName(name));if(row)return{calories:row[1],protein:row[2],carbs:row[3],fat:row[4]};
@@ -2766,7 +2784,7 @@ function entryPieces(e){ // every itemizable piece of a logged row as {name,m,ca
     if(!c)return null;
     const q=s.qty||1,v=sz&&c.sizeVariants?c.sizeVariants.find(x=>x.sizeId===sz):null;
     push(`${v&&v.sizeName?v.sizeName+" ":""}${c.name}`,(v||c).macros,q,c.category);
-    (s.mods||[]).forEach(m=>{const mc=byId(m.id);if(!mc)return;const b=mc.bySize&&sz&&mc.bySize[sz];const mm=b?{calories:b[0],protein:b[1],carbs:b[2],fat:b[3]}:mc.macros;push(`${(m.n||1)>1?m.n+"× ":""}${mc.name}`,mm,(m.n||1)*q,mc.category)});
+    (s.mods||[]).forEach(m=>{const mc=byId(m.id);if(!mc)return;const b=mc.bySize&&sz&&mc.bySize[sz];const mm=b?{calories:b[0],protein:b[1],carbs:b[2],fat:b[3]}:mc.macros;push(`${(m.n||1)>1?m.n+"× ":""}${mc.name}`,mm,(m.n||1)*q,mc.category,true)});
     (s.sides||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q,x.category)});
     (s.extras||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q,x.category)});
     if(s.combo){
