@@ -1083,7 +1083,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-05.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-05.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2795,8 +2795,9 @@ function fsRestaurantFoodResults(query){
     for(const comp of r.components||[]){
       if(comp.isModifier)continue;
       if(nameMatch||comp.name.toLowerCase().includes(q)){
-        items.push({id:`rest-${comp.id}`,name:comp.name,brand:r.name,servingSize:1,servingUnit:"serving",
-          macros:(comp.sizeVariants&&comp.sizeVariants[0]&&comp.sizeVariants[0].macros)||comp.macros,
+        const dsv=comp.sizeVariants&&comp.sizeVariants.length?(comp.sizeVariants.find(v=>v.sizeId===comp.defaultSizeId)||comp.sizeVariants[1]||comp.sizeVariants[0]):null; // same size the sheet opens on
+        items.push({id:`rest-${comp.id}`,name:dsv&&dsv.sizeName?`${comp.name} (${dsv.sizeName})`:comp.name,brand:r.name,servingSize:1,servingUnit:"serving",
+          macros:(dsv&&dsv.macros)||comp.macros,
           source:"restaurant",restaurantName:r.name,restaurantColor:r.color,
           isModularRestaurant:r.modular,restaurantId:r.id});
       }
@@ -4043,7 +4044,9 @@ function getComponentMacros(item){
     const variant = component.sizeVariants.find(v => v.sizeId === selectedSizeId);
     if (variant) baseMacros = variant.macros;
   }
-  const mult = autoMultiplier != null ? autoMultiplier : getPortionMultiplier(portion);
+  let mult = autoMultiplier != null ? autoMultiplier : getPortionMultiplier(portion);
+  const fmt = (typeof RB !== "undefined" && RB && RB.restaurant && RB.format && RB.restaurant.mealFormats) ? RB.restaurant.mealFormats.find(f => f.name === RB.format) : null;
+  if (fmt && fmt.mult && (!fmt.scale || fmt.scale.includes(component.category))) mult *= fmt.mult; // Footlong = 2× the 6-inch build
   return {
     calories: Math.round(baseMacros.calories * mult),
     protein: Math.round(baseMacros.protein * mult * 10) / 10,
@@ -4194,17 +4197,58 @@ const RB_FOUNTAIN={
   coke:[["Coca-Cola (Medium)",200,0,55,0],["Diet Coke (Medium)",0,0,0,0],["Coke Zero (Medium)",0,0,0,0],["Sprite (Medium)",190,0,51,0],["Dr Pepper (Medium)",200,0,54,0],["Fanta Orange (Medium)",210,0,57,0],["Sweet Tea (Medium)",140,0,36,0],["Unsweetened Iced Tea (Medium)",0,0,0,0],["Minute Maid Lemonade (Medium)",190,0,50,0],["Bottled Water",0,0,0,0]],
   pepsi:[["Pepsi (Medium)",210,0,57,0],["Diet Pepsi (Medium)",0,0,0,0],["Pepsi Zero (Medium)",0,0,0,0],["Mtn Dew (Medium)",230,0,62,0],["Starry (Medium)",190,0,51,0],["Dr Pepper (Medium)",200,0,54,0],["Sweet Tea (Medium)",140,0,36,0],["Unsweetened Iced Tea (Medium)",0,0,0,0],["Lemonade (Medium)",190,0,50,0],["Bottled Water",0,0,0,0]],
 };
+// Meal sizes the way the QSR apps sell them: Make it a Meal → Size → Side → Drink. Per-chain cup
+// sizes with the chain's published per-size drink macros; side rows match the size by their
+// "(Small|Medium|Large)" suffix. Chains without an entry keep the single-size meal flow.
+const RB_MEAL={
+  // McDonald's app: Small 16 oz / Medium 21 oz / Large 30 oz. Coca-Cola, Diet Coke and Dr Pepper are the chain's
+  // published per-size figures; the other Coca-Cola fountain lines are the Medium value scaled by cup ounces
+  // (same syrup ratio at every size).
+  mcdonalds:{sizes:[["small","Small","16 oz"],["medium","Medium","21 oz"],["large","Large","30 oz"]],def:"medium",
+    drinks:[["Coca-Cola",[150,0,40,0],[210,0,56,0],[290,0,77,0]],["Diet Coke",[0,0,0,0],[0,0,0,0],[0,0,0,0]],["Coke Zero Sugar",[0,0,0,0],[0,0,0,0],[0,0,0,0]],
+      ["Sprite",[140,0,39,0],[190,0,51,0],[270,0,73,0]],["Dr Pepper",[140,0,37,0],[200,0,54,0],[280,0,77,0]],["Fanta Orange",[160,0,43,0],[210,0,57,0],[300,0,81,0]],
+      ["Hi-C Orange Lavaburst",[180,0,49,0],[240,0,64,0],[340,0,91,0]],["Sweet Tea",[110,0,27,0],[140,0,36,0],[200,0,51,0]],["Unsweetened Iced Tea",[0,0,0,0],[0,0,0,0],[0,0,0,0]],
+      ["Minute Maid Lemonade",[140,0,38,0],[190,0,50,0],[270,0,71,0]],["Bottled Water",[0,0,0,0],[0,0,0,0],[0,0,0,0]]]},
+};
+const rbMealCfg=()=>RB.restaurant&&RB_MEAL[RB.restaurant.id]||null;
+const rbMealSizeLabel=()=>{const m=rbMealCfg();if(!m)return null;const sz=m.sizes.find(x=>x[0]===RB.mealSize)||m.sizes.find(x=>x[0]===m.def)||m.sizes[0];return sz?sz[1]:null};
+const RB_SIZE_SUFFIX=/ \((Value|Small|Medium|Large|Regular|Jr\.?|Kids?|X-?Large)\)$/i;
+function rbComboSides(){ // meal side roster for the current meal size: {id,sz,name,macros} rows
+  const bcfg=rbBrandCfg();const all=RB.restaurant.components.filter(c=>c.category===bcfg.side&&!c.isModifier);
+  const lab=rbMealSizeLabel(),out=[];
+  all.forEach(c=>{
+    if(c.sizeVariants&&c.sizeVariants.length){
+      const vs=lab?c.sizeVariants.filter(v=>String(v.sizeName).toLowerCase()===lab.toLowerCase()):c.sizeVariants;
+      (vs.length?vs:(lab?[]:c.sizeVariants)).forEach(v=>out.push({id:c.id,sz:v.sizeId,name:`${c.name} (${v.sizeName})`,base:c.name,macros:v.macros}));
+    }else{const m=RB_SIZE_SUFFIX.exec(c.name);if(lab&&m&&m[1].toLowerCase()!==lab.toLowerCase())return;out.push({id:c.id,name:c.name,base:c.name.replace(RB_SIZE_SUFFIX,""),macros:c.macros})}
+  });
+  return out;
+}
+const rbComboSideKey=o=>o?`${o.id}|${o.sz||""}`:"";
+function rbResizeCombo(){ // keep the same side / drink when the meal size changes
+  const lab=rbMealSizeLabel();if(!lab)return;
+  if(RB.comboSide){const base=RB.comboSide.base||RB.comboSide.name.replace(RB_SIZE_SUFFIX,"");const list=rbComboSides();
+    RB.comboSide=list.find(c=>rbComboSideKey(c)===rbComboSideKey(RB.comboSide))||list.find(c=>c.base===base)||null}
+  if(RB.comboDrink){const base=RB.comboDrink.name.replace(RB_SIZE_SUFFIX,"");const opts=rbDrinkOptions();
+    RB.comboDrink=opts.find(o=>o.name===RB.comboDrink.name)||opts.find(o=>o.name.replace(RB_SIZE_SUFFIX,"")===base)||null}
+}
 const RB_DRINK_EXTRA={ // brand-signature fountain items
   mcdonalds:[["Hi-C Orange Lavaburst (Medium)",240,0,64,0]],
-  tacobell:[["Mtn Dew Baja Blast (Medium)",220,0,59,0]],
+  tacobell:[["Mtn Dew Baja Blast (Medium)",280,0,74,0],["Mtn Dew Baja Blast (Large)",420,0,110,0]],
   culvers:[["Culver's Root Beer (Medium)",260,0,68,0]],
   chickfila:[["Chick-fil-A Lemonade (Medium)",220,0,58,0],["Chick-fil-A Diet Lemonade (Medium)",50,0,13,0]],
 };
 function rbDrinkOptions(){ // full meal-drink lineup: fountain roster + signatures + the brand's own data drinks
   const cfg=rbBrandCfg();if(!cfg||!cfg.combo)return[];
   const mk=o=>({name:o[0],macros:{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]}});
-  const out=(RB_FOUNTAIN[cfg.soda||"coke"]||[]).map(mk);
-  (RB_DRINK_EXTRA[RB.restaurant.id]||[]).forEach(o=>out.splice(6,0,mk(o)));
+  const meal=rbMealCfg();let out;
+  if(meal){ // chain-published per-size fountain values
+    const idx=Math.max(0,meal.sizes.findIndex(x=>x[0]===(RB.mealSize||meal.def)));const lab=meal.sizes[idx][1];
+    out=meal.drinks.map(d=>{const m=d[1+idx]||d[1];return{name:`${d[0]} (${lab})`,macros:{calories:m[0],protein:m[1],carbs:m[2],fat:m[3]}}});
+  }else{
+    out=(RB_FOUNTAIN[cfg.soda||"coke"]||[]).map(mk);
+    (RB_DRINK_EXTRA[RB.restaurant.id]||[]).forEach(o=>out.splice(6,0,mk(o)));
+  }
   if(cfg.drink)RB.restaurant.components.filter(c=>c.category===cfg.drink).forEach(c=>out.push({name:c.name,macros:c.macros}));
   return out;
 }
@@ -4241,7 +4285,8 @@ const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures +
     }                                       // generic duplicate of an existing row: dropped
   };
   const t=cfg.cust&&cfg.cust[it.category];
-  if(t){RB_CUST_TYPES[t].forEach(o=>push(RB_MK(o)));if(cfg.custPlus)cfg.custPlus.forEach(o=>push(o,true));}
+  const noBuild=/nugget|tender|strip|critter|finger|wing|popcorn|bites|minis|fries|rings|hash brown|hotcake|pancake|oatmeal|parfait|salad|bowl|soup|chili/i.test(it.name); // no bun/sauce build to customize
+  if(t&&!noBuild){RB_CUST_TYPES[t].forEach(o=>push(RB_MK(o)));if(cfg.custPlus)cfg.custPlus.forEach(o=>push(o,true));}
   const coffee=RB_COFFEE_CATS.has(it.category)||RB_COFFEE_RX.test(it.name);
   // Chains with their own researched add-on roster get NO generic coffee fixings — their
   // modifier list is the real, complete one (boba/dirty-soda model, not cream/sugar packets)
@@ -4307,8 +4352,8 @@ const RB_WING_DATA={
      "Caribbean Jerk":[78,4.8,6.3,3.7],"Thai Curry":[95,5.1,4.3,6.5],"Mango Habanero":[78,4.8,7.7,3.3],"Nashville Hot":[70,4.9,4,3.9],"Golden Fire":[75,5,6.5,3.5],"Jammin' Jalapeño":[82,4.8,8.7,3.2],
      "Honey Garlic":[80,4.8,8.3,3.2],"Lemon Pepper Hot":[98,4.8,3.8,7.2],"Lemon Pepper":[61,4.8,3.5,3.2],"Desert Heat":[61,4.8,3.5,3.2],"Salt & Vinegar":[61,4.8,3.5,3.2],"Chipotle BBQ":[61,4.8,3.5,3.2],"Buffalo":[61,4.8,3.5,3.2]}},
   dips:[["Ranch Dip",320,1,2,34],["Bleu Cheese Dip",280,2,2,29],["Southwestern Ranch Dip",340,1,2,37],["Honey Mustard Dip",220,1,11,20]], // 2 oz cups — priced add-ons, never included
-  sides:[["French Fries (Regular)",430,5,56,21],["Tots (Regular)",450,4,52,25],["Carrots & Celery",35,1,8,0],["Beer-Battered Onion Rings",460,4,52,26],["Cheddar Cheese Curds",510,20,51,25],
-    ["Potato Wedges (Regular)",370,6,45,19],["Coleslaw",170,0,6,15],["Garden Side Salad",90,5,8,4.5],["Mozzarella Sticks",650,32,58,32],["Fried Pickles (w/ SW Ranch)",910,7,63,70]],
+  sides:[["French Fries (Regular)",430,5,56,21],["Tots (Regular)",450,4,52,25],["Carrots & Celery",35,1,8,0],["Beer-Battered Onion Rings",550,5,65,31],["Cheddar Cheese Curds",510,20,51,25],
+    ["Potato Wedges (Regular)",370,6,45,19],["Coleslaw",170,0,6,15],["Garden Side Salad",90,5,8,4.5],["Mozzarella Sticks",650,33,59,32],["Fried Pickles (w/ SW Ranch)",910,7,63,70]],
   drinks:null, // separate line item at B-Dubs → fountain roster
   drop:["French Fries","Tater Tots","Wisconsin Cheese Curds","Ranch Dipping Sauce","Blue Cheese Dipping Sauce"]
  }
@@ -4537,6 +4582,131 @@ const RB_FLOW_ORDER=[["Espresso","Espresso & Shots",""],["Flavors","Flavors","pe
       r.components.splice(at<0?r.components.length:at,0,{id:`fl-${rid}-2pct-milk`,name:"2% Milk",category:"add-ins",isModifier:true,choiceGroup:"Milk",groupDefault:true,forCats:dc,macros:{calories:0,protein:0,carbs:0,fat:0}})}
   }));
 })();
+// ----- Audit fixes + gap fills (Sept 2026 research round 2). set: corrected macros by exact name;
+// ren: rename; add: rows {n,c,m:[cal,p,c,f]} or size ladders {n,c,sz:[[label,cal,p,c,f],...],def?}.
+// Sources are search-snippet mirrors of chain nutrition data (FatSecret / CalorieKing / Carb Manager);
+// est:true marks rows whose protein/carbs/fat were scaled from a corrected calorie figure.
+const RB_FIX={
+  // Size ladders. sz rows are chain-published per-size values; ladder:{} scales an existing row by the chain's own
+  // size geometry (a Jersey Mike's Giant is two Regulars, a Firehouse Small is half a Medium, a Jimmy John's Giant is
+  // two 8-inch) — scaled tiers that are not exact doublings carry est:true.
+  dairyqueen:{drop:["Chocolate Shake (Medium)","Vanilla Shake (Medium)","Strawberry Shake (Medium)","Chocolate Dipped Cone (Medium)","Cookie Dough Blizzard (Medium)","Oreo Blizzard (Medium)"],addCats:{shakes:"Shakes & Malts"},
+    add:[{n:"Chocolate Shake",c:"shakes",sz:[["Small",530,13,77,19],["Medium",700,18,116,24],["Large",920,21,147,28]],def:"Medium"},
+      {n:"Vanilla Shake",c:"shakes",sz:[["Small",520,13,73,19],["Medium",660,16,97,23],["Large",860,22,127,29]],def:"Medium"},
+      {n:"Strawberry Shake",c:"shakes",sz:[["Small",490,13,68,19],["Medium",630,16,92,23],["Large",800,21,120,27]],def:"Medium"},
+      {n:"Chocolate Dipped Cone",c:"treats",sz:[["Small",320,6,40,15],["Medium",460,9,58,22],["Large",640,13,81,30]],def:"Medium",est:true},
+      {n:"OREO Blizzard",c:"blizzards",sz:[["Mini",380,7,55,13],["Small",620,11,90,22],["Medium",790,14,115,28],["Large",1140,20,166,40]],def:"Medium",est:true},
+      {n:"Chocolate Chip Cookie Dough Blizzard",c:"blizzards",sz:[["Mini",420,8,61,16],["Small",710,12,103,28],["Medium",1040,17,151,41],["Large",1340,22,195,53]],def:"Medium"}],
+    set:{"Onion Rings (Regular)":[360,6,48,16]}},
+  mcdonalds:{add:[{n:"McCafé Latte",c:"mccafe",sz:[["Small",140,6,13,7],["Medium",190,8,18,9],["Large",250,11,23,12]],def:"Medium",est:true}]},
+  arbys:{add:[{n:"Jamocha Shake",c:"shakes",sz:[["Small",440,11,75,12],["Medium",540,12,88,16],["Large",820,21,141,22]],def:"Medium"}]},
+  portillos:{drop:["Chocolate Cake Shake","Fries (Small)","Fries (Large)"],add:[{n:"Chocolate Cake Shake",c:"shakes",sz:[["Small",850,10,140,30],["Large",1490,21,240,47]],def:"Small"},
+      {n:"French Fries",c:"sides",sz:[["Small",380,4,47,20],["Large",480,5,61,27]],def:"Small",est:true}]},
+  culvers:{drop:["Crinkle Cut Fries (Small)","Crinkle Cut Fries (Regular)","Crinkle Cut Fries (Large)","Wisconsin Cheese Curds","Onion Rings"],
+    add:[{n:"Crinkle Cut Fries",c:"sides",sz:[["Regular",360,4,52,15],["Large",430,5,62,18],["Family",1320,16,191,54]],def:"Regular",est:true},
+      {n:"Wisconsin Cheese Curds",c:"sides",sz:[["Regular",510,20,51,25],["Large",980,34,91,54]],def:"Regular"},
+      {n:"Onion Rings",c:"sides",sz:[["Regular",400,6,44,22],["Large",800,12,88,44]],def:"Regular"},
+      {n:"Vanilla Concrete Mixer (Short)",c:"custard",m:[680,12,67,40]}]},
+  freddys:{drop:["Shoestring Fries (Regular)"],add:[{n:"Shoestring Fries",c:"sides",sz:[["Regular",400,7,48,21],["Large",520,7,62,27]],def:"Regular"}]},
+  whitecastle:{drop:["French Fries (Small)","French Fries (Regular)"],add:[{n:"French Fries",c:"sides",sz:[["Small",330,3,32,21],["Medium",590,5,57,39],["Large (Sack)",770,8,76,49]],def:"Medium"}]},
+  burgerking:{drop:["Onion Rings (Small)"],add:[{n:"Onion Rings",c:"sides",sz:[["Small",280,4,37,13],["Medium",360,4,48,16],["Large",520,7,70,24]],def:"Medium"}]},
+  subway:{set:{"Artisan Italian":[210,8,39,2],"Hearty Multigrain":[200,9,36,3]}},
+  starbucks:{drop:["Espresso Macchiato"],add:[{n:"Espresso Macchiato",c:"hot-coffees",sz:[["Solo",10,1,1,0],["Doppio",15,1,2,0]],def:"Doppio"}],set:{"Cortado":[90,5,8,4.5],"Pistachio Cortado":[150,5,22,5]}},
+  panera:{drop:["Caesar Salad (Whole)","Caesar Salad (Half)"],add:[{n:"Caesar Salad",c:"salads",sz:[["Half",210,6,12,15],["Whole",410,12,24,30]],def:"Whole"}]},
+  jerseymikes:{ren:{"#56 Big Kahuna Chicken Cheese Steak (Regular)":"#55 Big Kahuna Chicken Cheese Steak (Regular)"},set:{"#55 Big Kahuna Chicken Cheese Steak (Regular)":[740,45,69,32]},est:["#55 Big Kahuna Chicken Cheese Steak (Regular)"],
+    ladder:{match:/ \(Regular\)$/,cats:["cold-subs","hot-subs"],sizes:[["Mini",0.62,true],["Regular",1],["Giant",2]],def:"Regular"},catNames:{"cold-subs":"Cold Subs","hot-subs":"Hot Subs"}},
+  jimmyjohns:{set:{"#12 Beach Club":[850,45,75,39],"#13 Gourmet Veggie Club":[1020,47,72,60]},ladder:{match:/^#\d+ |^The J\.J\./,cats:["originals","favorites"],sizes:[["8-inch Original",1],["16-inch Giant",2]],def:"8-inch Original"}},
+  firehousesubs:{ladder:{match:/ \(Medium\)$/,cats:["hot-subs","cold-subs"],sizes:[["Small",0.5],["Medium",1],["Large",1.55,true]],def:"Medium"},catNames:{"hot-subs":"Hot Specialty Subs","cold-subs":"Cold Specialty Subs"}},
+  potbelly:{ladder:{match:/ \(Original\)$/,cats:["sandwiches"],sizes:[["Skinny",0.65,true],["Original",1],["Big",1.45,true]],def:"Original"},drop:["A Wreck (Big)"]},
+  dunkin:{drop:["Cold Brew (Black)","Hot Chocolate (Medium)","Mango Pineapple Refresher (Medium)","SPARKD' Energy Berry Burst (Medium)","Strawberry Dragonfruit Refresher (Medium)"],add:[
+    {n:"Caramel Craze Signature Iced Latte",c:"iced-coffee",sz:[["Small",300,8,43,11],["Medium",410,11,61,14],["Large",530,15,79,17]],def:"Medium"},
+    {n:"Blue Raspberry Coolatta",c:"frozen",sz:[["Small",240,0,61,0],["Medium",350,0,84,0],["Large",480,0,122,0]],def:"Medium"},
+    {n:"Cold Brew (Black)",c:"iced-coffee",sz:[["Small",5,0,1,0],["Medium",5,0,1,0],["Large",15,0,3,0]],def:"Medium"},
+    {n:"Mango Pineapple Refresher",c:"refreshers",sz:[["Small",90,0,21,0],["Medium",130,0,32,0],["Large",170,0,42,0]],def:"Medium"},
+    {n:"Strawberry Dragonfruit Refresher",c:"refreshers",sz:[["Small",80,0,19,0],["Medium",130,1,30,0],["Large",170,1,39,0]],def:"Medium",est:true},
+    {n:"SPARKD' Energy Berry Burst",c:"refreshers",sz:[["Small",80,0,19,0],["Medium",130,0,30,0],["Large",170,0,40,0]],def:"Medium",est:true},
+    {n:"Hot Chocolate",c:"hot-coffee",sz:[["Small",220,2,39,7],["Medium",330,3,59,10]],def:"Medium"}]},
+  chickfila:{ren:{"Side Salad":"Side Salad (no dressing)"},set:{"Side Salad (no dressing)":[160,3,14,9]},drop:["Waffle Fries (Medium)","Waffle Fries (Large)","Vanilla Milkshake (Small)"],add:[{n:"Vanilla Milkshake",c:"treats",sz:[["Small",500,11,67,21],["Large",620,14,83,26]],def:"Small",est:true},{n:"Waffle Potato Fries",c:"sides",sz:[["Small",320,4,34,18],["Medium",420,5,45,24],["Large",600,7,64,34]],def:"Medium",est:true},
+    {n:"Sunjoy (½ Sweet Tea, ½ Lemonade)",c:"drinks",sz:[["Small",80,0,20,0],["Medium",100,0,25,0],["Large",150,0,40,0]],def:"Medium",est:true},
+    {n:"Diet Lemonade",c:"drinks",sz:[["Small",45,0,12,0],["Medium",60,0,16,0],["Large",80,0,21,0]],def:"Medium",est:true},
+    {n:"Chick-fil-A Lemonade (Medium)",c:"drinks",m:[220,0,58,0],est:true},{n:"Unsweetened Iced Tea",c:"drinks",m:[0,0,0,0]},
+    {n:"Coca-Cola (Medium)",c:"drinks",m:[200,0,55,0]},{n:"Diet Coke",c:"drinks",m:[0,0,0,0]},{n:"Coke Zero Sugar",c:"drinks",m:[0,0,0,0]},{n:"Sprite (Medium)",c:"drinks",m:[190,0,51,0]},{n:"Dr Pepper (Medium)",c:"drinks",m:[200,0,54,0]},{n:"Bottled Water",c:"drinks",m:[0,0,0,0]}]},
+  "texas-roadhouse":{setSize:{"New York Strip":{"8oz":[420,57,1,22]}},set:{"Chicken Critters":[480,45,26,21],"Jr. Chicken Tenders":[360,31,24,16],"Ranger Chicken Critters Basket":[340,32,19,15]}},
+  panda:{add:[
+    {n:"Watermelon Mango Refresher (24 oz)",c:"drinks",m:[210,0,53,0]},{n:"Peach Lychee Refresher (24 oz)",c:"drinks",m:[210,0,53,0]},{n:"Pomegranate Pineapple Lemonade (24 oz)",c:"drinks",m:[240,0,57,0]},
+    {n:"Coca-Cola (Medium)",c:"drinks",m:[200,0,55,0]},{n:"Sprite (Medium)",c:"drinks",m:[190,0,51,0]},{n:"Dr Pepper (Medium)",c:"drinks",m:[200,0,54,0]},{n:"Barq's Root Beer (Medium)",c:"drinks",m:[220,0,60,0]},
+    {n:"Diet Coke",c:"drinks",m:[0,0,0,0]},{n:"Coca-Cola Zero Sugar",c:"drinks",m:[0,0,0,0]},{n:"Unsweetened Black Tea (Large)",c:"drinks",m:[10,0,2,0]},{n:"Lemon Green Tea (Large)",c:"drinks",m:[15,0,4,0]},{n:"Passionfruit Mango Black Tea (Large)",c:"drinks",m:[15,0,4,0]},{n:"Bottled Water",c:"drinks",m:[0,0,0,0]}]},
+  noodlesandco:{add:[
+    {n:"Zoodles Penne Rosa",c:"zoodles",sz:[["Regular",290,11,22,19]]},{n:"Zucchini Shrimp Scampi",c:"zoodles",sz:[["Small",240,19,13,13],["Regular",430,23,26,25]],def:"Regular"},
+    {n:"Zucchini Pesto with Grilled Chicken",c:"zoodles",sz:[["Regular",480,39,18,29]]},{n:"LEANguini Rosa",c:"zoodles",sz:[["Regular",690,31,74,30]]},
+    {n:"LEANguini Fresca w/ Parm",c:"zoodles",sz:[["Small",330,14,37,14],["Regular",660,29,74,28]],def:"Regular"},{n:"Lemon Parmesan LEANguini",c:"zoodles",sz:[["Small",340,16,38,17],["Regular",690,31,76,35]],def:"Regular"}]},
+};
+(function(){
+  const M=a=>({calories:a[0],protein:a[1],carbs:a[2],fat:a[3]});
+  Object.entries(RB_FIX).forEach(([rid,fx])=>RESTAURANTS_DB.filter(r=>r.id===rid).forEach(r=>{
+    const find=n=>r.components.find(c=>c.name===n);
+    if(fx.drop){const dz=new Set(fx.drop);r.components=r.components.filter(c=>!dz.has(c.name))}
+    Object.entries(fx.addCats||{}).forEach(([c,label])=>{r.categoryConfig=r.categoryConfig||{};if(!r.categories.includes(c))r.categories.push(c);r.categoryConfig[c]=Object.assign({name:c,selectMode:"multi"},r.categoryConfig[c]||{},{displayName:label})});
+    Object.entries(fx.catNames||{}).forEach(([c,label])=>{if(r.categoryConfig&&r.categoryConfig[c])r.categoryConfig[c].displayName=label});
+    Object.entries(fx.ren||{}).forEach(([a,b])=>{const c=find(a);if(c)c.name=b});
+    Object.entries(fx.set||{}).forEach(([n,m])=>{const c=find(n);if(c){c.macros=Object.assign({},c.macros,M(m));if(c.sizeVariants)delete c.sizeVariants}});
+    (fx.est||[]).forEach(n=>{const c=find(n);if(c)c.est=true});
+    Object.entries(fx.setSize||{}).forEach(([n,by])=>{const c=find(n);if(!c||!c.sizeVariants)return;Object.entries(by).forEach(([sid,m])=>{const v=c.sizeVariants.find(x=>x.sizeId===sid);if(v)v.macros=Object.assign({},v.macros,M(m))});const dv=c.sizeVariants.find(x=>x.sizeId===c.defaultSizeId);if(dv)c.macros=dv.macros});
+    (fx.add||[]).forEach((a,i)=>{if(find(a.n))return;
+      const c={id:`fx-${rid}-${rbSlug(a.n)}`,name:a.n,category:a.c,macros:M(a.m||a.sz[a.sz.length-1].slice(1))};
+      if(a.sz){c.sizeVariants=a.sz.map(z=>({sizeId:rbSlug(z[0]),sizeName:z[0],macros:M(z.slice(1))}));c.defaultSizeId=rbSlug(a.def||a.sz[a.sz.length-1][0]);c.macros=c.sizeVariants.find(v=>v.sizeId===c.defaultSizeId).macros}
+      if(a.est)c.est=true;r.components.push(c)});
+    if(!r.categories.includes("drinks")&&(fx.add||[]).some(a=>a.c==="drinks"))r.categories.push("drinks");
+    if(fx.ladder){const L=fx.ladder;
+      r.components.forEach(c=>{if(c.isModifier||c.sizeVariants||!L.cats.includes(c.category)||!L.match.test(c.name))return;
+        const base=c.macros,strip=c.name.replace(/ \((Regular|Medium|Original)\)$/,"");c.name=strip;
+        const sc=(m,k)=>({calories:Math.round(m.calories*k/5)*5,protein:Math.round(m.protein*k),carbs:Math.round(m.carbs*k),fat:Math.round(m.fat*k)});
+        c.sizeVariants=L.sizes.map(z=>({sizeId:rbSlug(z[0]),sizeName:z[0],macros:z[1]===1?Object.assign({},base):sc(base,z[1]),est:!!z[2]}));
+        c.defaultSizeId=rbSlug(L.def);if(L.sizes.some(z=>z[2]))c.estSizes=true});
+    }
+  }));
+})();
+// Size chips instead of one row per size: rows that differ only by a "(Small)" / "(10pc)" / "(Bowl)" suffix collapse
+// into one item with sizeVariants — the ordering apps show one item and a size step. Row ids/macros are untouched.
+const RB_SIZE_PAIR_RX=/^(.*?) \((Value|Jr\.?|Kids?|Mini|Small|Short|Regular|Medium|Large|X-?Large|Family|Tall|Grande|Venti|Cup|Bowl|Half|Whole|Single|Double|Triple|\d+ ?(?:pc|ct|pcs|count|piece|pieces?))\)$/i;
+const RB_SIZE_ORDER=["value","jr","jr.","kid","kids","mini","small","short","cup","half","single","regular","medium","tall","grande","bowl","whole","double","large","venti","x-large","xlarge","triple","family"];
+(function(){
+  const skip=new Set(["kungfutea","candycloud","starbucks","peets"].concat(Object.keys(RB_WINGS)));
+  const rank=lab=>{const l=lab.toLowerCase();const n=/^(\d+)/.exec(l);if(n)return 100+ +n[1];const i=RB_SIZE_ORDER.indexOf(l);return i<0?50:i};
+  RESTAURANTS_DB.forEach(r=>{if(skip.has(r.id)||r.modular)return;
+    const groups={};
+    r.components.forEach(c=>{if(c.isModifier||c.sizeVariants)return;const m=RB_SIZE_PAIR_RX.exec(c.name);if(!m)return;const k=c.category+"|"+m[1].toLowerCase();(groups[k]=groups[k]||[]).push([c,m[1],m[2]])});
+    Object.values(groups).forEach(rows=>{if(rows.length<2)return;
+      rows.sort((a,b)=>rank(a[2])-rank(b[2]));
+      const [head,base]=rows[0];const labs=rows.map(x=>x[2]);
+      head.sizeVariants=rows.map(([c,b,lab])=>({sizeId:rbSlug(lab),sizeName:lab,macros:c.macros,est:c.est||undefined}));
+      const pref=["medium","regular","whole","bowl"].map(x=>labs.find(l=>l.toLowerCase()===x)).find(Boolean)||labs[Math.min(1,labs.length-1)];
+      head.defaultSizeId=rbSlug(pref);head.name=base;head.macros=head.sizeVariants.find(v=>v.sizeId===head.defaultSizeId).macros;head.sizeAlias=rows.slice(1).map(x=>x[0].id);
+      const dead=new Set(rows.slice(1).map(x=>x[0].id));r.components=r.components.filter(c=>!dead.has(c.id));
+    });
+  });
+})();
+(function(){ // every counter chain sells fountain drinks à la carte too — a Drinks tab with the bottler's published roster
+  const isSoda=n=>/coca-cola|coke|pepsi|sprite|dr pepper|mtn dew|starry|fanta|root beer|lemonade|iced tea|sweet tea|bottled water|hi-c|baja/i.test(n);
+  const ids=new Set(Object.entries(RB_BRAND).filter(([id,c])=>c.combo).map(([id])=>id).concat(Object.keys(RB_WINGS)));
+  ids.forEach(rid=>RESTAURANTS_DB.filter(r=>r.id===rid).forEach(r=>{
+    const cfg=RB_BRAND[rid]||{};
+    let cat=r.categories.find(c=>/^drinks?$|beverages?/i.test(c));
+    r.categoryConfig=r.categoryConfig||{};
+    if(!cat){cat="drinks";r.categories.push(cat);r.categoryConfig[cat]=Object.assign({name:cat,selectMode:"multi",displayName:"Drinks"},r.categoryConfig[cat]||{})}
+    const W=RB_WING_DATA[rid];
+    const rows=W&&W.drinks?W.drinks:(RB_FOUNTAIN[cfg.soda||"coke"]||[]).concat(RB_DRINK_EXTRA[rid]||[]);
+    rows.forEach(o=>{if(r.components.some(c=>c.name.toLowerCase()===o[0].toLowerCase()||(isSoda(c.name)&&c.category===cat&&c.name.replace(/ \(.*\)$/,"").toLowerCase()===o[0].replace(/ \(.*\)$/,"").toLowerCase())))return;
+      r.components.push({id:`dk-${rid}-${rbSlug(o[0])}`,name:o[0],category:cat,macros:{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]}})});
+  }));
+})();
+(function(){ // Subway app: pick the size first (6-inch / Footlong), then build — Footlong doubles the build, not the chips/cookie/drink
+  RESTAURANTS_DB.filter(r=>r.id==="subway").forEach(r=>{
+    r.mealFormats=[{name:"6-inch",description:"Six-inch sub — bread, protein, cheese, veggies & sauce",categoryRules:{},mult:1},
+      {name:"Footlong",description:"Footlong — twice the six-inch build",categoryRules:{},mult:2,scale:["bread","protein","cheese","veggies","sauce"]}];
+    r.components.forEach(c=>{if(c.category==="bread")c.name=c.name.replace(/ \(6"\)$/,"")});
+  });
+})();
 function rbEntry(id){ // duplicate ids (dunkin) resolve to the richest menu; user menu extensions merge in
   const m=RESTAURANTS_DB.filter(r=>r.id===id);
   const r=m.sort((a,b)=>b.components.length-a.components.length)[0]||null;
@@ -4545,7 +4715,7 @@ function rbEntry(id){ // duplicate ids (dunkin) resolve to the richest menu; use
   return ex.length?Object.assign({},r,{components:[...r.components,...ex]}):r;
 }
 function rbResetIS(){RB.cat=RB.restaurant?RB.restaurant.categories[0]:null;RB.subcat=null;RB.item=null;RB.w=null;
-  RB.sizeId=undefined;RB.qty=1;RB.combo=false;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];RB.cart=[];RB.showCart=false;RB._cartAnim=false}
+  RB.sizeId=undefined;RB.qty=1;RB.combo=false;RB.mealSize=null;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];RB.cart=[];RB.showCart=false;RB._cartAnim=false}
 
 // API surface: FoodLog "Restaurants" button → (meal, null); food-search modular rows → (meal, restaurantId)
 function openRestaurantBuilder(meal,initialRestaurantId){
@@ -4641,7 +4811,9 @@ function rbStepRow(comp,count,sub,plusAct,minusAct,disabledPlus,compact){
       ${disabledPlus?`<div class="rb-step m" style="opacity:.4;color:hsl(var(--muted-foreground))">${IC_PLUS14}</div>`:`<button class="rb-step p haptic" data-act="${plusAct}" data-c="${comp.id}">${IC_PLUS14}</button>`}
     </div></div>`;
 }
-const rbModSub=comp=>{const c=comp.macros.calories;
+// A modifier can publish a different delta per drink size (Dunkin swirls: small/medium/large pumps)
+const rbModMacros=comp=>{const b=comp.bySize&&RB.sizeId&&comp.bySize[RB.sizeId];return b?{calories:b[0],protein:b[1],carbs:b[2],fat:b[3]}:comp.macros};
+const rbModSub=comp=>{const c=rbModMacros(comp).calories;
   return `${c>0?`+${c} cal`:c<0?`${c} cal`:"0 cal"}${comp.perUnit?` ${esc(comp.perUnit)}`:""}`};
 
 
@@ -4869,7 +5041,8 @@ function rbLog(){
     return(count>1?`${count}x `:"")+prefix+p.component.name+sizeSuffix;
   });
   const nameStr=[...new Set(names)].join(", ");
-  const name=`${RB.restaurant.name}: ${nameStr.length>50?nameStr.slice(0,50)+"...":nameStr}`;
+  const fmt=rbFormat(),fpre=fmt&&fmt.mult?`${fmt.name} `:"";
+  const name=`${RB.restaurant.name}: ${fpre}${nameStr.length>50?nameStr.slice(0,50)+"...":nameStr}`;
   const total=calculateMealMacrosWithPortions(RB.items); // per-item rounded, carries fiber+sodium
   rbCommitEntry({foodId:"quick-add",name,sv:1,servingUnit:"serving",macros:total,meal:RB.meal},rbSnapMealSrc());
   closeRB();render();
@@ -4897,7 +5070,7 @@ function rbSnapItemSrc(){
   return{t:"rbi",rid:RB.restaurant.id,cid:RB.item.id,sizeId:RB.sizeId,qty:RB.qty,
     mods:Object.entries(mods).map(([id,n])=>({id,n})),
     sides:RB.sides.map(s=>s.id),extras:RB.extras.map(x=>x.id),custom:RB.custom.map(c=>c.name),
-    combo:RB.combo||undefined,comboSide:RB.comboSide?RB.comboSide.id:undefined,
+    combo:RB.combo||undefined,mealSize:RB.combo&&RB.mealSize||undefined,comboSide:RB.comboSide?RB.comboSide.id:undefined,comboSideSz:RB.comboSide&&RB.comboSide.sz||undefined,
     drink:RB.comboDrink?RB.comboDrink.name:undefined};
 }
 // modular builder snapshot (built bowl/burrito): the picked components with portions/sizes
@@ -4956,15 +5129,18 @@ function rbOpenEdit(e,s){
     RB.format=s.format||null;
     RB.items=(s.items||[]).map(x=>{const c=byId(x.id);return c?{component:c,portion:x.portion||"regular",selectedSizeId:x.sz}:null}).filter(Boolean);
   }else{ // item sheet
-    const c=byId(s.cid);
+    let c=byId(s.cid),aliasSz=null;
+    if(!c){c=RB.restaurant.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c){const i=c.sizeAlias.indexOf(s.cid);aliasSz=c.sizeVariants[i+1]&&c.sizeVariants[i+1].sizeId}}
     if(!c){closeRB();openQuickAdd(e.meal,e);return} // item left the menu — fall back to number editing
     RB.cat=c.category;RB.subcat=c.subcategory||null;RB.item=c;
-    RB.sizeId=s.sizeId;RB.qty=s.qty||1;
+    RB.sizeId=aliasSz||s.sizeId||(c.sizeVariants?c.defaultSizeId:undefined);RB.qty=s.qty||1;
     RB.mods=(s.mods||[]).flatMap(m=>{const c2=byId(m.id);return c2?Array.from({length:m.n||1},()=>({component:c2})):[]});
     RB.sides=(s.sides||[]).map(byId).filter(Boolean);
     RB.extras=(s.extras||[]).map(byId).filter(Boolean);
-    RB.combo=!!s.combo;
-    RB.comboSide=s.comboSide?(byId(s.comboSide)||null):null;
+    RB.combo=!!s.combo;RB.mealSize=s.mealSize||(RB.combo&&rbMealCfg()?rbMealCfg().def:null);
+    RB.comboSide=null;if(s.comboSide){const c=byId(s.comboSide)||RB.restaurant.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.comboSide));
+      if(c){const list=rbComboSides();const want=s.comboSideSz||(c.sizeAlias&&c.sizeVariants?(()=>{const i=c.sizeAlias.indexOf(s.comboSide);return i>=0&&c.sizeVariants[i+1]?c.sizeVariants[i+1].sizeId:null})():null);
+        RB.comboSide=list.find(x=>x.id===c.id&&(want?x.sz===want:true))||(c.sizeVariants?{id:c.id,sz:want||c.defaultSizeId,name:`${c.name} (${(c.sizeVariants.find(v=>v.sizeId===(want||c.defaultSizeId))||{}).sizeName||""})`,base:c.name,macros:(c.sizeVariants.find(v=>v.sizeId===(want||c.defaultSizeId))||c).macros}:{id:c.id,name:c.name,base:c.name,macros:c.macros})}}
     RB.custom=s.custom&&s.custom.length?(rbCustFor()||[]).filter(o=>s.custom.includes(o.name)):[];
     if(s.drink){const opts=rbDrinkOptions()||[];RB.comboDrink=opts.find(o=>o.name===s.drink)||null}
   }
@@ -4983,7 +5159,7 @@ function rbISTotal(){
   if(!RB.item)return{calories:0,protein:0,carbs:0,fat:0};
   let base={...RB.item.macros};
   if(RB.sizeId&&RB.item.sizeVariants){const sv=RB.item.sizeVariants.find(v=>v.sizeId===RB.sizeId);if(sv)base={...sv.macros}}
-  for(const mod of RB.mods){base.calories+=mod.component.macros.calories;base.protein+=mod.component.macros.protein;base.carbs+=mod.component.macros.carbs;base.fat+=mod.component.macros.fat}
+  for(const mod of RB.mods){const mm=rbModMacros(mod.component);base.calories+=mm.calories;base.protein+=mm.protein;base.carbs+=mm.carbs;base.fat+=mm.fat}
   for(const side of RB.sides){base.calories+=side.macros.calories;base.protein+=side.macros.protein;base.carbs+=side.macros.carbs;base.fat+=side.macros.fat}
   const cadd=[];if(RB.combo&&RB.comboSide)cadd.push(RB.comboSide);if(RB.combo&&RB.comboDrink)cadd.push(RB.comboDrink);cadd.push(...RB.extras);cadd.push(...RB.custom);
   for(const c of cadd){base.calories+=c.macros.calories;base.protein+=c.macros.protein;base.carbs+=c.macros.carbs;base.fat+=c.macros.fat}
@@ -4993,7 +5169,7 @@ function rbISTotal(){
 function rbBuildItemName(){
   if(!RB.item)return"";
   const sizeName=RB.sizeId&&RB.item.sizeVariants?(RB.item.sizeVariants.find(v=>v.sizeId===RB.sizeId)||{}).sizeName:undefined;
-  const modNames=RB.mods.filter(m=>m.component.macros.calories!==0||m.component.macros.protein!==0).reduce((acc,m)=>{
+  const modNames=RB.mods.filter(m=>rbModMacros(m.component).calories!==0||rbModMacros(m.component).protein!==0).reduce((acc,m)=>{
     const ex=acc.find(a=>a.id===m.component.id);
     if(ex)ex.count++;else acc.push({id:m.component.id,name:m.component.name,count:1});
     return acc},[]);
@@ -5026,7 +5202,9 @@ function rbCartHTML(){
 }
 function rbTabsHTML(){
   const R=RB.restaurant,cfg=R.categoryConfig||{};
-  const cats=R.categories.filter(c=>!(cfg[c]&&(cfg[c].isModifierCategory||cfg[c].hidden)));
+  const wing=RB_WINGS[R.id];
+  const cats=R.categories.filter(c=>!(cfg[c]&&(cfg[c].isModifierCategory||cfg[c].hidden))
+    &&((cfg[c]&&cfg[c].virtualFlag)||(wing&&wing.products.some(p=>p.cat===c))||R.components.some(x=>x.category===c&&!x.isModifier))); // a tab with nothing behind it is a hole, not a tab
   return `<div style="border-bottom:.5px solid hsl(var(--border));flex-shrink:0"><div class="rb-tabs no-scrollbar">${cats.map(c=>`<button class="rb-tab${RB.cat===c?" on":""}" data-act="rbtab" data-cat="${c}">${esc((cfg[c]&&cfg[c].displayName)||c)}</button>`).join("")}</div></div>`;
 }
 function rbISBodyHTML(){
@@ -5063,24 +5241,28 @@ function rbISBodyHTML(){
       h+=`<div style="display:flex;gap:8px;margin-bottom:16px">
         <button class="rb-chip haptic" data-act="rbxedit" style="flex:1">Edit item${RB.item.ai?" · AI est.":""}</button>
         <button class="rb-chip haptic" data-act="rbxdel" style="color:hsl(var(--destructive))">Remove</button></div>`;
+    }else if(RB.item.estSizes&&RB.sizeId&&RB.item.sizeVariants&&(RB.item.sizeVariants.find(v=>v.sizeId===RB.sizeId)||{}).est){
+      h+=`<p style="font-size:10px;margin:-6px 0 14px;line-height:14px;color:hsl(var(--muted-foreground))">This size is scaled from the chain's published ${esc((RB.item.sizeVariants.find(v=>!v.est)||{}).sizeName||"base")} size by its portion geometry — the chain has not published a separate sheet for it.</p>`;
     }else if(RB.item.est){
       h+=`<p style="font-size:10px;margin:-6px 0 14px;line-height:14px;color:hsl(var(--muted-foreground))">Partly estimated — the chain hasn't published full macros for this item yet; confirmed figures are used where available.</p>`;
     }
     const custOpts=rbCustFor(),flowChain=rbFlowChain();let custBlock="";
     if(custOpts){
-      custBlock+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">${flowChain?"Sweeteners":"Customize"}</h4><div style="display:flex;flex-direction:column;gap:4px">${custOpts.map(c=>{const on=RB.custom.some(x=>x.name===c.name);const neg=c.macros.calories<0;
+      const sauceOnly=custOpts.length>0&&!custOpts.some(o=>/^(No|Add|Extra|Sub|Swap|Double|Light|Lettuce|Grilled|Toasted) /i.test(o.name)); // nothing on the build itself changes → it is a sauce list
+      custBlock+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">${flowChain?"Sweeteners":sauceOnly?"Sauces":"Customize"}</h4><div style="display:flex;flex-direction:column;gap:4px">${custOpts.map(c=>{const on=RB.custom.some(x=>x.name===c.name);const neg=c.macros.calories<0;
         return `<button class="rb-modrow${on?" on":""} haptic" data-act="rbcbcust" data-n="${esc(c.name)}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${neg?"":"+"}${c.macros.calories} cal</p></div>${on?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`}).join("")}</div></div>`;
     }
     if(!flowChain)h+=custBlock;
     if(rbComboEligible()){
-      const sides=RB.restaurant.components.filter(c=>c.category===bcfg.side);
+      const sides=rbComboSides(),meal=rbMealCfg();
       const drinks=rbDrinkOptions();
       h+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">${esc(bcfg.combo)}</h4>
         <div style="display:flex;gap:8px;margin-bottom:8px">
           <button class="rb-chip${!RB.combo?" on":""} haptic" data-act="rbcombo" data-v="0">Item only</button>
           <button class="rb-chip${RB.combo?" on":""} haptic" data-act="rbcombo" data-v="1">${esc(bcfg.short)} · +side &amp; drink</button>
         </div>
-        ${RB.combo?`<p class="rb-seclabel">Choose your side</p><div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">${sides.map(c=>`<button class="rb-modrow${RB.comboSide&&RB.comboSide.id===c.id?" on":""} haptic" data-act="rbcbside" data-c="${c.id}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">+${c.macros.calories} cal</p></div>${RB.comboSide&&RB.comboSide.id===c.id?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`).join("")}</div>`
+        ${RB.combo&&meal?`<p class="rb-seclabel">Choose a size</p><div style="display:flex;gap:8px;margin-bottom:10px">${meal.sizes.map(sz=>`<button class="rb-chip lg${(RB.mealSize||meal.def)===sz[0]?" on":""} haptic" data-act="rbmsize" data-s="${sz[0]}">${esc(sz[1])}${sz[2]?`<small style="display:block;font-size:10px;font-weight:500;opacity:.7">${esc(sz[2])}</small>`:""}</button>`).join("")}</div>`:""}
+        ${RB.combo?`<p class="rb-seclabel">Choose your side</p><div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">${sides.map(c=>`<button class="rb-modrow${RB.comboSide&&rbComboSideKey(RB.comboSide)===rbComboSideKey(c)?" on":""} haptic" data-act="rbcbside" data-c="${c.id}" data-sz="${c.sz||""}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">+${c.macros.calories} cal</p></div>${RB.comboSide&&rbComboSideKey(RB.comboSide)===rbComboSideKey(c)?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`).join("")}</div>`
         +(drinks.length?`<p class="rb-seclabel">Add a drink</p><select class="rb-select" data-act="rbdrinksel">
           <option value="">No drink</option>
           ${drinks.map((c,i)=>`<option value="${i}"${RB.comboDrink&&RB.comboDrink.name===c.name?" selected":""}>${esc(c.name)} ${c.macros.calories>0?`(+${c.macros.calories} cal)`:"(0 cal)"}</option>`).join("")}
@@ -5118,7 +5300,7 @@ function rbISBodyHTML(){
         const picked=opts.find(c=>RB.mods.some(m=>m.component.id===c.id));
         h+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">${esc(g)}</h4><div style="display:flex;flex-direction:column;gap:4px">${opts.map(c=>{
           const on=picked?picked.id===c.id:!!c.groupDefault;
-          const d=c.macros.calories;
+          const d=rbModMacros(c).calories;
           const sub=c.groupDefault?"included":(d===0?"no cal change":`${d>0?"+":""}${d} cal`);
           return `<button class="rb-modrow${on?" on":""} haptic" data-act="rbcgpick" data-c="${c.id}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${sub}</p></div>${on?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`}).join("")}</div></div>`;
       });
@@ -5326,8 +5508,9 @@ function rbAction(act,el){
     case"rbaddcart":{if(!RB.item)return;RB.cart.push({id:newId(),name:rbBuildItemName(),macros:{...rbISTotal()},qty:RB.qty,src:rbSnapItemSrc()});RB.item=null;RB.qty=1;RB.combo=false;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];rbRender();return}
     case"rbqtyp":RB.qty=Math.min(10,RB.qty+1);rbRender(true);return;
     case"rbqtyset":RB.qty=+el.dataset.q;rbRender(true);return;
-    case"rbcombo":{RB.combo=el.dataset.v==="1";if(!RB.combo){RB.comboSide=null;RB.comboDrink=null}rbRender(true);return}
-    case"rbcbside":{const c=R.components.find(x=>x.id===el.dataset.c);RB.comboSide=RB.comboSide&&RB.comboSide.id===el.dataset.c?null:c;rbRender(true);return}
+    case"rbcombo":{RB.combo=el.dataset.v==="1";if(!RB.combo){RB.comboSide=null;RB.comboDrink=null}else{const m=rbMealCfg();if(m&&!RB.mealSize)RB.mealSize=m.def}rbRender(true);return}
+    case"rbmsize":{RB.mealSize=el.dataset.s;rbResizeCombo();rbRender(true);return}
+    case"rbcbside":{const pick=rbComboSides().find(x=>x.id===el.dataset.c&&(x.sz||"")===(el.dataset.sz||""));RB.comboSide=pick&&RB.comboSide&&rbComboSideKey(RB.comboSide)===rbComboSideKey(pick)?null:(pick||null);rbRender(true);return}
 
     case"rbcgpick":{ // single-select choice group (Milk / Temperature / Base …): picking replaces the group's selection
       const c=RB.restaurant.components.find(x=>x.id===el.dataset.c);if(!c)return;
