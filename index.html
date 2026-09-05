@@ -357,19 +357,10 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 @keyframes coachBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @keyframes coachPulse{0%{box-shadow:0 0 0 0 hsl(var(--primary)/.45)}100%{box-shadow:0 0 0 14px hsl(var(--primary)/0)}}
 .coach-orb{display:inline-flex;align-items:center;justify-content:center;border-radius:9999px;flex-shrink:0;background:radial-gradient(circle at 32% 28%,hsl(var(--primary)/.55),hsl(var(--primary)) 62%,hsl(var(--primary)/.8));box-shadow:inset 0 0 0 1px hsl(var(--primary-foreground)/.12),0 6px 18px hsl(var(--primary)/.35)}
-.coach-orb.live{animation:coachBreathe 3.2s ease-in-out infinite}
-#coachDock{position:fixed;left:16px;bottom:calc(env(safe-area-inset-bottom) + 60px + 16px);z-index:30;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:calc(100% - 32px);pointer-events:none}
-#coachDock>*{pointer-events:auto}
-#coachDock[hidden]{display:none!important}
-.coach-fab{width:44px;height:44px;border-radius:9999px;border:0;background:none;padding:0;position:relative;display:flex;align-items:center;justify-content:center}
-.coach-fab.pulse .coach-orb{animation:coachBreathe 1.4s ease-in-out infinite}
-.coach-fab.pulse::after{content:"";position:absolute;inset:0;border-radius:9999px;animation:coachPulse 1.4s ease-out infinite}
-.coach-badge{position:absolute;top:-2px;right:-2px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:hsl(var(--destructive));color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 0 0 2px hsl(var(--background))}
-.coach-card{width:min(358px,calc(100vw - 32px));background:hsl(var(--card));border:1px solid hsl(var(--primary)/.25);border-radius:16px;padding:14px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+.coach-orb.live{animation:coachBreathe 4.5s ease-in-out infinite}
 .coach-card-t{font-size:14px;font-weight:600;margin:0;line-height:20px;color:hsl(var(--foreground));display:flex;align-items:baseline;gap:8px}
 .coach-ago{font-size:10px;font-weight:500;color:hsl(var(--muted-foreground));margin-left:auto;flex-shrink:0}
 .coach-card-b{font-size:12.5px;line-height:1.55;margin:4px 0 0;color:hsl(var(--muted-foreground))}
-.coach-x{background:none;border:0;padding:2px;margin:-2px -4px 0 0;color:hsl(var(--muted-foreground));display:flex;flex-shrink:0}
 .coach-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .coach-act{padding:7px 12px;border-radius:9999px;border:.5px solid hsl(var(--border));background:hsl(var(--secondary));color:hsl(var(--foreground));font-size:12px;font-weight:600;line-height:16px}
 .coach-act.pri{background:hsl(var(--primary));border-color:hsl(var(--primary));color:hsl(var(--primary-foreground))}
@@ -391,17 +382,14 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 @keyframes paneFromRight{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
 @keyframes paneFromLeft{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
 .coach-orb svg{animation:coachSpark 7s linear infinite}
-.coach-fab.nod{animation:coachNod .6s cubic-bezier(.25,.8,.35,1)}
-.coach-whisper{position:absolute;left:52px;bottom:6px;max-width:calc(100vw - 100px);background:hsl(var(--card));border:1px solid hsl(var(--primary)/.3);border-radius:14px 14px 14px 4px;padding:8px 12px;font-size:12px;font-weight:500;line-height:16px;color:hsl(var(--foreground));box-shadow:0 8px 24px rgba(0,0,0,.35);animation:coachWhisperIn .25s cubic-bezier(.25,.8,.35,1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s}
-.coach-whisper.out{opacity:0}
 .coach-dots{display:inline-flex;gap:4px;padding:4px 0}.coach-dots i{width:6px;height:6px;border-radius:3px;background:hsl(var(--primary));animation:coachDots 1s ease-in-out infinite}.coach-dots i:nth-child(2){animation-delay:.15s}.coach-dots i:nth-child(3){animation-delay:.3s}
-.coach-strip{width:100%;display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 12px;border-radius:14px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--foreground));text-align:left}
-.coach-strip.new{border-color:hsl(var(--primary)/.35);background:hsl(var(--primary)/.06)}
-.coach-strip-t{flex:1;min-width:0;font-size:12.5px;font-weight:500;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.coach-strip-n{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-size:11px;font-weight:700;line-height:18px;text-align:center}
-.navbtn.alive svg{animation:coachGlow 2.4s ease-in-out infinite}
+.navbtn.alive svg{}
 .swipe-pane.from-right{animation:paneFromRight .22s cubic-bezier(.25,.8,.35,1)}.swipe-pane.from-left{animation:paneFromLeft .22s cubic-bezier(.25,.8,.35,1)}
 .prog-nav{background:none;border:0;padding:4px;color:hsl(var(--muted-foreground));display:flex}.prog-nav:disabled{opacity:.25}
+.bell{position:relative;padding:7px 10px}
+.bell-n{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:hsl(var(--destructive));color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;box-shadow:0 0 0 2px hsl(var(--background))}
+.coach-note{padding:12px 0;border-top:.5px solid hsl(var(--border)/.4)}.coach-note.new .coach-card-t{color:hsl(var(--foreground))}.coach-note:first-of-type{border-top:0}
+.toast.coach{gap:10px;border-color:hsl(var(--primary)/.35)}
 .navdot{position:absolute;top:2px;right:8px;width:8px;height:8px;border-radius:4px;background:hsl(var(--destructive));box-shadow:0 0 0 2px hsl(var(--background))}
 .navbtn{position:relative}
 .toast{position:fixed;left:16px;width:calc(100% - 32px);max-width:358px;bottom:16px;pointer-events:none;background:#000;border:1px solid hsl(var(--border));display:flex;align-items:center;gap:6px;text-align:left;border-radius:8px;padding:16px;font-size:13px;font-weight:500;color:hsl(var(--foreground));z-index:60;animation:enter .25s;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1)}
@@ -1151,7 +1139,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2458,13 +2446,7 @@ function insightsSection(){
           ${showNetCarbs?`<div><span style="font-weight:700" class="text-success">${Math.max(0,(wa.carbs||0)-(wa.fiber||0)).toFixed(0)}g</span><br><span class="text-muted-foreground">net</span></div>`:''}
         </div>
       </div>`:''}
-      ${msg?`<button data-act="tab" data-t="coach" class="bg-card" style="width:100%;border-radius:16px;padding:16px;text-align:left;border:0">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.coach,2,16,'text-primary')}<h3 style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Coach</h3></div>
-          ${LUCIDE_C(P_CHEVRIGHT,2,16,'text-muted-foreground')}
-        </div>
-        <p style="font-size:12px;margin:8px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:16px" class="text-muted-foreground">${esc(msg)}</p>
-      </button>`:''}
+
     </div>`:''}
   </div>`;
 }
@@ -2525,6 +2507,7 @@ function homePage(){
       <div style="display:flex;gap:8px;flex-shrink:0">
         <button data-act="goprog" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${LUCIDE_C(P_TRENDDOWN,2,14)} Trends</button>
         <button data-act="tab" data-t="calendar" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${LUCIDE_C(P_CALDAYS,2,14)} Calendar</button>
+        <button data-act="coach:inbox" class="apple-pill bg-secondary haptic bell" style="border:0;color:hsl(var(--secondary-foreground))" aria-label="Notifications${coachUnread()?`, ${coachUnread()} new`:""}">${LUCIDE_C(P_BELL,2,14)}${coachUnread()?`<span class="bell-n">${coachUnread()}</span>`:""}</button>
       </div>
     </div>
   </div>
@@ -2553,7 +2536,6 @@ function homePage(){
     ${calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday})}
     ${shiftOn&&targets.calories!==baseCals&&!pbToday?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
     ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
-    ${typeof coachStripHTML==="function"&&coachPref("coachDock",true)?coachStripHTML():""}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
   </div>
   <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),true,true)}</div>
@@ -2613,6 +2595,7 @@ let mealPrevN={}; // last rendered entry count per meal (drives the 0->N auto-ex
 const IC_CHEVDOWN18=LUCIDE(P_CHEVDOWN,2,18);
 const IC_PLUS20=LUCIDE(P_PLUS,2,20);
 const IC_PLUS14=LUCIDE(P_PLUS,2,14);
+const P_BELL='<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>';
 const IC_MORE18=LUCIDE('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',2,18);
 const P_COPY='<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>';
 const IC_COPY14=LUCIDE(P_COPY,2,14);
@@ -6852,7 +6835,7 @@ function coachPage(){
           <p style="font-size:10px;margin:0" class="text-muted-foreground">Burn ${ci.expenditureEstimate} · target ${ci.suggestedCalories} cal</p></div>
           ${ci.applied?`<span style="font-size:10px;display:flex;align-items:center;gap:2px" class="text-primary">${LUCIDE(P_CHECK,2,10)} Applied</span>`
             :`<button data-act="applycirow" data-i="${checkIns.length-1-i}" class="haptic text-primary" style="font-size:10px;font-weight:600;background:none;border:0;padding:0">Apply</button>`}</div>`).join('')}</div></div>`:'';
-    lower=coachSays+exGrid+ebCard+targetsCard+adhCard+insightsCard+avgCard+histCard;
+    lower=exGrid+ebCard+targetsCard+adhCard+insightsCard+avgCard+histCard;
   }else{
     lower=`<div class="apple-card enter-up" style="animation-delay:.2s;padding:24px;margin-bottom:16px;text-align:center">
       <div style="display:flex;justify-content:center;margin-bottom:12px">${LUCIDE_C(P_SCALE,2,32,'text-muted-foreground')}</div>
@@ -6867,7 +6850,7 @@ function coachPage(){
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h1 class="apple-title text-foreground" style="margin:0">Coach<span class="text-primary">.</span></h1></div>
     <p style="font-size:13px;font-weight:500;margin:0 0 20px" class="text-muted-foreground">${sub}</p></div>
   ${coachHeroHTML()}
-  ${ciPanel}${streaksRow}${woCard}${goalCardHtml}
+  ${ciPanel}${streaksRow}${goalCardHtml}
   <div class="enter-up" style="animation-delay:.17s;margin-bottom:16px">${weightPlanSection()}</div>
   ${lower}</div>`;
 }
@@ -6908,7 +6891,7 @@ function coachCandidates(now){
     add("daily-"+today,"daily","Morning brief",parts.join(" "),(!weighedToday&&hasWeights)?[{a:"coach:weigh",l:"Log weight"},{a:"coach:checkin",l:"Check in"}]:[{a:"coach:checkin",l:"Check in"}],2);
   }
   // weekly check-in ready
-  if(canCheckIn()){const last=checkIns.length?checkIns[checkIns.length-1].date:null;
+  if(canCheckIn()&&daysUntilCheckIn(ep)<=0){const last=checkIns.length?checkIns[checkIns.length-1].date:null;
     add("checkin-"+coachIsoWeek(now),"checkin","Your weekly check-in is ready",last?`It's been ${Math.round((now-new Date(last+"T12:00:00"))/864e5)} days since the last one. I'll re-read your burn and suggest targets — nothing changes unless you apply it.`:"First one. I'll read your burn from the weigh-ins and logs so far and suggest targets — nothing changes unless you apply it.",[{a:"coach:go",t:"coach",l:"Open check-in"},{a:"coach:snooze",h:24,l:"Tomorrow"}],1,"coach");}
   // target suggestion from the coaching math
   const co=coachingData();
@@ -6962,20 +6945,17 @@ function coachTick(reason){
   if(coachMem.inbox.length>60)coachMem.inbox.length=60;
   // prune the seen map so it never grows unbounded (ids older than 60 days)
   for(const k in coachMem.seen)if(now.getTime()-coachMem.seen[k]>60*864e5)delete coachMem.seen[k];
-  if(added){coachUI.flash=coachMem.inbox[0].id;clearTimeout(coachUI.flashT);coachUI.flashT=setTimeout(()=>{coachUI.flash=null;coachMount()},7000)}
   if(added||reason==="boot")coachSave();
-  renderNav();coachMount();if(tab==="coach"){if(added)coachHeroRefresh(true)}
-  coachReact(reason,today);coachStripRefresh();
+  renderNav();coachBellRefresh();if(tab==="coach"){if(added)coachHeroRefresh(true)}
+  coachReact(reason,today);coachInboxRefresh();
 }
 // ---- reactions: the coach notices what you just did and says so, briefly (a whisper, not an inbox note)
 let coachWhisperT=null,coachLastWhisper=0;
-function coachWhisper(text){
-  const dock=document.getElementById("coachDock");if(!dock||dock.hidden)return;
-  if(Date.now()-coachLastWhisper<3000)return;coachLastWhisper=Date.now();
-  dock.querySelectorAll(".coach-whisper").forEach(x=>x.remove());
-  const w=document.createElement("div");w.className="coach-whisper";w.textContent=text;dock.appendChild(w);
-  const fab=dock.querySelector(".coach-fab");if(fab){fab.classList.remove("nod");void fab.offsetWidth;fab.classList.add("nod")}
-  clearTimeout(coachWhisperT);coachWhisperT=setTimeout(()=>{w.classList.add("out");setTimeout(()=>w.remove(),300)},3200);
+function coachWhisper(text){ // quiet: the app's normal toast, with the coach's mark, and never over another toast
+  if(tab==="auth"||tab==="notfound"||!coachPref("coachWhispers",true))return;
+  if(Date.now()-coachLastWhisper<3000||document.querySelector(".toast"))return;coachLastWhisper=Date.now();
+  const t=document.createElement("div");t.className="toast coach";t.innerHTML=`${coachAvatar(20,false)}<span></span>`;t.lastElementChild.textContent=text;
+  document.body.appendChild(t);clearTimeout(coachWhisperT);coachWhisperT=setTimeout(()=>t.remove(),2600);
 }
 function coachReact(reason,today){
   if(!/^(food_log|weights|workouts|water|checkins)$/.test(reason))return;
@@ -6988,14 +6968,6 @@ function coachReact(reason,today){
   else if(reason==="water"){const g=waterGoal(),ml=waterOn(today);if(g>0)coachWhisper(`Water ${Math.min(100,Math.round(ml/g*100))}% of today's goal.`)}
   else if(reason==="checkins")coachWhisper("Check-in saved. I'll re-read your burn from here.");
 }
-// the home-page presence strip: a live line from the coach under the nutrition cards
-function coachStripHTML(){
-  const today=localDateStr(),unread=coachMem.inbox.find(m=>m.state==="new");
-  let line;if(unread)line=unread.title;else{const tgt=targetsFor(today),tod=coachDayTotals(today),left=Math.round(tgt.kcal-tod.calories),pl=Math.round(tgt.p-tod.protein);
-    line=!entriesFor(today).length?"Nothing logged yet — I'm here when you are.":left>=0?`${left} cal left today${pl>0?` · ${pl}g protein to go`:" · protein's done"}.`:`${-left} cal past target — tomorrow resets.`}
-  return `<button class="coach-strip haptic${unread?" new":""}" data-act="coach:open" data-swipe="coachfeed" id="coachStrip">${coachAvatar(24,true)}<span class="coach-strip-t">${esc(line)}</span>${unread?`<span class="coach-strip-n">${coachUnread()}</span>`:""}${IC_CHEVR13}</button>`;
-}
-function coachStripRefresh(){const el=document.getElementById("coachStrip");if(el)el.outerHTML=coachStripHTML()}
 // ---- optional AI voice (backend coach-voice function; fail-soft, cached per message)
 function coachVoice(c){
   if(coachPref("coachVoice","standard")!=="ai"||!aiOn()||coachMem.voice[c.id])return;
@@ -7014,18 +6986,16 @@ function coachMark(id,state){const m=coachMem.inbox.find(x=>x.id===id);if(m){m.s
 function coachAct(act,el){
   const id=el.dataset.id,m=id?coachMem.inbox.find(x=>x.id===id):null;
   switch(act){
-    case"coach:open":{coachUI.open=!coachUI.open;coachUI.flash=null;
-      if(coachUI.open){const first=coachMem.inbox.find(x=>x.state==="new")||coachMem.inbox[0];coachUI.card=first?first.id:null;if(first&&first.state==="new"){first.state="read";coachSave()}}
-      renderNav();coachMount();return}
-    case"coach:close":coachUI.open=false;coachUI.flash=null;coachMount();return;
-    case"coach:go":coachUI.open=false;if(m)coachMark(id,"done");tab=el.dataset.t||"coach";render();return;
-    case"coach:apply":{const ok=coachApplyTargets();if(m){coachMark(id,ok?"done":"read");coachOutcome(m.kind,true)}coachUI.open=false;toast(ok?"Targets applied":"Nothing to apply yet");render();return}
-    case"coach:snooze":{const h=+el.dataset.h||24;if(m){coachMem.snooze[m.id.replace(/-\d{4}-.*$|-\d{4}-W\d+$/,"")+"-"+localDateStr()]=Date.now()+h*36e5;coachMem.seen[m.id]=undefined;delete coachMem.seen[m.id];coachMem.snooze[m.id]=Date.now()+h*36e5;coachMark(id,"snoozed");coachOutcome(m.kind,false)}coachUI.open=false;coachSave();renderNav();coachMount();if(tab==="coach")coachHeroRefresh();return}
-    case"coach:dismiss":if(m){coachMark(id,"dismissed");coachOutcome(m.kind,false)}coachUI.open=false;coachSave();renderNav();coachMount();if(tab==="coach")coachHeroRefresh();return;
-    case"coach:read":if(m)coachMark(id,"read");renderNav();coachMount();if(tab==="coach")coachHeroRefresh();return;
-    case"coach:addfood":coachUI.open=false;if(m)coachMark(id,"done");if(m)coachOutcome(m.kind,true);openSearch(el.dataset.m||mealByTime());coachMount();return;
-    case"coach:weigh":coachUI.open=false;if(m){coachMark(id,"done");coachOutcome(m.kind,true)}tab="progress";render();return;
-    case"coach:checkin":coachUI.open=false;if(m)coachMark(id,"read");coachOpenCheckin();return;
+    case"coach:open":case"coach:inbox":coachInboxOpen();return;
+    case"coach:close":closeSheet();return;
+    case"coach:go":closeSheet();if(m)coachMark(id,"done");tab=el.dataset.t||"coach";render();return;
+    case"coach:apply":{const ok=coachApplyTargets();if(m){coachMark(id,ok?"done":"read");coachOutcome(m.kind,true)}closeSheet();toast(ok?"Targets applied":"Nothing to apply yet");render();return}
+    case"coach:snooze":{const h=+el.dataset.h||24;if(m){coachMem.snooze[m.id.replace(/-\d{4}-.*$|-\d{4}-W\d+$/,"")+"-"+localDateStr()]=Date.now()+h*36e5;coachMem.seen[m.id]=undefined;delete coachMem.seen[m.id];coachMem.snooze[m.id]=Date.now()+h*36e5;coachMark(id,"snoozed");coachOutcome(m.kind,false)}coachSave();renderNav();coachBellRefresh();coachInboxRefresh();if(tab==="coach")coachHeroRefresh();return}
+    case"coach:dismiss":if(m){coachMark(id,"dismissed");coachOutcome(m.kind,false)}coachSave();renderNav();coachBellRefresh();coachInboxRefresh();if(tab==="coach")coachHeroRefresh();return;
+    case"coach:read":if(m)coachMark(id,"read");renderNav();coachBellRefresh();coachInboxRefresh();if(tab==="coach")coachHeroRefresh();return;
+    case"coach:addfood":closeSheet();if(m)coachMark(id,"done");if(m)coachOutcome(m.kind,true);openSearch(el.dataset.m||mealByTime());return;
+    case"coach:weigh":closeSheet();if(m){coachMark(id,"done");coachOutcome(m.kind,true)}tab="progress";render();return;
+    case"coach:checkin":if(m)coachMark(id,"read");coachOpenCheckin();return;
     case"coach:ciset":{const q=el.dataset.q,v=el.dataset.v;coachUI.ci=coachUI.ci||{};coachUI.ci[q]=v;
       document.querySelectorAll(`[data-act="coach:ciset"][data-q="${q}"]`).forEach(b=>b.classList.toggle("on",b.dataset.v===v));
       const done=document.querySelector('[data-act="coach:cidone"]');if(done)done.disabled=!(coachUI.ci.sleep&&coachUI.ci.energy&&coachUI.ci.hunger);return}
@@ -7033,7 +7003,7 @@ function coachAct(act,el){
     case"coach:pref":{const k=el.dataset.k,v=el.dataset.v;profile[k]=v==="true"?true:v==="false"?false:v;save("profile",profile);
       if(k==="coachVoice"&&v==="ai")coachMem.voice={};render();return}
     case"coach:reset":uiConfirm("Reset coach memory?","The coach forgets what it has said and what you answered. Your log, weights and targets are untouched.",{ok:"Reset",danger:true}).then(ok=>{if(!ok)return;coachMem={inbox:[],seen:{},snooze:{},out:{},daily:[],last:{},voice:{}};coachSave();toast("Coach memory cleared");render();coachTick("reset")});return;
-    case"coach:clear":coachMem.inbox=coachMem.inbox.filter(x=>x.state==="new");coachSave();render();return;
+    case"coach:clear":coachMem.inbox=coachMem.inbox.filter(x=>x.state==="new");coachSave();closeSheet();render();return;
   }
 }
 // ---- daily check-in: three taps, then the coach answers with the day's plan
@@ -7062,29 +7032,29 @@ function coachFinishCheckin(){
   if(!lines.length)lines.push(`Solid. Today is ${tgt.kcal} cal and ${tgt.p}g protein — same plan, keep the streak going.`);
   const id="ci-"+today;coachMem.inbox=coachMem.inbox.filter(m=>m.id!==id);
   coachMem.inbox.unshift({id,kind:"reply",title:"Today's plan",body:lines.join(" "),actions:[],ts:Date.now(),day:today,state:"new"});
-  coachMem.seen[id]=Date.now();coachSave();closeSheet();coachUI.flash=id;clearTimeout(coachUI.flashT);coachUI.flashT=setTimeout(()=>{coachUI.flash=null;coachMount()},8000);
-  toast("Checked in");renderNav();coachMount();if(tab==="coach")coachHeroRefresh();
+  coachMem.seen[id]=Date.now();coachSave();closeSheet();
+  toast("Checked in");renderNav();coachBellRefresh();if(tab==="coach")coachHeroRefresh(true);
 }
 // ---- the coach's mark: a minimalist orb (brand primary in 3 shades) with a breathing pulse
 function coachAvatar(size,live){return `<span class="coach-orb${live?" live":""}" style="width:${size}px;height:${size}px"><svg viewBox="0 0 24 24" width="${Math.round(size*.62)}" height="${Math.round(size*.62)}" aria-hidden="true"><path d="M12 3c1.2 3.6 3.4 5.8 7 7-3.6 1.2-5.8 3.4-7 7-1.2-3.6-3.4-5.8-7-7 3.6-1.2 5.8-3.4 7-7z" fill="hsl(var(--primary-foreground))"/><circle cx="18.5" cy="6" r="1.4" fill="hsl(var(--primary-foreground))" opacity=".75"/><circle cx="6" cy="18" r="1" fill="hsl(var(--primary-foreground))" opacity=".6"/></svg></span>`}
 const coachAgo=ts=>{const m=Math.round((Date.now()-ts)/6e4);if(m<1)return"now";if(m<60)return m+"m";const h=Math.round(m/60);if(h<24)return h+"h";return Math.round(h/24)+"d"};
 const coachActionsHTML=(m,small)=>m.actions.map(a=>`<button class="coach-act${a.a==="coach:apply"||a.a==="coach:addfood"||a.a==="coach:weigh"||a.a==="coach:go"?" pri":""} haptic" data-act="${a.a}" data-id="${m.id}"${a.t?` data-t="${a.t}"`:""}${a.m?` data-m="${a.m}"`:""}${a.h?` data-h="${a.h}"`:""}>${esc(a.l)}</button>`).join("")+(m.actions.length?"":`<button class="coach-act haptic" data-act="coach:read" data-id="${m.id}">Got it</button>`);
 // ---- the dock: the orb that travels with you, and its speech card
-function coachMount(){
-  let dock=document.getElementById("coachDock");
-  const hide=tab==="auth"||tab==="notfound"||tab==="coach"||!coachPref("coachDock",true);
-  if(hide){if(dock)dock.hidden=true;return}
-  if(!dock){dock=document.createElement("div");dock.id="coachDock";document.body.appendChild(dock)}
-  dock.hidden=false;
-  const unread=coachUnread();const byId=id=>id?coachMem.inbox.find(x=>x.id===id):null;
-  const m=coachUI.flash?byId(coachUI.flash):(coachUI.open?(byId(coachUI.card)||coachMem.inbox.find(x=>x.state==="new")||coachMem.inbox[0]):null);
-  const showCard=!!m&&(coachUI.open||coachUI.flash);
-  dock.innerHTML=`${showCard?`<div class="coach-card enter-up" role="dialog" aria-label="Coach" data-swipe="coachcard">
-      <div style="display:flex;align-items:flex-start;gap:10px">${coachAvatar(30,true)}<div style="flex:1;min-width:0"><p class="coach-card-t">${esc(m.title)}<span class="coach-ago">${coachAgo(m.ts)}</span></p><p class="coach-card-b">${esc(m.body)}</p></div><button class="coach-x haptic" data-act="coach:close" aria-label="Close">${IC_X20}</button></div>
-      <div class="coach-acts">${coachActionsHTML(m)}<button class="coach-act ghost haptic" data-act="coach:go" data-t="coach">Open ${COACH_NAME}${unread>1?` · ${unread}`:""}</button></div>
-    </div>`:""}
-    <button class="coach-fab haptic${unread?" has":""}${coachUI.flash?" pulse":""}" data-act="coach:open" aria-label="${COACH_NAME}${unread?`, ${unread} new`:""}">${coachAvatar(44,true)}${unread?`<span class="coach-badge">${unread}</span>`:""}</button>`;
+function coachMount(){const d=document.getElementById("coachDock");if(d)d.remove();coachBellRefresh()}
+function coachBellRefresh(){document.querySelectorAll(".bell").forEach(b=>{const n=coachUnread();b.setAttribute("aria-label","Notifications"+(n?`, ${n} new`:""));let x=b.querySelector(".bell-n");if(n){if(!x){x=document.createElement("span");x.className="bell-n";b.appendChild(x)}x.textContent=n}else if(x)x.remove()})}
+function coachInboxHTML(){
+  const list=coachMem.inbox.slice(0,40);
+  const kindIcon={macro:"◆",checkin:"◆",daily:"○",reply:"○",pace:"○",protein:"○",weigh:"·",meal:"·",water:"·",over:"·",streak:"★",praise:"★",welcome:"○"};
+  return `<div style="padding:8px 20px 24px" id="coachInbox">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0 12px"><div style="display:flex;align-items:center;gap:10px">${coachAvatar(30,true)}<div><p style="font-size:16px;font-weight:700;margin:0;line-height:22px" class="text-foreground">Notifications</p><p style="font-size:11px;margin:0" class="text-muted-foreground">${list.length?`${list.length} note${list.length!==1?"s":""} from ${COACH_NAME}`:"Nothing yet"}</p></div></div>
+      <div style="display:flex;gap:6px"><button class="apple-pill bg-secondary haptic" data-act="coach:checkin" style="border:0;color:hsl(var(--secondary-foreground))">Check in</button>${list.length?`<button class="apple-pill bg-secondary haptic" data-act="coach:clear" style="border:0;color:hsl(var(--secondary-foreground))">Clear</button>`:""}</div></div>
+    ${list.length?list.map(m=>`<div class="coach-note${m.state==="new"?" new":""}"><div style="display:flex;align-items:flex-start;gap:10px"><span class="coach-row-i">${kindIcon[m.kind]||"○"}</span><div style="flex:1;min-width:0"><p class="coach-card-t">${esc(m.title)}<span class="coach-ago">${coachAgo(m.ts)}</span></p><p class="coach-card-b">${esc(m.body)}</p>
+      ${m.state==="done"||m.state==="dismissed"||m.state==="snoozed"?`<p class="coach-state" style="margin:6px 0 0">${m.state==="done"?"Done":m.state==="snoozed"?"Snoozed":"Dismissed"}</p>`:m.actions.length?`<div class="coach-acts">${coachActionsHTML(m)}</div>`:""}</div></div></div>`).join("")
+      :`<p style="font-size:12.5px;line-height:1.55;margin:0" class="text-muted-foreground">Log a meal or a weigh-in and I'll start talking. Or check in now and I'll plan today around how you feel.</p>`}
+  </div>`;
 }
+function coachInboxOpen(){coachMem.inbox.forEach(m=>{if(m.state==="new")m.state="read"});coachSave();openSheet(coachInboxHTML());renderNav();coachBellRefresh()}
+function coachInboxRefresh(){const el=document.getElementById("coachInbox");if(el)el.outerHTML=coachInboxHTML()}
 // ---- coach page hero: the coach in person, its latest word, and today's feed
 function coachHeroHTML(){
   const unread=coachUnread(),inbox=coachMem.inbox.slice(0,8),latest=coachMem.inbox[0];
@@ -7096,9 +7066,8 @@ function coachHeroHTML(){
       <div style="flex:1;min-width:0"><p style="font-size:18px;font-weight:700;margin:0;line-height:24px" class="text-foreground">${COACH_NAME}</p><p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground"><span class="coach-live"></span>${esc(status)}</p></div>
       <button class="apple-pill bg-secondary haptic" data-act="coach:checkin" style="border:0;color:hsl(var(--secondary-foreground))">${ci?"Update check-in":"Check in"}</button></div>
     ${latest?`<div class="coach-say"><p class="coach-card-t">${esc(latest.title)}<span class="coach-ago">${coachAgo(latest.ts)}</span></p><p class="coach-card-b coach-type" data-full="${esc(latest.body)}">${esc(latest.body)}</p><div class="coach-acts">${latest.state==="done"||latest.state==="dismissed"?`<span class="coach-state">${latest.state==="done"?"Done":"Dismissed"}</span>`:coachActionsHTML(latest)}</div></div>`
-      :`<div class="coach-say"><p class="coach-card-b">Log a meal or a weigh-in and I'll start talking. Or check in now and I'll plan today around how you feel.</p></div>`}
-    ${inbox.length>1?`<div class="coach-feed"><div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 6px"><p class="apple-section" style="margin:0">Today with ${COACH_NAME}</p><button class="haptic text-muted-foreground" data-act="coach:clear" style="background:none;border:0;font-size:11px;padding:4px 0">Clear read</button></div>
-      ${inbox.slice(1).map(x=>`<button class="coach-row haptic${x.state==="new"?" new":""}" data-act="coach:read" data-id="${x.id}"><span class="coach-row-i">${kindIcon[x.kind]||"○"}</span><span style="flex:1;min-width:0"><span class="coach-row-t">${esc(x.title)}</span><span class="coach-row-b">${esc(x.body)}</span></span><span class="coach-ago">${coachAgo(x.ts)}</span></button>`).join("")}</div>`:""}
+      :`<div class="coach-say"><p class="coach-card-b">${(()=>{const c=coachingData();return c?esc(c.message):"Log a meal or a weigh-in and I'll start talking. Or check in now and I'll plan today around how you feel."})()}</p></div>`}
+    ${inbox.length>1?`<button class="haptic text-primary" data-act="coach:inbox" style="background:none;border:0;padding:10px 0 0;font-size:12px;font-weight:600">All notes${unread?` · ${unread} new`:""}</button>`:""}
   </div>`;
 }
 function coachHeroRefresh(think){const h=document.getElementById("coachHero");if(!h)return;
@@ -7115,7 +7084,7 @@ function coachSettingsHTML(){
     <div><p class="set-label" style="margin:0 0 6px">Voice</p><div style="display:flex;gap:6px">${seg("coachVoice","standard",voice,"Built-in")}${seg("coachVoice","ai",voice,"AI (Claude)")}</div>
       <p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">Built-in is free and works offline. AI rephrases the same facts through the backend's coach-voice function; if it's unreachable the built-in voice speaks.</p></div>
     <div><p class="set-label" style="margin:0 0 6px">Nudges (weigh-in, meals, water)</p><div style="display:flex;gap:6px">${seg("coachNudges",true,nud,"On")}${seg("coachNudges",false,nud,"Off")}</div><p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">Quiet 10pm–6am, at most three a day, and a nudge you wave away three times pauses for a week.</p></div>
-    <div><p class="set-label" style="margin:0 0 6px">Coach on every page</p><div style="display:flex;gap:6px">${seg("coachDock",true,dock,"Show")}${seg("coachDock",false,dock,"Coach tab only")}</div></div>
+    <div><p class="set-label" style="margin:0 0 6px">Quiet replies when you log</p><div style="display:flex;gap:6px">${seg("coachWhispers",true,coachPref("coachWhispers",true),"On")}${seg("coachWhispers",false,coachPref("coachWhispers",true),"Off")}</div><p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">A one-line reply at the bottom of the screen after a meal, weigh-in, water or session — the same place the app's other confirmations appear.</p></div>
     <button class="haptic" data-act="coach:reset" style="background:none;border:.5px solid hsl(var(--border));border-radius:10px;padding:10px;font-size:12px;color:hsl(var(--destructive))">Reset coach memory</button>
   </div>`;
 }
@@ -7814,7 +7783,7 @@ function render(){
   $("#view").innerHTML=tab==="home"?homePage():tab==="food"?foodPage():tab==="workout"?workoutPage():tab==="coach"?coachPage()
     :tab==="progress"?progressPage():tab==="calendar"?calendarPage():tab==="saved"?savedMealsPage():tab==="settings"?settingsPage()
     :tab==="auth"?authPage():notFoundPage();
-  if(typeof coachMount==="function"){if(tabChanged){coachUI.open=false}coachMount();if(tab==="coach"){coachTypewriter();if(tabChanged)coachMem.inbox.filter(m=>m.state==="new").slice(0,1).forEach(m=>m.state="read")}if(tabChanged)coachSchedule("tab")}
+  if(typeof coachMount==="function"){coachMount();if(tab==="coach"){coachTypewriter();if(tabChanged)coachMem.inbox.filter(m=>m.state==="new").slice(0,1).forEach(m=>m.state="read")}if(tabChanged)coachSchedule("tab")}
   // React state updates never scroll; only an actual page change starts at the top
   $("#view").scrollTop=keepScroll;
   // BottomNav.tsx:149 — nav hidden on /auth
