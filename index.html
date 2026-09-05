@@ -282,8 +282,24 @@ select.input{appearance:none;-webkit-appearance:none}
 .navbtn span{font-size:10px;font-weight:500;letter-spacing:-0.025em}
 
 /* FAB */
-#fab{position:fixed;z-index:40;width:56px;height:56px;border-radius:9999px;border:0;background:hsl(var(--primary));color:hsl(var(--primary-foreground));display:none;align-items:center;justify-content:center;bottom:calc(68px + env(safe-area-inset-bottom,0px)/2);box-shadow:0 4px 20px hsl(211 100% 50% / 0.2);transition:transform .12s ease,opacity .12s ease}
-#fab:active{transform:scale(.97);opacity:.7}
+#fab{position:fixed;z-index:40;width:56px;height:56px;border-radius:9999px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));display:none;align-items:center;justify-content:flex-end;bottom:calc(68px + env(safe-area-inset-bottom,0px)/2);box-shadow:0 4px 20px hsl(211 100% 50% / 0.2);overflow:hidden;transition:width .28s cubic-bezier(.2,.8,.2,1)}
+#fab.open{width:180px} /* the + extends left into a pill: voice | manual | + */
+.fab-main{width:56px;height:56px;flex:0 0 56px;border-radius:9999px;border:0;background:none;color:inherit;display:flex;align-items:center;justify-content:center;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .12s;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+#fab.open .fab-main{transform:rotate(45deg)}
+.fab-main:active{opacity:.7}
+.fab-opt{width:54px;height:56px;flex:0 0 54px;border:0;background:none;color:inherit;display:flex;align-items:center;justify-content:center;opacity:0;transform:translateX(16px) scale(.8);transition:opacity .18s ease,transform .28s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+#fab.open .fab-opt{opacity:1;transform:none;pointer-events:auto}
+#fab.open .fab-opt:first-child{transition-delay:.05s}
+.fab-sep{width:.5px;height:22px;flex:0 0 .5px;background:hsl(var(--primary-foreground)/.35);opacity:0;transition:opacity .18s}#fab.open .fab-sep{opacity:1}
+/* voice log */
+.vl-mic{width:72px;height:72px;border-radius:9999px;border:0;background:hsl(var(--primary)/.14);color:hsl(var(--primary));display:flex;align-items:center;justify-content:center;transition:transform .2s,background .2s,color .2s}
+.vl-mic.on{background:hsl(var(--primary));color:hsl(var(--primary-foreground));animation:vl-pulse 1.4s ease-in-out infinite}
+@keyframes vl-pulse{0%,100%{box-shadow:0 0 0 0 hsl(var(--primary)/.45)}50%{box-shadow:0 0 0 16px hsl(var(--primary)/0)}}
+.vl-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:.5px solid hsl(var(--border)/.4)}.vl-src{color:hsl(var(--primary));font-weight:600}
+/* swipe a log entry left for its quick actions */
+.mrow{transition:transform .22s cubic-bezier(.2,.8,.2,1)}.mrow.acts{transform:translateX(-112px)}
+.mrow-tray{position:absolute;top:0;bottom:0;right:-112px;width:112px;display:flex}
+.mrow-tray button{flex:1;border:0;background:hsl(var(--secondary));color:hsl(var(--foreground));display:flex;align-items:center;justify-content:center}.mrow-tray .del{background:hsl(var(--destructive));color:#fff}
 
 /* sheets */
 .scrim{position:fixed;inset:0;background:hsl(var(--background)/.8);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:40;display:flex;flex-direction:column;justify-content:flex-end;animation:fadein .2s}
@@ -691,7 +707,7 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
   <main class="app-content" id="view"></main>
   <nav class="bottomnav glass" id="nav"></nav>
 </div>
-<button id="fab" aria-label="Log food"></button>
+<div id="fab"><button class="fab-opt haptic" data-act="fabvoice" aria-label="Log by voice"></button><span class="fab-sep"></span><button class="fab-opt haptic" data-act="fabmanual" aria-label="Log manually"></button><button class="fab-main haptic" id="fabMain" aria-label="Log food"></button></div>
 <div id="rotGuard" aria-hidden="true">
   <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2.5"/><line x1="10.5" y1="18.2" x2="13.5" y2="18.2"/></svg>
   <p style="font-size:15px;font-weight:600;margin:0">Rotate back to portrait</p>
@@ -1158,7 +1174,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.9"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1753,7 +1769,8 @@ const STANDARD_UNITS = [
 
 // ----- src/hooks/useNutrition.ts:23-33 — serving multiplier -----
 function getServingMultiplier(food, amount, unit) {
-  if (unit === 'serving' || unit === food.servingUnit) return amount;
+  if (unit === 'serving') return amount;
+  if (unit === food.servingUnit) return food.servingSize > 0 ? amount / food.servingSize : amount; // an amount in the food's own unit is that many grams/ml, not that many servings
   const foodUnits = food.servingUnits || STANDARD_UNITS;
   const selectedUnit = foodUnits.find(u => u.unit === unit) || STANDARD_UNITS.find(u => u.unit === unit);
   if (!selectedUnit) return amount;
@@ -2768,7 +2785,7 @@ const IC_ZAP14=LUCIDE('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/
 // serving label with the REAL unit: "6 oz ·", "1.5 cup ·" — "6×" only when the unit is a bare serving
 const svLabel=e=>{const u=String(e.servingUnit||"").trim();
   if(!u||/^servings?$/i.test(u))return e.sv!==1?`${e.sv}× · `:"";
-  return `${e.sv} ${esc(u)} · `};
+  return `${e.amt!=null?e.amt:e.sv} ${esc(u)} · `}; // amt = what was typed in that unit; sv = servings (older rows carry the amount in sv)
 // ----- Logged-entry breakdown: a basket, combo, built bowl or wing order is logged as ONE entry, so the
 // log row shows the total. The provenance snapshot still knows every piece — rebuild the pieces with their
 // own macros so a row can drop down into "what was in it". Returns null when there is nothing to unfold.
@@ -2859,7 +2876,6 @@ function lfArc(dot,sx,sy,tx,ty,D,done){ // quadratic Bézier through an apex abo
 function logFlight(id){
   const from=logFrom;logFrom=null;if(!id||!from||!from.width)return;
   if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches){logAnim=null;return}
-  logAnim={id,t0:Date.now()};
   const dot=document.createElement("div");dot.className="lf-dot";
   Object.assign(dot.style,{left:from.left+"px",top:from.top+"px",width:from.width+"px",height:from.height+"px",borderRadius:Math.min(from.height/2,24)+"px"});
   document.body.appendChild(dot);
@@ -2867,12 +2883,13 @@ function logFlight(id){
   requestAnimationFrame(()=>requestAnimationFrame(()=>{dot.classList.add("ball");Object.assign(dot.style,{left:(cx-8)+"px",top:(cy-8)+"px",width:"16px",height:"16px",borderRadius:"8px"})}));
   const rowNow=()=>document.querySelector(`.mrow[data-id="${id}"]`);
   const row=rowNow();
-  if(!row){ // the meal list is not on screen: the dot hops down to the Food tab and pops there
-    const nav=document.querySelector('.navbtn[data-t="food"]');
+  if(!row){ // the meal list is not on screen: the dot hops down to the Food tab and pops there; no row phases are armed
+    logAnim=null;const nav=document.querySelector('.navbtn[data-t="food"]');
     setTimeout(()=>{const r=nav&&nav.getBoundingClientRect();if(!r){dot.remove();logAnim=null;return}dot.classList.add("fly");
       lfArc(dot,cx-8,cy-8,r.left+r.width/2-8,r.top+r.height/2-14,900,()=>{dot.classList.add("pop");const nv=document.querySelector('.navbtn[data-t="food"]');if(nv)nv.classList.add("lf-navglow"); // nav may have re-rendered mid-hop
         setTimeout(()=>{dot.remove();document.querySelectorAll('.navbtn.lf-navglow').forEach(x=>x.classList.remove("lf-navglow"));if(logAnim&&logAnim.id===id)logAnim=null},900)})},LF.lift);
     return}
+  logAnim={id,t0:Date.now()}; // row phases (hide → reveal → glow) are armed only once a landing row exists
   row.classList.add("lf-hide");row.scrollIntoView({block:"center",behavior:"smooth"});
   setTimeout(()=>{const r=(rowNow()||row).getBoundingClientRect();const tx=r.left+r.width/2-8,ty=r.top+r.height/2-8;dot.classList.add("fly");
     lfArc(dot,cx-8,cy-8,tx,ty,LF.arc,()=>{ // contact: the dot puddles out and the row is revealed from that point
@@ -2910,12 +2927,13 @@ function mealSection(m){
       <div class="mrows">${items.map(e=>{const bd=entryBreakdown(e),bo=bd&&entryOpen.has(e.id);
         const wml=Math.round(entryWaterMl(e)),wp=bd?entryWaterPieces(e):[],lf=lfRowState(e.id),wu=WATER_UNITS[waterUnit];
         const wtag=ml=>ml>=5?` · <span class="mrow-water">${LUCIDE_C(P_DROPLETS,2.2,10)}${waterConvert(ml,waterUnit)} ${wu.label}</span>`:"";
-        return `<div class="mrow${bd?" has-bd":""}${lf.cls}" data-id="${e.id}"${lf.sty}>
+        return `<div class="mrow${bd?" has-bd":""}${lf.cls}" data-id="${e.id}" data-swipe="entry"${lf.sty}>
         ${bd?`<button class="rowbtn mrow-l haptic" data-act="ebreak" data-id="${e.id}" aria-expanded="${bo?"true":"false"}">`:`<div class="mrow-l">`}
           <p class="mrow-name">${esc(e.name)}</p>
           <p class="mrow-sub tnum">${svLabel(e)}${e.macros.calories} cal · ${e.macros.protein}P · ${e.macros.carbs}C · ${e.macros.fat}F${bd?` · <span class="mrow-n">${bd.length} items</span>`:""}${wtag(wml)}</p>
         ${bd?`</button><button class="mrow-chev haptic${bo?"":" closed"}" data-act="ebreak" data-id="${e.id}" aria-label="Show what was in it">${IC_CHEVDOWN18}</button>`:`</div>`}
         <button class="mrow-menu haptic" data-act="emenu" data-id="${e.id}">${IC_MORE18}</button>
+        <div class="mrow-tray"><button class="haptic" data-act="edup" data-id="${e.id}" aria-label="Duplicate">${IC_COPY15}</button><button class="haptic del" data-act="edel" data-id="${e.id}" aria-label="Delete">${IC_TRASH15}</button></div>
       </div>${bd?`<div class="mbd-w${bo?" open":""}" data-bid="${e.id}"><div class="mbd">${bd.map((l,i)=>`<div class="mbd-l${l.adj?" adj":""}"><p class="mbd-n">${esc(l.name)}</p><p class="mbd-m tnum">${macroLine(l.m)}${wtag((wp.find(x=>x.i===i)||{}).ml||0)}</p></div>`).join("")}</div></div>`:""}`}).join("")}</div>
       <div style="display:flex;align-items:stretch">
         <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}">${IC_PLUS14} Add Food</button>
@@ -2982,7 +3000,7 @@ function openEntryMenu(anchor,id){
 
 // ===== search sheet =====
 let sheetEl=null;
-function closeSheet(){if(sheetEl){sheetEl.remove();sheetEl=null}}
+function closeSheet(){if(sheetEl){sheetEl.remove();sheetEl=null}if(vlRec){try{vlRec.stop()}catch(e){}vlRec=null}} // a dismissed voice sheet stops listening; its state is replaced on the next open
 function openSheet(html){closeSheet();closePMenu();sheetEl=document.createElement("div");sheetEl.className="scrim";
   sheetEl.innerHTML=`<div class="sheet glass-sheet">${html}</div>`;
   sheetEl.addEventListener("click",e=>{if(e.target===sheetEl)closeSheet()});
@@ -3059,6 +3077,7 @@ function swipeTo(z,dir){ // dir: 1 = forward (swiped left), -1 = back (swiped ri
   else if(zone==="coachcard"){coachUI.open=false;coachUI.flash=null;coachMount()}
   else if(zone==="coachfeed")fire("coach:go",{t:"coach"});
   else if(zone==="coachnote"){if(dir===1)coachAct("coach:remove",z)} // swipe a note away
+  else if(zone==="entry"){document.querySelectorAll(".mrow.acts").forEach(r=>{if(r!==z)r.classList.remove("acts")});z.classList.toggle("acts",dir===1)} // swipe a log entry left: Duplicate / Delete
 }
 function mealByTime(){const h=new Date().getHours();return h<11?"breakfast":h<15?"lunch":h<21?"dinner":"snack"}
 // FoodLog page state (FoodLog.tsx:49): seeded by meal-by-time, updated by openSearch
@@ -3321,6 +3340,69 @@ async function searchFoodsOnline(query){
 let FS={meal:"breakfast",view:"main",query:"",results:[],online:[],searching:false,
   selected:null,amount:"1",unit:"serving",showDetails:false,rowFoods:new Map()};
 let fsEl=null,fsTimer=null,fsSeq=0;
+// ===== VOICE LOG — say what you ate =====
+// Speech (or typed text) → segments → quantity + unit + food phrase → the local food list first, then the restaurant
+// menus (with provenance, so the row still unfolds and re-logs), then the AI backend for anything unknown (fail-soft).
+// The result is a confirm list, not a blind log: every line shows what it matched and can be removed.
+let VL=null,vlRec=null;
+const VL_NUM={a:1,an:1,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,half:.5,couple:2,few:3,dozen:12};
+const VL_UNITS={cup:"cup",cups:"cup",oz:"oz",ounce:"oz",ounces:"oz",g:"g",gram:"g",grams:"g",ml:"ml",milliliter:"ml",milliliters:"ml",tbsp:"tbsp",tablespoon:"tbsp",tablespoons:"tbsp",tsp:"tsp",teaspoon:"tsp",teaspoons:"tsp",
+  slice:"serving",slices:"serving",piece:"serving",pieces:"serving",scoop:"serving",scoops:"serving",glass:"cup",glasses:"cup",bottle:"serving",bottles:"serving",can:"serving",cans:"serving",serving:"serving",servings:"serving",bowl:"serving",bowls:"serving",handful:"serving",handfuls:"serving"};
+function vlSegments(text){
+  let t=" "+String(text).toLowerCase().replace(/[.!?]/g," ")+" ";
+  const meal=(/\bfor (breakfast|lunch|dinner|snack)s?\b/.exec(t)||[])[1];
+  t=t.replace(/\b(i|i've|ive|i'd|just|had|ate|have|having|log|add|eat|drank|drink|for (?:breakfast|lunch|dinner|snacks?)|this morning|today|tonight|please|some|the|my)\b/g," ");
+  const segs=t.split(/,|\band\b|\bplus\b|\bwith\b|\balso\b|\bthen\b|&/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean);
+  return{meal,segs}}
+function vlQty(seg){ // "two eggs" / "a cup of oatmeal" / "30 grams of peanut butter" → {qty, unit, phrase}
+  let x=seg,qty=1,unit=null,m;
+  if((m=/^(\d+(?:\.\d+)?)(?:\s*\/\s*(\d+))?\s*/.exec(x))){qty=m[2]?+m[1]/+m[2]:+m[1];x=x.slice(m[0].length)}
+  else if((m=/^(a couple|a few|a half|half an?|half|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|dozen)\s+/.exec(x))){const k=m[1].replace(/^a (couple|few|half)$/,"$1").replace(/^half an?$/,"half");qty=VL_NUM[k]||1;x=x.slice(m[0].length)}
+  if((m=/^(large|big|medium|small|regular)\s+(cup|cups|glass|glasses|bowl|bowls)\s+/.exec(x))){x=x.slice(m[0].length);unit=VL_UNITS[m[2]];qty*=/large|big/.test(m[1])?1.5:1}
+  else if((m=/^([a-z]+)\s+/.exec(x))&&VL_UNITS[m[1]]){unit=VL_UNITS[m[1]];x=x.slice(m[0].length)}
+  x=x.replace(/^of\s+/,"").trim();
+  return{qty,unit,phrase:x}}
+function vlScore(phrase,name){const p=phrase.toLowerCase(),nm=name.toLowerCase().replace(/\s*\(.*?\)/g,"").trim();if(nm===p)return 100;if(nm.startsWith(p)||p.startsWith(nm))return 80;
+  const pt=p.split(/\s+/).filter(w=>w.length>1),nt=nm.split(/\s+/);const hit=pt.filter(w=>nt.some(y=>y===w||y===w+"s"||y+"s"===w)).length;return pt.length?Math.round(hit/pt.length*70)-(nt.length-hit)*2:0}
+function vlLocal(phrase){const p1=phrase.replace(/s$/,"");const c=allFoods().map(f=>({f,s:Math.max(vlScore(phrase,f.name),vlScore(p1,f.name))+(f.brand==="Generic"?3:0)})).filter(z=>z.s>=55).sort((a,b)=>b.s-a.s);return c[0]?{f:c[0].f,s:c[0].s}:null}
+function vlRestaurant(phrase){let best=null;RESTAURANTS_DB.forEach(r=>r.components.forEach(c=>{if(c.isModifier)return;const sc=vlScore(phrase,c.name);if(sc>=80&&(!best||sc>best.s))best={s:sc,r,c}}));return best}
+function openVoiceLog(meal){VL={meal:meal||mealByTime(),text:"",items:null,busy:false,listening:false};openSheet(voiceSheetHTML());vlStart()}
+function voiceSheetHTML(){
+  const V=VL,SR=window.SpeechRecognition||window.webkitSpeechRecognition,items=V.items;
+  const chips=MEALS.map(m=>`<button class="rb-chip${V.meal===m?" pr":""} haptic" data-act="vlmeal" data-m="${m}">${MEAL_LABELS[m]}</button>`).join("");
+  const good=items?items.filter(x=>x.m):[];
+  return `<div style="padding:8px 20px 24px" id="voiceSheet">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 10px;flex-wrap:wrap"><p style="font-size:16px;font-weight:700;margin:0;line-height:22px" class="text-foreground">Say what you ate</p><div style="display:flex;gap:6px">${chips}</div></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0 14px">
+      <button class="vl-mic${V.listening?" on":""} haptic" data-act="vlmic" aria-label="${V.listening?"Stop listening":"Speak"}">${LUCIDE(P_MIC,2,28)}</button>
+      <p class="text-muted-foreground" style="font-size:11px;margin:0">${V.listening?"Listening… tap to stop":SR?"Tap to speak, or type below":"Tap the field and use your keyboard's mic"}</p></div>
+    <textarea id="vlIn" class="qa-in" rows="2" placeholder="two eggs, a cup of oatmeal and a large coffee" style="width:100%;resize:none;font-size:14px">${esc(V.text)}</textarea>
+    <button class="btn haptic" style="width:100%;margin-top:10px" data-act="vlparse"${V.busy?" disabled":""}>${V.busy?"Working…":"Read it"}</button>
+    ${items?`<div style="margin-top:14px">${items.length?items.map((it,i)=>`<div class="vl-item"><div style="flex:1;min-width:0"><p class="mrow-name">${esc(it.label)}</p><p class="mrow-sub tnum">${it.m?`${it.m.calories} cal · ${Math.round(it.m.protein)}P · ${Math.round(it.m.carbs)}C · ${Math.round(it.m.fat)}F`:"No match — try another wording"} <span class="vl-src">${it.src==="local"?"Foods":it.src==="rest"?esc(it.rname):it.src==="ai"?"AI estimate":""}</span></p></div><button class="mrow-menu haptic" data-act="vlrm" data-i="${i}" aria-label="Remove">${LUCIDE_C(P_X,2,14)}</button></div>`).join("")
+      :`<p class="text-muted-foreground" style="font-size:12.5px;margin:0">Nothing I could read. Try "two eggs and toast".</p>`}
+      ${good.length?`<button class="fsd-log glow-primary haptic" style="width:100%;margin-top:12px" data-act="vllog">Log ${good.length} item${good.length!==1?"s":""} · ${good.reduce((a,x)=>a+x.m.calories,0)} cal</button>`:""}</div>`:""}
+  </div>`}
+function vlRefresh(){const el=document.getElementById("voiceSheet");if(el&&VL)el.outerHTML=voiceSheetHTML()}
+function vlStart(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR||!VL)return;
+  if(vlRec){try{vlRec.stop()}catch(e){}vlRec=null}
+  const r=new SR();vlRec=r;r.lang=navigator.language||"en-US";r.interimResults=true;r.continuous=false;let fin="";
+  r.onresult=ev=>{let interim="";for(let i=0;i<ev.results.length;i++){const t=ev.results[i][0].transcript;if(ev.results[i].isFinal)fin+=t+" ";else interim+=t}
+    if(!VL)return;VL.text=(fin+interim).trim();const ta=document.getElementById("vlIn");if(ta)ta.value=VL.text};
+  r.onend=()=>{vlRec=null;if(!VL)return;VL.listening=false;vlRefresh();if(VL.text.trim())vlParse()};
+  r.onerror=()=>{vlRec=null;if(VL){VL.listening=false;vlRefresh()}};
+  try{r.start();VL.listening=true;vlRefresh()}catch(e){vlRec=null}}
+async function vlParse(){if(!VL)return;const ta=document.getElementById("vlIn");if(ta)VL.text=ta.value;
+  const {meal,segs}=vlSegments(VL.text);if(meal)VL.meal=meal;VL.busy=true;VL.items=null;vlRefresh();
+  const items=await Promise.all(segs.map(async seg=>{const q=vlQty(seg);if(!q.phrase)return null;
+    const loc=vlLocal(q.phrase),rest=vlRestaurant(q.phrase);
+    if(rest&&(!loc||loc.s<100)){const c=rest.c,m=M4(c.macros,q.qty),pre=q.qty!==1?q.qty+"× ":"";
+      return{label:pre+c.name,m,src:"rest",rname:rest.r.name,entry:{foodId:"quick-add",name:`${rest.r.name}: ${pre}${c.name}`,sv:1,servingUnit:"serving",macros:m},srcMap:{t:"rbi",rid:rest.r.id,cid:c.id,qty:q.qty}}}
+    if(loc){const f=loc.f;let unit=q.unit||"serving";if(unit==="cup"&&f.servingUnit!=="ml")unit="serving"; // a "cup" of a solid means a helping, not 240 g of it
+      const r=logFoodMacros(f,q.qty,unit);if(r)return{label:`${q.qty} ${unit==="serving"?(q.qty===1?"serving":"servings"):unit} ${f.name}`,m:r.macros,src:"local",entry:{foodId:f.id,name:f.name,sv:r.servings,servingUnit:unit,amt:unit==="serving"?undefined:q.qty,macros:r.macros}}}
+    if(aiOn()){try{const d=await callFn("food-search-ai",{query:q.phrase});if(d&&d.calories!=null){const m=M4({calories:+d.calories||0,protein:+d.protein_g||0,carbs:+d.carbs_g||0,fat:+d.fat_g||0},q.qty);
+      return{label:`${q.qty!==1?q.qty+"× ":""}${d.name||q.phrase}`,m,src:"ai",entry:{foodId:"quick-add",name:d.name||q.phrase,sv:q.qty,servingUnit:"serving",macros:m}}}}catch(e){}}
+    return{label:q.phrase,m:null,src:"none"}}));
+  if(!VL)return;VL.items=items.filter(Boolean);VL.busy=false;vlRefresh()}
 function openSearch(meal){
   activeMeal=meal; // FoodLog.tsx:61-62 setActiveMeal(meal)
   closeSheet();
@@ -8067,7 +8149,7 @@ document.addEventListener("click",e=>{
   const el=e.target.closest("[data-act]");if(!el)return;
   const act=el.dataset.act;
   if(act==="tab"){tab=el.dataset.t;render()}
-  else if(act==="selday"){selDate=el.dataset.d;render()}
+  else if(act==="selday"){const d=el.dataset.d,today=localDateStr();selDate=(d===selDate&&d!==today)?today:d;render()} // tapping the selected day again jumps back to today
   else if(act==="dsweek"){ // DayStrip.tsx:45-49 — jump ±7 days
     const d=new Date(selDate+'T12:00:00');d.setDate(d.getDate()+(+el.dataset.dir)*7);
     selDate=localDateStr(d);render();
@@ -8184,7 +8266,7 @@ document.addEventListener("click",e=>{
     const memOk=mem&&getAvailableUnits(f).some(u=>u.unit===mem.unit);
     const amt=memOk?mem.a:1,unit=memOk?mem.unit:"serving";
     const r=logFoodMacros(f,amt,unit);if(!r)return;
-    foodLog.push({id:newId(),foodId:f.id,name:f.name,sv:r.servings,servingUnit:unit,
+    foodLog.push({id:newId(),foodId:f.id,name:f.name,sv:r.servings,servingUnit:unit,amt:unit==="serving"?undefined:amt,
       macros:r.macros,meal:FS.meal,date:selDate,ts:Date.now()});
     saveLog();toast(`Logged '${f.name}'${memOk&&(amt!==1||unit!=="serving")?` · ${amt} ${unit}`:""}`);
     if(FS.view==="main"&&!FS.selected){ // refresh content only — never rebuild the input mid-typing
@@ -8215,14 +8297,14 @@ document.addEventListener("click",e=>{
     const fsSnap=allFoods().some(x=>x.id===f.id)?null:{t:"fss",f:{id:f.id,name:f.name,brand:f.brand,servingSize:f.servingSize,servingUnit:f.servingUnit,macros:f.macros}};
     const fe=FS.replaceId&&foodLog.find(x=>x.id===FS.replaceId);
     if(fe){ // Edit mode: update the original entry in place — same id, same day, same position
-      Object.assign(fe,{foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,macros:r.macros,meal:FS.meal});
+      Object.assign(fe,{foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,amt:FS.unit==="serving"?undefined:a,macros:r.macros,meal:FS.meal});
       setEntrySrc(fe.id,fsSnap);
       FS.replaceId=null;saveLog();rememberPortion(f.id,a,FS.unit);
       toast(`Updated '${f.name}' · ${r.macros.calories} cal`);
       closeFS();mealOpen[FS.meal]=true;render();logFlight(fe.id);return;
     }
     const nid=newId();
-    foodLog.push({id:nid,foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,
+    foodLog.push({id:nid,foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,amt:FS.unit==="serving"?undefined:a,
       macros:r.macros,meal:FS.meal,date:selDate,ts:Date.now()});
     if(fsSnap)setEntrySrc(nid,fsSnap);
     saveLog();rememberPortion(f.id,a,FS.unit); // next time this food defaults to this portion
@@ -8296,6 +8378,15 @@ document.addEventListener("click",e=>{
   else if(act==="scanclose"){closeScanner()}
   else if(act==="scango"){scanGo()}
   else if(act==="quickadd"){openQuickAdd(el.dataset.meal||activeMeal)} // defaultMeal = activeMeal (FoodLog.tsx:296-300)
+  else if(act==="fabvoice")fabGo("voice");
+  else if(act==="fabmanual")fabGo("manual");
+  else if(act==="vlmic"){if(vlRec){try{vlRec.stop()}catch(e){}}else vlStart()}
+  else if(act==="vlmeal"){if(VL){VL.meal=el.dataset.m;vlRefresh()}}
+  else if(act==="vlparse"){vlParse()}
+  else if(act==="vlrm"){if(VL&&VL.items){VL.items.splice(+el.dataset.i,1);vlRefresh()}}
+  else if(act==="vllog"){if(!VL||!VL.items)return;const its=VL.items.filter(x=>x.m);if(!its.length)return;logFrom=el.getBoundingClientRect();let first=null;
+    its.forEach(it=>{const id=newId();foodLog.push(Object.assign({id,date:selDate,ts:Date.now(),meal:VL.meal},it.entry));if(it.srcMap)setEntrySrc(id,it.srcMap);if(!first)first=id});
+    saveLog();const meal=VL.meal;VL=null;closeSheet();mealOpen[meal]=true;render();logFlight(first);toast(`Logged ${its.length} item${its.length!==1?"s":""}`)}
   else if(act==="qasmart"){ // QuickAdd.tsx:91-105 Smart Calories toggle
     qaSmart=!qaSmart;
     $("#qaHint").textContent=qaSmart?"ON — auto-calculated from macros":"OFF — enter manually";
@@ -8738,14 +8829,26 @@ document.addEventListener("input",e=>{
     const fig=$("#wofig");if(fig){const g=detectMuscleGroup(s.notes)||"";
       if(fig.dataset.g!==g){fig.dataset.g=g;fig.innerHTML=g?muscleFigHTML(g,+fig.dataset.size||120):""}}}}
 });
-$("#fab").innerHTML=IC_PLUS; // lucide Plus, size 26, stroke-width 2.5
-$("#fab").addEventListener("click",()=>{
-  // The + always means "log food" — same outcome from Home and Food, so the button
-  // teaches one thing. If a past day is selected on Home, the log targets THAT day
-  // (the Food tab's remount would otherwise silently reset the selection to today).
-  if(tab==="home"){const d=selDate;tab="food";render();if(selDate!==d){selDate=d;render()}openSearch(mealByTime())}
-  else openSearch(activeMeal);          // FoodLog.tsx:147-148 — Food FAB opens search with page state
-});
+$("#fabMain").innerHTML=IC_PLUS; // lucide Plus, size 26, stroke-width 2.5
+$("#fab").querySelector('[data-act="fabvoice"]').innerHTML=LUCIDE(P_MIC,2.2,22);
+$("#fab").querySelector('[data-act="fabmanual"]').innerHTML=LUCIDE(P_PENCIL,2.2,20);
+// The + always means "log food". Tapping it extends the circle left into a pill with the two ways in: speak it, or the
+// menu. A long press skips the pill and starts listening. Tapping anywhere else closes the pill.
+(function(){const fab=$("#fab"),main=$("#fabMain");let holdT=null,held=false;
+  const open=v=>fab.classList.toggle("open",v);
+  main.addEventListener("click",()=>{if(held){held=false;return}open(!fab.classList.contains("open"))});
+  const down=()=>{held=false;clearTimeout(holdT);holdT=setTimeout(()=>{held=true;open(false);fabGo("voice")},450)};
+  const up=()=>clearTimeout(holdT);
+  main.addEventListener("touchstart",down,{passive:true});main.addEventListener("touchend",up,{passive:true});main.addEventListener("touchmove",up,{passive:true});
+  main.addEventListener("mousedown",down);main.addEventListener("mouseup",up);main.addEventListener("mouseleave",up);
+  document.addEventListener("click",e=>{if(fab.classList.contains("open")&&!fab.contains(e.target))open(false)},true);
+})();
+function fabGo(how){ // "manual" = the search sheet; "voice" = say what you ate. From Home the log lands on the Food tab, on the day Home had selected.
+  $("#fab").classList.remove("open");
+  let meal=activeMeal;
+  if(tab==="home"){const d=selDate;tab="food";render();if(selDate!==d){selDate=d;render()}meal=mealByTime()}
+  if(how==="voice")openVoiceLog(meal);else openSearch(meal);
+}
 // Auth submit — real Supabase email/password. Errors render inline (no re-render, so
 // typed values survive); the email-confirmation notice mode-switches via authNotice.
 document.addEventListener("submit",async e=>{
@@ -8859,6 +8962,7 @@ function resetKeyboardGuard(){
 setInterval(()=>{const s=session();if(s&&s.isRunning){woElapsed=Math.floor((Date.now()-s.startTimestamp)/1000);
   const c=$("#clock");if(c)c.textContent=formatTime(woElapsed)}},1000);
 // portal menus dismiss on outside tap and on scroll (never clipped, never stranded)
+document.addEventListener("click",e=>{if(!e.target.closest(".mrow.acts"))document.querySelectorAll(".mrow.acts").forEach(r=>r.classList.remove("acts"))},true); // a tap anywhere else tucks the tray away
 document.addEventListener("click",e=>{if(pmenuEl&&!pmenuEl.contains(e.target)&&!e.target.closest("[data-act=emenu]"))closePMenu()},true);
 document.querySelector(".app-content").addEventListener("scroll",closePMenu,{passive:true});
 // Password-recovery landing: the emailed reset link returns here with GoTrue tokens in the
