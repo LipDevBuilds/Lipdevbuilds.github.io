@@ -198,6 +198,21 @@ select.input{appearance:none;-webkit-appearance:none}
 .mrow-n{color:hsl(var(--primary));font-weight:600}
 .mrow-chev{padding:8px 4px;margin:-4px 0;background:none;border:0;color:hsl(var(--muted-foreground));display:flex;transition:transform .2s}
 .mrow-chev.closed{transform:rotate(-90deg)}
+.mrow-water{display:inline-flex;align-items:center;gap:2px;color:hsl(var(--water));font-weight:600;vertical-align:-1px}
+/* the log flight */
+.lf-dot{position:fixed;z-index:60;pointer-events:none;background:hsl(var(--primary));box-shadow:0 0 0 0 hsl(var(--primary)/0);transition:left .6s cubic-bezier(.4,0,.2,1),top .6s cubic-bezier(.4,0,.2,1),width .6s cubic-bezier(.4,0,.2,1),height .6s cubic-bezier(.4,0,.2,1),border-radius .6s,box-shadow .6s,transform .5s,opacity .5s}
+.lf-dot.ball{box-shadow:0 0 14px 4px hsl(var(--primary)/.55),0 0 36px 12px hsl(var(--primary)/.22);animation:lf-breathe 1.1s ease-in-out infinite}
+.lf-dot.fly{transition:transform .5s ease-out,opacity .5s ease-out}
+.lf-dot.splat{transform:scale(4.5);opacity:0}
+.lf-dot.pop{transform:scale(0);opacity:0}
+@keyframes lf-breathe{0%,100%{filter:brightness(1)}50%{filter:brightness(1.4)}}
+.mrow.lf-hide{visibility:hidden}
+.mrow.lf-reveal{animation:lf-reveal 1.5s cubic-bezier(.2,.7,.2,1) both}
+@keyframes lf-reveal{from{clip-path:circle(0 at var(--lfx,50%) var(--lfy,50%));background:hsl(var(--primary)/.28)}to{clip-path:circle(140% at var(--lfx,50%) var(--lfy,50%));background:hsl(var(--primary)/.1)}}
+.mrow.lf-glow{animation:lf-glow 1.7s ease-out both}
+@keyframes lf-glow{0%,30%{box-shadow:inset 0 0 0 1px hsl(var(--primary)/.7),inset 0 0 28px hsl(var(--primary)/.35);background:hsl(var(--primary)/.1)}100%{box-shadow:inset 0 0 0 0 hsl(var(--primary)/0),inset 0 0 0 hsl(var(--primary)/0);background:transparent}}
+.navbtn.lf-navglow svg{filter:drop-shadow(0 0 8px hsl(var(--primary)/.95))}
+@media (prefers-reduced-motion:reduce){.lf-dot{display:none}.mrow.lf-hide{visibility:visible}.mrow.lf-reveal,.mrow.lf-glow{animation:none}}
 .mrow.has-bd::after{display:none} /* the drop-down carries the separator */
 .mbd-w{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .25s cubic-bezier(.25,.1,.25,1),opacity .25s cubic-bezier(.25,.1,.25,1);position:relative}
 .mbd-w.open{grid-template-rows:1fr;opacity:1}
@@ -1143,7 +1158,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2453,7 +2468,7 @@ function entryWaterPieces(e){ // [{name,ml}] for one logged row
   const s=entrySrc[e.id]||(e.foodId==="quick-add"?rbSrcFromName(e):null);const rid=s&&s.rid||null;
   let pieces=rid?entryPieces(e):null;
   if(!pieces||!pieces.length){const f=e.foodId&&e.foodId!=="quick-add"?allFoods().find(x=>x.id===e.foodId):null;pieces=[{name:e.name,m:e.macros,food:f||null,sv:e.sv||1,k:1}]}
-  return pieces.filter(p=>!p.adj).map(p=>({name:p.name,ml:swPieceMl(p,rid)})).filter(x=>x.ml>=5)}
+  return pieces.map((p,i)=>p.adj?null:{name:p.name,ml:swPieceMl(p,rid),i}).filter(x=>x&&x.ml>=5)} // i = index into entryPieces, so the drop-down can label its lines
 function entryWaterMl(e){return entryWaterPieces(e).reduce((a,x)=>a+x.ml,0)}
 function waterAutoOn(d){if(!smartWaterOn())return 0;return Math.round(entriesFor(d).reduce((a,e)=>a+entryWaterMl(e),0))}
 function swSheetHTML(date){
@@ -2829,6 +2844,49 @@ function entryBreakdown(e){
   return lines;
 }
 const macroLine=m=>`${m.calories} cal · ${Math.round(m.protein)}P · ${Math.round(m.carbs)}C · ${Math.round(m.fat)}F`;
+// ===== the log flight: a new entry travels from the Log button into its meal =====
+// The tapped control condenses into a glowing dot, hops off and falls along a real parabola into the slot the
+// new row occupies (between the last entry and Add Food), puddles out to reveal the row from the point of
+// contact, then the row glows and settles. About five seconds end to end. The row is in the DOM from the start
+// (hidden) so the slot is real, and re-renders mid-flight re-attach the current phase from logAnim.
+let logFrom=null,logAnim=null; // logFrom: rect of the control the entry flies from; logAnim: {id,t0} for re-render sync
+const LF={morph:600,lift:700,arc:1300,reveal:1500,glow:1700}; // ms per phase
+function lfArc(dot,sx,sy,tx,ty,D,done){ // quadratic Bézier through an apex above both ends: a thrown ball's parabola at constant horizontal speed
+  const apex=Math.max(24,Math.min(sy,ty)-110),t0=performance.now(); // hop height, kept on screen
+  const step=now=>{const u=Math.min(1,(now-t0)/D);const x=sx+(tx-sx)*u,y=(1-u)*(1-u)*sy+2*(1-u)*u*apex+u*u*ty;
+    dot.style.left=x+"px";dot.style.top=y+"px";if(u<1)requestAnimationFrame(step);else done()};
+  requestAnimationFrame(step)}
+function logFlight(id){
+  const from=logFrom;logFrom=null;if(!id||!from||!from.width)return;
+  if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches){logAnim=null;return}
+  logAnim={id,t0:Date.now()};
+  const dot=document.createElement("div");dot.className="lf-dot";
+  Object.assign(dot.style,{left:from.left+"px",top:from.top+"px",width:from.width+"px",height:from.height+"px",borderRadius:Math.min(from.height/2,24)+"px"});
+  document.body.appendChild(dot);
+  const cx=from.left+from.width/2,cy=from.top+from.height/2;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{dot.classList.add("ball");Object.assign(dot.style,{left:(cx-8)+"px",top:(cy-8)+"px",width:"16px",height:"16px",borderRadius:"8px"})}));
+  const rowNow=()=>document.querySelector(`.mrow[data-id="${id}"]`);
+  const row=rowNow();
+  if(!row){ // the meal list is not on screen: the dot hops down to the Food tab and pops there
+    const nav=document.querySelector('.navbtn[data-t="food"]');
+    setTimeout(()=>{const r=nav&&nav.getBoundingClientRect();if(!r){dot.remove();logAnim=null;return}dot.classList.add("fly");
+      lfArc(dot,cx-8,cy-8,r.left+r.width/2-8,r.top+r.height/2-14,900,()=>{dot.classList.add("pop");const nv=document.querySelector('.navbtn[data-t="food"]');if(nv)nv.classList.add("lf-navglow"); // nav may have re-rendered mid-hop
+        setTimeout(()=>{dot.remove();document.querySelectorAll('.navbtn.lf-navglow').forEach(x=>x.classList.remove("lf-navglow"));if(logAnim&&logAnim.id===id)logAnim=null},900)})},LF.lift);
+    return}
+  row.classList.add("lf-hide");row.scrollIntoView({block:"center",behavior:"smooth"});
+  setTimeout(()=>{const r=(rowNow()||row).getBoundingClientRect();const tx=r.left+r.width/2-8,ty=r.top+r.height/2-8;dot.classList.add("fly");
+    lfArc(dot,cx-8,cy-8,tx,ty,LF.arc,()=>{ // contact: the dot puddles out and the row is revealed from that point
+      dot.classList.add("splat");setTimeout(()=>dot.remove(),650);
+      const rr=rowNow();if(rr){const b=rr.getBoundingClientRect();rr.style.setProperty("--lfx",((tx+8-b.left)/b.width*100).toFixed(1)+"%");rr.style.setProperty("--lfy",((ty+8-b.top)/b.height*100).toFixed(1)+"%");rr.classList.remove("lf-hide");rr.classList.add("lf-reveal")}
+      setTimeout(()=>{const r3=rowNow();if(r3){r3.classList.remove("lf-reveal");r3.classList.add("lf-glow")}
+        setTimeout(()=>{const r4=rowNow();if(r4)r4.classList.remove("lf-glow");if(logAnim&&logAnim.id===id)logAnim=null},LF.glow)},LF.reveal)})},LF.lift);
+}
+function lfRowState(id){ // phase classes for a row rendered mid-flight (re-render sync)
+  if(!logAnim||logAnim.id!==id)return{cls:"",sty:""};const t=Date.now()-logAnim.t0,land=LF.lift+LF.arc;
+  if(t<land)return{cls:" lf-hide",sty:""};
+  if(t<land+LF.reveal)return{cls:" lf-reveal",sty:` style="animation-delay:-${t-land}ms"`};
+  if(t<land+LF.reveal+LF.glow)return{cls:" lf-glow",sty:` style="animation-delay:-${t-land-LF.reveal}ms"`};
+  return{cls:"",sty:""}}
 function mealSection(m){
   const items=entriesFor(selDate).filter(e=>e.meal===m);
   const n=items.length;
@@ -2850,13 +2908,15 @@ function mealSection(m){
     </button>
     ${n?`<div class="mentries-w${open?" open":""}"><div class="mentries">
       <div class="mrows">${items.map(e=>{const bd=entryBreakdown(e),bo=bd&&entryOpen.has(e.id);
-        return `<div class="mrow${bd?" has-bd":""}">
+        const wml=Math.round(entryWaterMl(e)),wp=bd?entryWaterPieces(e):[],lf=lfRowState(e.id),wu=WATER_UNITS[waterUnit];
+        const wtag=ml=>ml>=5?` · <span class="mrow-water">${LUCIDE_C(P_DROPLETS,2.2,10)}${waterConvert(ml,waterUnit)} ${wu.label}</span>`:"";
+        return `<div class="mrow${bd?" has-bd":""}${lf.cls}" data-id="${e.id}"${lf.sty}>
         ${bd?`<button class="rowbtn mrow-l haptic" data-act="ebreak" data-id="${e.id}" aria-expanded="${bo?"true":"false"}">`:`<div class="mrow-l">`}
           <p class="mrow-name">${esc(e.name)}</p>
-          <p class="mrow-sub tnum">${svLabel(e)}${e.macros.calories} cal · ${e.macros.protein}P · ${e.macros.carbs}C · ${e.macros.fat}F${bd?` · <span class="mrow-n">${bd.length} items</span>`:""}</p>
+          <p class="mrow-sub tnum">${svLabel(e)}${e.macros.calories} cal · ${e.macros.protein}P · ${e.macros.carbs}C · ${e.macros.fat}F${bd?` · <span class="mrow-n">${bd.length} items</span>`:""}${wtag(wml)}</p>
         ${bd?`</button><button class="mrow-chev haptic${bo?"":" closed"}" data-act="ebreak" data-id="${e.id}" aria-label="Show what was in it">${IC_CHEVDOWN18}</button>`:`</div>`}
         <button class="mrow-menu haptic" data-act="emenu" data-id="${e.id}">${IC_MORE18}</button>
-      </div>${bd?`<div class="mbd-w${bo?" open":""}" data-bid="${e.id}"><div class="mbd">${bd.map(l=>`<div class="mbd-l${l.adj?" adj":""}"><p class="mbd-n">${esc(l.name)}</p><p class="mbd-m tnum">${macroLine(l.m)}</p></div>`).join("")}</div></div>`:""}`}).join("")}</div>
+      </div>${bd?`<div class="mbd-w${bo?" open":""}" data-bid="${e.id}"><div class="mbd">${bd.map((l,i)=>`<div class="mbd-l${l.adj?" adj":""}"><p class="mbd-n">${esc(l.name)}</p><p class="mbd-m tnum">${macroLine(l.m)}${wtag((wp.find(x=>x.i===i)||{}).ml||0)}</p></div>`).join("")}</div></div>`:""}`}).join("")}</div>
       <div style="display:flex;align-items:stretch">
         <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}">${IC_PLUS14} Add Food</button>
         <button class="madd haptic" style="flex:0 0 52px" data-act="tplsavemeal" data-meal="${m}" aria-label="Save as meal">${LUCIDE('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',2,15)}</button>
@@ -5387,8 +5447,8 @@ function rbLog(){
   const fmt=rbFormat(),fpre=fmt&&fmt.mult?`${fmt.name} `:"";
   const name=`${RB.restaurant.name}: ${fpre}${nameStr.length>50?nameStr.slice(0,50)+"...":nameStr}`;
   const total=calculateMealMacrosWithPortions(RB.items); // per-item rounded, carries fiber+sodium
-  rbCommitEntry({foodId:"quick-add",name,sv:1,servingUnit:"serving",macros:total,meal:RB.meal},rbSnapMealSrc());
-  closeRB();render();
+  const lid=rbCommitEntry({foodId:"quick-add",name,sv:1,servingUnit:"serving",macros:total,meal:RB.meal},rbSnapMealSrc());
+  closeRB();mealOpen[RB.meal]=true;render();logFlight(lid);
 }
 
 // ----- item-select mode (StarbucksItemSelect.tsx — starbucks, peets, texas-roadhouse) -----
@@ -5745,6 +5805,7 @@ function rbxFormHTML(){
     </div></div>`;
 }
 function rbAction(act,el){
+  if(el&&/log$/.test(act)&&el.getBoundingClientRect)logFrom=el.getBoundingClientRect(); // the control a new entry will fly from
   const R=RB.restaurant;
   switch(act){
     case"rbclose":closeRB();return;
@@ -5881,14 +5942,14 @@ function rbAction(act,el){
     case"rblinep":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=Math.min(10,(it.qty||1)+1);rbRender(true);return}
     case"rblinem":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=Math.max(1,(it.qty||1)-1);rbRender(true);return}
     case"rbilog":{if(!RB.item)return;const t=rbQx(rbISTotal(),RB.qty);
-      rbCommitEntry({foodId:"quick-add",name:`${R.name}: ${RB.qty>1?RB.qty+"\u00d7 ":""}${rbBuildItemName()}`,sv:1,servingUnit:"serving",macros:t,meal:RB.meal},rbSnapItemSrc());
-      closeRB();render();return}
+      const lid=rbCommitEntry({foodId:"quick-add",name:`${R.name}: ${RB.qty>1?RB.qty+"\u00d7 ":""}${rbBuildItemName()}`,sv:1,servingUnit:"serving",macros:t,meal:RB.meal},rbSnapItemSrc());
+      closeRB();mealOpen[RB.meal]=true;render();logFlight(lid);return}
     case"rbcartlog":{if(!RB.cart.length)return; // logs bag lines as SEPARATE entries, qty-multiplied
-      RB.cart.forEach((it,i)=>{const q=it.qty||1;
+      let firstId=null;RB.cart.forEach((it,i)=>{const q=it.qty||1;
         const fields={foodId:"quick-add",name:`${R.name}: ${q>1?q+"\u00d7 ":""}${it.name}`,sv:1,servingUnit:"serving",macros:rbQx(it.macros,q),meal:RB.meal};
-        if(i===0)rbCommitEntry(fields,it.src||null); // an Edit that went through the bag replaces the original with line 1
+        if(i===0)firstId=rbCommitEntry(fields,it.src||null); // an Edit that went through the bag replaces the original with line 1
         else{const id=newId();foodLog.push(Object.assign({id,date:selDate,ts:Date.now()},fields));setEntrySrc(id,it.src||null)}});
-      saveLog();closeRB();render();return}
+      saveLog();closeRB();mealOpen[RB.meal]=true;render();logFlight(firstId);return}
   }
 }
 
@@ -8145,6 +8206,7 @@ document.addEventListener("click",e=>{
     const c=fsEl&&fsEl.querySelector("#fsHpChev");if(c)c.innerHTML=FS.showDetails?IC_CHEVU14:IC_CHEVD14;
   }
   else if(act==="fslog"){ // detail confirm (FoodSearch.tsx:142-151) — parseFloat(amount)||1
+    logFrom=el.getBoundingClientRect();
     const f=FS.selected;if(!f)return;
     const a=parseFloat(FS.amount)||1;
     const r=logFoodMacros(f,a,FS.unit); // useNutrition.ts:226-237 — rejects amount<=0, fiber/sodium stay undefined
@@ -8157,7 +8219,7 @@ document.addEventListener("click",e=>{
       setEntrySrc(fe.id,fsSnap);
       FS.replaceId=null;saveLog();rememberPortion(f.id,a,FS.unit);
       toast(`Updated '${f.name}' · ${r.macros.calories} cal`);
-      closeFS();render();return;
+      closeFS();mealOpen[FS.meal]=true;render();logFlight(fe.id);return;
     }
     const nid=newId();
     foodLog.push({id:nid,foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,
@@ -8167,8 +8229,7 @@ document.addEventListener("click",e=>{
     const mealCal=Math.round(foodLog.filter(e=>e.date===selDate&&e.meal===FS.meal).reduce((s,e)=>s+e.macros.calories,0));
     const dayTag=selDate===localDateStr()?"":fmtDate(selDate)+" "; // make backfills unmistakable
     toast(`Logged '${f.name}' · ${dayTag}${FS_MEAL_LABELS[FS.meal]} now ${mealCal} cal`);
-    // stay in context for chain-logging: return to whichever list you came from, query & results intact
-    FS.selected=null;fsRender();
+    closeFS();mealOpen[FS.meal]=true;render();logFlight(nid); // the sheet steps aside so you can watch the entry land in its meal
   }
   else if(act==="fsrepeaty"){ // one tap re-logs yesterday's whole meal for today
     const ym=fsYesterdayMeal(FS.meal);if(!ym)return;
@@ -8248,17 +8309,18 @@ document.addEventListener("click",e=>{
     $("#qaExtrasBtn").innerHTML=qaExtras?"− Hide Fiber &amp; Sodium":"+ Show Fiber &amp; Sodium";
   }
   else if(act==="quickok"){ // QuickAdd.tsx:41-54 + useNutrition.ts:254-269
+    logFrom=el.getBoundingClientRect();
     const kcal=parseInt($("#qK").value)||0,p=parseFloat($("#qP").value)||0,
           c=parseFloat($("#qC").value)||0,f=parseFloat($("#qF").value)||0,
           fib=parseFloat($("#qFib")?.value)||undefined,sod=parseFloat($("#qNa")?.value)||undefined;
     if(kcal===0&&p===0&&c===0&&f===0)return; // all-zero guard (QuickAdd.tsx:51)
     const qaFields={name:$("#qL").value.trim()||"Quick Add",macros:{calories:kcal,protein:p,carbs:c,fat:f,fiber:fib,sodium:sod}};
     const qe=qaReplaceId&&foodLog.find(x=>x.id===qaReplaceId);
-    if(qe){Object.assign(qe,qaFields);setEntrySrc(qe.id,{t:"qa"});qaReplaceId=null;saveLog();closeSheet();toast("Updated · "+kcal+" cal");render()}
+    if(qe){Object.assign(qe,qaFields);setEntrySrc(qe.id,{t:"qa"});qaReplaceId=null;saveLog();closeSheet();toast("Updated · "+kcal+" cal");mealOpen[qe.meal]=true;render();logFlight(qe.id)}
     else{
       const id=newId();
       foodLog.push(Object.assign({id,foodId:"quick-add",sv:1,servingUnit:"serving",meal:qaMeal,date:selDate,ts:Date.now()},qaFields));
-      setEntrySrc(id,{t:"qa"});saveLog();closeSheet();render();
+      setEntrySrc(id,{t:"qa"});saveLog();closeSheet();mealOpen[qaMeal]=true;render();logFlight(id);
     }
   }
   else if(act.startsWith("coach:")){coachAct(act,el)}
