@@ -1143,7 +1143,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2741,6 +2741,16 @@ const svLabel=e=>{const u=String(e.servingUnit||"").trim();
 // own macros so a row can drop down into "what was in it". Returns null when there is nothing to unfold.
 let entryOpen=new Set(); // ids currently expanded (session-only, like the meal cards)
 const M4=(o,k=1)=>({calories:Math.round(o.calories*k),protein:Math.round(o.protein*k*10)/10,carbs:Math.round(o.carbs*k*10)/10,fat:Math.round(o.fat*k*10)/10});
+// Menus get reshaped between builds (rows merge into size chips, a drink gets its official name). Provenance written by
+// an older build still resolves: an alias id maps to the head row's size, a legacy drink name maps to today's row.
+const RB_DRINK_LEGACY={"Culver's Root Beer":"Signature Root Beer"};
+function rbAliasSize(c,oldId){if(!c||!c.sizeAlias)return null;if(c.sizeAliasSz&&c.sizeAliasSz[oldId])return c.sizeAliasSz[oldId];const i=c.sizeAlias.indexOf(oldId);return i>=0&&c.sizeVariants&&c.sizeVariants[i+1]?c.sizeVariants[i+1].sizeId:null}
+function rbDrinkLegacyName(name){const m=/^(.*?)( \(.*\))?$/.exec(String(name));const b=m?m[1]:name;return RB_DRINK_LEGACY[b]?RB_DRINK_LEGACY[b]+(m&&m[2]||""):name}
+function rbDrinkRowByName(R,name){ // a chain's own drink row by its logged name — exact, then legacy rename, then base name + size label
+  const tryOne=nm=>{const c=R.components.find(x=>x.name===nm);if(c)return{c,v:null};const mm=/^(.*?) \((.*)\)$/.exec(nm);const base=(mm?mm[1]:nm).toLowerCase();
+    const h=R.components.find(x=>x.name.toLowerCase()===base&&x.sizeVariants);if(h){const lab=mm?mm[2].toLowerCase():null;const v=lab?h.sizeVariants.find(y=>String(y.sizeName).toLowerCase()===lab||y.sizeId===rbSlug(lab)):null;return{c:h,v:v||(lab?null:h.sizeVariants.find(y=>y.sizeId===h.defaultSizeId)||null)}}
+    const p=R.components.find(x=>x.name.replace(RB_SIZE_SUFFIX,"").toLowerCase()===base);return p?{c:p,v:null}:null};
+  return tryOne(name)||tryOne(rbDrinkLegacyName(name))}
 function entryPieces(e){ // every itemizable piece of a logged row as {name,m,cat,k}: the drop-down shows them, smart water reads them
   const s=entrySrc[e.id]||(e.foodId==="quick-add"?rbSrcFromName(e):null);if(!s||!s.rid)return null;
   const R=rbEntry(s.rid);if(!R)return null;
@@ -2748,11 +2758,11 @@ function entryPieces(e){ // every itemizable piece of a logged row as {name,m,ca
   const lines=[];const push=(name,m,k=1,cat)=>{if(name&&m)lines.push({name,m:M4(m,k),cat,k})};
   const drinkMacros=name=>{ // meal drink by its logged name: per-size chain table → fountain roster → the chain's own drink rows
     const meal=RB_MEAL[s.rid];if(meal){const mm=/^(.*) \((.*)\)$/.exec(name);if(mm){const d=meal.drinks.find(x=>x[0]===mm[1]),i=meal.sizes.findIndex(z=>z[1]===mm[2]);if(d&&i>=0&&d[1+i]){const v=d[1+i];return{calories:v[0],protein:v[1],carbs:v[2],fat:v[3]}}}}
-    const cfg=RB_BRAND[s.rid]||{};const row=[...(RB_FOUNTAIN[cfg.soda||"coke"]||[]),...(RB_DRINK_EXTRA[s.rid]||[])].find(o=>o[0]===name);if(row)return{calories:row[1],protein:row[2],carbs:row[3],fat:row[4]};
-    const c=R.components.find(x=>x.name===name);return c?c.macros:null};
+    const cfg=RB_BRAND[s.rid]||{};const roster=[...(RB_FOUNTAIN[cfg.soda||"coke"]||[]),...(RB_DRINK_EXTRA[s.rid]||[])];const row=roster.find(o=>o[0]===name)||roster.find(o=>o[0]===rbDrinkLegacyName(name));if(row)return{calories:row[1],protein:row[2],carbs:row[3],fat:row[4]};
+    const hit=rbDrinkRowByName(R,name);return hit?(hit.v||hit.c).macros:null};
   if(s.t==="rbi"){
     let c=byId(s.cid),sz=s.sizeId;
-    if(!c){c=R.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c){const i=c.sizeAlias.indexOf(s.cid);sz=(c.sizeAliasSz&&c.sizeAliasSz[s.cid])||(c.sizeVariants[i+1]&&c.sizeVariants[i+1].sizeId)}}
+    if(!c){c=R.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c)sz=rbAliasSize(c,s.cid)}
     if(!c)return null;
     const q=s.qty||1,v=sz&&c.sizeVariants?c.sizeVariants.find(x=>x.sizeId===sz):null;
     push(`${v&&v.sizeName?v.sizeName+" ":""}${c.name}`,(v||c).macros,q,c.category);
@@ -2761,7 +2771,7 @@ function entryPieces(e){ // every itemizable piece of a logged row as {name,m,ca
     (s.extras||[]).forEach(id=>{const x=byId(id);if(x)push(x.name,x.macros,q,x.category)});
     if(s.combo){
       if(s.comboSide){let x=byId(s.comboSide),vv=null;
-        if(!x){x=R.components.find(y=>y.sizeAlias&&y.sizeAlias.includes(s.comboSide));if(x){const i=x.sizeAlias.indexOf(s.comboSide);vv=x.sizeVariants[i+1]}}
+        if(!x){x=R.components.find(y=>y.sizeAlias&&y.sizeAlias.includes(s.comboSide));if(x){const asz=rbAliasSize(x,s.comboSide);vv=asz?x.sizeVariants.find(y=>y.sizeId===asz):null}}
         else if(x.sizeVariants&&s.comboSideSz)vv=x.sizeVariants.find(y=>y.sizeId===s.comboSideSz);
         if(x)push(vv?`${x.name} (${vv.sizeName})`:x.name,(vv||x).macros,q,x.category)}
       if(s.drink){const dm=drinkMacros(s.drink);if(dm)push(s.drink,dm,q,"drinks")}
@@ -2797,7 +2807,7 @@ function entryBreakdown(e){
   // pieces must add up to the row: anything the snapshot could not itemize (legacy names, edited totals) shows as one honest remainder line
   const sum=lines.reduce((a,l)=>({calories:a.calories+l.m.calories,protein:a.protein+l.m.protein,carbs:a.carbs+l.m.carbs,fat:a.fat+l.m.fat}),{calories:0,protein:0,carbs:0,fat:0});
   const dc=e.macros.calories-sum.calories;
-  if(Math.abs(dc)>Math.max(5,e.macros.calories*0.02)&&!lines.some(l=>l.adj))lines.push({name:"Not itemized",m:M4({calories:dc,protein:e.macros.protein-sum.protein,carbs:e.macros.carbs-sum.carbs,fat:e.macros.fat-sum.fat}),adj:true});
+  if(Math.abs(dc)>Math.max(5,e.macros.calories*0.02)&&!lines.some(l=>l.adj))lines.push({name:dc<0?"Menu changed since logged":"Not itemized",m:M4({calories:dc,protein:e.macros.protein-sum.protein,carbs:e.macros.carbs-sum.carbs,fat:e.macros.fat-sum.fat}),adj:true}); // a negative gap can only mean the menu data moved after this was logged
   return lines;
 }
 const macroLine=m=>`${m.calories} cal · ${Math.round(m.protein)}P · ${Math.round(m.carbs)}C · ${Math.round(m.fat)}F`;
@@ -5418,7 +5428,7 @@ function rbSrcFromName(e){
     }
     return items.length?{t:"rbm",rid:rest.id,items}:{t:"rb-open",rid:rest.id};
   }
-  let qty=1,s2=body;const qm=s2.match(/^(\d+)[×x]\s+/);if(qm){qty=+qm[1];s2=s2.slice(qm[0].length)}
+  let qty=1,s2=rbDrinkLegacyName(body);const qm=s2.match(/^(\d+)[×x]\s+/);if(qm){qty=+qm[1];s2=s2.slice(qm[0].length)} // a drink logged under its old name resolves to today's row
   const comps=R.components.filter(c=>!c.isModifier).slice().sort((a,b)=>b.name.length-a.name.length);
   const item=comps.find(c=>s2.toLowerCase().includes(c.name.toLowerCase()));
   if(!item)return{t:"rb-open",rid:rest.id};
@@ -5428,6 +5438,7 @@ function rbSrcFromName(e){
   const cfg=RB_BRAND[rest.id]||{};let combo,comboSide,comboSideSz,drink,custom=[];const extras=[],sides=[];
   const after=s2.slice(s2.toLowerCase().indexOf(item.name.toLowerCase())+item.name.length);
   const cm=after.match(/^\s*\(([^()]*)\)/);if(cm)custom=cm[1].split(/,\s*/).map(x=>x.trim()).filter(Boolean);
+  if(item.sizeVariants)custom=custom.filter(x=>!item.sizeVariants.some(v=>String(v.sizeName).toLowerCase()===x.toLowerCase())); // "(Large)" is the size chip, not a customization
   if(cfg.short){const mm=after.match(new RegExp("\\b"+cfg.short.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\s*\\((.*)\\)(?:\\s+\\+|\\s+w\\/|$)"));
     if(mm){combo=true;const parts=[];let depth=0,cur="";for(const ch of mm[1]){if(ch==="("){depth++}else if(ch===")"){depth--}if(ch===","&&depth===0){parts.push(cur.trim());cur=""}else cur+=ch}if(cur.trim())parts.push(cur.trim());
       const sideName=parts[0]||"";const sc=R.components.find(c=>c.category===cfg.side&&(c.name===sideName||(c.sizeVariants&&c.sizeVariants.some(v=>`${c.name} (${v.sizeName})`===sideName))));
@@ -5456,7 +5467,7 @@ function rbOpenEdit(e,s){
     RB.items=(s.items||[]).map(x=>{const c=byId(x.id);return c?{component:c,portion:x.portion||"regular",selectedSizeId:x.sz}:null}).filter(Boolean);
   }else{ // item sheet
     let c=byId(s.cid),aliasSz=null;
-    if(!c){c=RB.restaurant.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c){const i=c.sizeAlias.indexOf(s.cid);aliasSz=c.sizeVariants[i+1]&&c.sizeVariants[i+1].sizeId}}
+    if(!c){c=RB.restaurant.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c)aliasSz=rbAliasSize(c,s.cid)}
     if(!c){closeRB();openQuickAdd(e.meal,e);return} // item left the menu — fall back to number editing
     RB.cat=c.category;RB.subcat=c.subcategory||null;RB.item=c;
     RB.sizeId=aliasSz||s.sizeId||(c.sizeVariants?c.defaultSizeId:undefined);RB.qty=s.qty||1;
@@ -5465,10 +5476,11 @@ function rbOpenEdit(e,s){
     RB.extras=(s.extras||[]).map(byId).filter(Boolean);
     RB.combo=!!s.combo;RB.mealSize=s.mealSize||(RB.combo&&rbMealCfg()?rbMealCfg().def:null);
     RB.comboSide=null;if(s.comboSide){const c=byId(s.comboSide)||RB.restaurant.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.comboSide));
-      if(c){const list=rbComboSides();const want=s.comboSideSz||(c.sizeAlias&&c.sizeVariants?(()=>{const i=c.sizeAlias.indexOf(s.comboSide);return i>=0&&c.sizeVariants[i+1]?c.sizeVariants[i+1].sizeId:null})():null);
+      if(c){const list=rbComboSides();const want=s.comboSideSz||rbAliasSize(c,s.comboSide)||null;
         RB.comboSide=list.find(x=>x.id===c.id&&(want?x.sz===want:true))||(c.sizeVariants?{id:c.id,sz:want||c.defaultSizeId,name:`${c.name} (${(c.sizeVariants.find(v=>v.sizeId===(want||c.defaultSizeId))||{}).sizeName||""})`,base:c.name,macros:(c.sizeVariants.find(v=>v.sizeId===(want||c.defaultSizeId))||c).macros}:{id:c.id,name:c.name,base:c.name,macros:c.macros})}}
     RB.custom=s.custom&&s.custom.length?(rbCustFor()||[]).filter(o=>s.custom.includes(o.name)):[];
-    if(s.drink){const opts=rbDrinkOptions()||[];RB.comboDrink=opts.find(o=>o.name===s.drink)||null}
+    if(s.drink){const opts=rbDrinkOptions()||[];const nm=rbDrinkLegacyName(s.drink),base=nm.replace(RB_SIZE_SUFFIX,"");
+      RB.comboDrink=opts.find(o=>o.name===s.drink)||opts.find(o=>o.name===nm)||opts.find(o=>o.name.replace(RB_SIZE_SUFFIX,"")===base)||null}
   }
   RB.replaceId=e.id;rbRender();
 }
