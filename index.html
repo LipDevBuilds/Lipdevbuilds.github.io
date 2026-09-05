@@ -139,6 +139,7 @@ button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inh
 @keyframes growBar{from{width:0}}
 .bar-anim{animation:growBar 1s cubic-bezier(.25,.1,.25,1) both}      /* CalorieProgress:36, DeficitVisual:105 */
 .bar-anim-08{animation:growBar .8s cubic-bezier(.25,.1,.25,1) both}  /* macro bars Index.tsx:219 */
+.mtick{position:absolute;top:-3px;bottom:-3px;width:2px;transform:translateX(-50%);border-radius:9999px;background:hsl(var(--foreground)/.75)} /* macro target tick once a bar has gone past it */
 .bar-anim-06{animation:growBar .6s cubic-bezier(.25,.1,.25,1) both}  /* water WaterTracker:84 */
 .ring-anim{transition:stroke-dashoffset 1.2s cubic-bezier(.25,.1,.25,1)} /* MacroRing.tsx:39-41 */
 
@@ -1083,7 +1084,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-05.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-05.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2425,16 +2426,27 @@ function homePage(){
   const trendIcon=weeklyChange>0.1?LUCIDE_C(P_TRENDUP,2,14):weeklyChange<-0.1?LUCIDE_C(P_TRENDDOWN,2,14):LUCIDE_C(P_MINUS,2,14);
   const dayEntries=entriesFor(selDate);
 
+  // Macro bars carry the same gone-past language as the calorie bar: once a macro passes its target the gauge
+  // stretches so the target sits at a tick inside the track, the fill stops there, and the excess runs on past
+  // it in the over color with a "Ng over" caption — instead of a bar quietly pinned at 100%.
   const macroBars=[['Protein','protein','macro-protein','bg-protein'],['Carbs','carbs','macro-carbs','bg-carbs'],['Fat','fat','macro-fat','bg-fat']]
-    .map(([label,key,color,bg])=>`<div>
+    .map(([label,key,color,bg])=>{
+      const cur=totals[key]||0,tgt=Math.max(1,targets[key]||0),over=cur>tgt,ob=Math.round(cur-tgt);
+      const gmax=over?cur*1.06:tgt,X=v=>Math.min(100,Math.max(0,v/gmax*100));
+      const cap=viewMode==='consumed'
+        ?`${Math.round(display[key])}g / ${targets[key]}g${over?` <span class="text-over" style="font-weight:600">· ${ob}g over</span>`:''}`
+        :(over?`<span class="text-over" style="font-weight:600">${ob}g over</span>`:`${Math.round(display[key])}g left`);
+      return `<div>
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;line-height:16px">
         <span style="font-weight:600" class="${color}">${label}${showNetCarbs&&label==='Carbs'&&totals.fiber?`<span style="font-size:10px;margin-left:4px" class="text-muted-foreground">(net: ${Math.max(0,totals.carbs-(totals.fiber||0)).toFixed(0)}g)</span>`:''}</span>
-        <span class="text-muted-foreground">${viewMode==='consumed'?`${Math.round(display[key])}g / ${targets[key]}g`:`${Math.round(display[key])}g left`}</span>
+        <span class="text-muted-foreground">${cap}</span>
       </div>
-      <div style="height:6px;border-radius:9999px;overflow:hidden" class="bg-muted">
-        <div class="bar-anim-08 ${bg}" style="height:100%;border-radius:9999px;width:${Math.min(100,(totals[key]/targets[key])*100)}%"></div>
+      <div style="position:relative;height:6px;border-radius:9999px" class="bg-muted">
+        <div class="bar-anim-08 ${bg}" style="position:absolute;top:0;bottom:0;left:0;border-radius:${over?'9999px 0 0 9999px':'9999px'};width:${X(Math.min(cur,tgt)).toFixed(2)}%"></div>
+        ${over?`<div class="bar-anim-08 bg-over" style="position:absolute;top:0;bottom:0;left:${X(tgt).toFixed(2)}%;width:${(X(cur)-X(tgt)).toFixed(2)}%;border-radius:0 9999px 9999px 0"></div>
+        <div class="mtick" style="left:${X(tgt).toFixed(2)}%"></div>`:''}
       </div>
-    </div>`).join('');
+    </div>`}).join('');
 
   return `<div class="home-page">
   <div class="anim">
