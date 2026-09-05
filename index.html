@@ -552,7 +552,7 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .rb-sfx{font-size:10px;color:hsl(var(--primary));margin-left:6px}
 .rb-chip{padding:4px 12px;border-radius:12px;font-size:11px;font-weight:600;border:1px solid transparent;background:hsl(var(--muted)/.5);color:hsl(var(--muted-foreground))}
 .rb-chip.lg{padding:9px 16px;font-size:13px;border-radius:14px;min-width:48px}
-.rlogo{display:inline-flex;align-items:center;justify-content:center;border-radius:26%;background:var(--i4);flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+.rlogo{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
 /* wing builder */
 .rb-wingcard{background:hsl(var(--card));border-radius:16px;border:1px solid hsl(var(--border));padding:16px}
 .rb-stepno{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:9px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-size:11px;font-weight:700;margin-right:8px;vertical-align:1px}
@@ -1083,7 +1083,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-05.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-05.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -4878,8 +4878,10 @@ function rbTint(hex,t,toWhite){const c=hex.replace("#","");const n=c.length===3?
 function rbLogo(r,size){
   const key=(r&&RB_GLYPH_OF[r.id])||"plate",g=ICON_GLYPHS[key]||ICON_GLYPHS.plate,c=(r&&r.color)||"#8a8f98";
   const lum=(()=>{const n=c.replace("#","");const v=n.length===3?n.split("").map(x=>x+x).join(""):n;return (.299*parseInt(v.slice(0,2),16)+.587*parseInt(v.slice(2,4),16)+.114*parseInt(v.slice(4,6),16))/255})();
-  const base=lum>.8?rbTint(c,.35,false):c; // very light brands (yellow) get a deeper base so the glyph reads on the tile
-  return `<span class="rlogo" style="--i1:${base};--i2:${rbTint(c,.45,true)};--i3:${rbTint(c,.3,false)};--i4:${rbTint(c,.9,true)};width:${size}px;height:${size}px"><svg viewBox="0 0 24 24" width="${Math.round(size*.68)}" height="${Math.round(size*.68)}" aria-hidden="true">${g}</svg></span>`;
+  const dark=lum<.22,light=lum>.8;
+  const base=light?rbTint(c,.2,false):dark?rbTint(c,.42,true):c; // near-black brands lift toward white, pale ones deepen, so the bare mark reads on the card
+  // bare vector — no tile behind it. Shades: brand, a tint, a shade, and a pale highlight for details.
+  return `<span class="rlogo" style="--i1:${base};--i2:${rbTint(c,dark?.7:.45,true)};--i3:${dark?rbTint(c,.15,true):rbTint(c,.35,false)};--i4:${rbTint(c,.88,true)};width:${size}px;height:${size}px"><svg viewBox="0 0 24 24" width="${Math.round(size*.92)}" height="${Math.round(size*.92)}" aria-hidden="true">${g}</svg></span>`;
 }
 
 // ----- brand list (RestaurantMealBuilder.tsx:226-258) -----
