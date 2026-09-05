@@ -1098,7 +1098,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-05.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-05.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2581,7 +2581,7 @@ const svLabel=e=>{const u=String(e.servingUnit||"").trim();
 let entryOpen=new Set(); // ids currently expanded (session-only, like the meal cards)
 const M4=(o,k=1)=>({calories:Math.round(o.calories*k),protein:Math.round(o.protein*k*10)/10,carbs:Math.round(o.carbs*k*10)/10,fat:Math.round(o.fat*k*10)/10});
 function entryBreakdown(e){
-  const s=entrySrc[e.id];if(!s||!s.rid)return null;
+  const s=entrySrc[e.id]||(e.foodId==="quick-add"?rbSrcFromName(e):null);if(!s||!s.rid)return null;
   const R=rbEntry(s.rid);if(!R)return null;
   const byId=id=>R.components.find(c=>c.id===id);
   const lines=[];const push=(name,m,k=1)=>{if(name&&m)lines.push({name,m:M4(m,k)})};
@@ -2629,7 +2629,12 @@ function entryBreakdown(e){
     Object.entries(s.sides||{}).forEach(([id,k])=>{const c=byId(id);if(c)push(`${k>1?k+"× ":""}${c.name}`,c.macros,k)});
     const dr=(D.drinks||RB_FOUNTAIN.coke||[]);(s.drinks||[]).forEach(n=>{if(n&&n!=="none"){const o=dr.find(x=>x[0]===n);if(o)push(n,{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]})}});
   }else return null;
-  return lines.length>=2?lines:null;
+  if(lines.length<2)return null;
+  // pieces must add up to the row: anything the snapshot could not itemize (legacy names, edited totals) shows as one honest remainder line
+  const sum=lines.reduce((a,l)=>({calories:a.calories+l.m.calories,protein:a.protein+l.m.protein,carbs:a.carbs+l.m.carbs,fat:a.fat+l.m.fat}),{calories:0,protein:0,carbs:0,fat:0});
+  const dc=e.macros.calories-sum.calories;
+  if(Math.abs(dc)>Math.max(5,e.macros.calories*0.02)&&!lines.some(l=>l.adj))lines.push({name:"Not itemized",m:M4({calories:dc,protein:e.macros.protein-sum.protein,carbs:e.macros.carbs-sum.carbs,fat:e.macros.fat-sum.fat}),adj:true});
+  return lines;
 }
 const macroLine=m=>`${m.calories} cal · ${Math.round(m.protein)}P · ${Math.round(m.carbs)}C · ${Math.round(m.fat)}F`;
 function mealSection(m){
@@ -5195,13 +5200,24 @@ function rbSrcFromName(e){
   if(!item)return{t:"rb-open",rid:rest.id};
   let sizeId;
   if(item.sizeVariants){const sv=item.sizeVariants.find(v=>v.sizeName&&low.includes(String(v.sizeName).toLowerCase()));if(sv)sizeId=sv.sizeId}
+  // meal / extras / sides / customizations as rbBuildItemName wrote them: "Big Mac (No Pickles) Meal (Fries (Large), Coca-Cola (Large)) + Ranch w/ Apple Slices"
+  const cfg=RB_BRAND[rest.id]||{};let combo,comboSide,comboSideSz,drink,custom=[];const extras=[],sides=[];
+  const after=s2.slice(s2.toLowerCase().indexOf(item.name.toLowerCase())+item.name.length);
+  const cm=after.match(/^\s*\(([^()]*)\)/);if(cm)custom=cm[1].split(/,\s*/).map(x=>x.trim()).filter(Boolean);
+  if(cfg.short){const mm=after.match(new RegExp("\\b"+cfg.short.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\s*\\((.*)\\)(?:\\s+\\+|\\s+w\\/|$)"));
+    if(mm){combo=true;const parts=[];let depth=0,cur="";for(const ch of mm[1]){if(ch==="("){depth++}else if(ch===")"){depth--}if(ch===","&&depth===0){parts.push(cur.trim());cur=""}else cur+=ch}if(cur.trim())parts.push(cur.trim());
+      const sideName=parts[0]||"";const sc=R.components.find(c=>c.category===cfg.side&&(c.name===sideName||(c.sizeVariants&&c.sizeVariants.some(v=>`${c.name} (${v.sizeName})`===sideName))));
+      if(sc){comboSide=sc.id;if(sc.sizeVariants){const v=sc.sizeVariants.find(v=>`${sc.name} (${v.sizeName})`===sideName);if(v)comboSideSz=v.sizeId}}
+      if(parts[1])drink=parts[1]}}
+  const ex=after.match(/\+ ([^+]*?)(?:\s+w\/|$)/);if(ex&&cfg.extras){ex[1].split(/,\s*/).forEach(n=>{const c=R.components.find(x=>x.category===cfg.extras.cat&&x.name===n.trim());if(c)extras.push(c.id)})}
+  const ws=after.match(/w\/ (.*?)(?:\s+\+|$)/);if(ws){ws[1].split(/,\s*/).forEach(n=>{const c=R.components.find(x=>!x.isModifier&&x.name===n.trim());if(c)sides.push(c.id)})}
   const mods=[];
   R.components.filter(c=>c.isModifier).forEach(c=>{
     const i=low.indexOf(c.name.toLowerCase());if(i<0)return;
     const cm=body.slice(0,i).match(/(\d+)x\s+$/); // "2x Vanilla Syrup"
     mods.push({id:c.id,n:cm?+cm[1]:1});
   });
-  return{t:"rbi",rid:rest.id,cid:item.id,sizeId,qty,mods,sides:[],extras:[],custom:[]};
+  return{t:"rbi",rid:rest.id,cid:item.id,sizeId,qty,mods,sides,extras,custom,combo:combo||undefined,comboSide,comboSideSz,drink};
 }
 // Edit: reopen the builder exactly as it was when the entry was logged (item, size, count,
 // sauces, sides, combo — or the whole built bowl), then update-in-place on log
@@ -6994,7 +7010,8 @@ function saveTemplate(name,entries){ // useMealTemplates.ts:30-48 — only invok
   return tpl;
 }
 function applyTemplate(template,date,mealOverride){ // useMealTemplates.ts:55-63 — fresh id/date/timestamp, meal override
-  return template.entries.map(e=>({...e,id:newId(),date,ts:Date.now(),meal:mealOverride||e.meal}));
+  return template.entries.map(e=>{const {src,...rest}=e;const id=newId();if(src)entrySrc[id]=src; // committed with the next saveLog/setEntrySrc
+    return {...rest,id,date,ts:Date.now(),meal:mealOverride||e.meal}});
 }
 function confirmTplRename(){ // SavedMeals.tsx:35-51 — delete + re-save, so createdAt refreshes (jumps to top)
   const inp=$("#tplRename");if(!tplEditing||!inp)return;
@@ -7747,14 +7764,14 @@ document.addEventListener("click",e=>{
   }
   else if(act==="cfdcopymeal"){ // FoodLog.tsx:258-268 — copies one meal, toasts, sheet STAYS OPEN
     const m=el.dataset.m,me=entriesFor(copyDate).filter(x=>x.meal===m);
-    me.forEach(x=>foodLog.push({...x,id:newId(),date:selDate,ts:Date.now()}));
-    saveLog();toast(`Copied ${m} (${me.length} items)`); // lowercase meal key (FoodLog.tsx:267)
+    me.forEach(x=>{const nid=newId();foodLog.push({...x,id:nid,date:selDate,ts:Date.now()});if(entrySrc[x.id])entrySrc[nid]=entrySrc[x.id]});
+    saveLog();save("entry_src",entrySrc);toast(`Copied ${m} (${me.length} items)`); // lowercase meal key (FoodLog.tsx:267)
     render();renderCopyDay();
   }
   else if(act==="cfdcopyall"){ // FoodLog.tsx:282-297 — copies the whole day and closes
     const all=entriesFor(copyDate);
-    all.forEach(x=>foodLog.push({...x,id:newId(),date:selDate,ts:Date.now()}));
-    saveLog();closeSheet();toast(`Copied all ${all.length} items`);render();
+    all.forEach(x=>{const nid=newId();foodLog.push({...x,id:nid,date:selDate,ts:Date.now()});if(entrySrc[x.id])entrySrc[nid]=entrySrc[x.id]});
+    saveLog();save("entry_src",entrySrc);closeSheet();toast(`Copied all ${all.length} items`);render();
   }
   else if(act==="tplsavemeal"){ // turn a logged meal into a reusable template (creation UI the original app never had)
     const m=el.dataset.meal,items=entriesFor(selDate).filter(e=>e.meal===m);
@@ -7763,7 +7780,7 @@ document.addEventListener("click",e=>{
     uiPrompt("Save this meal","Re-log the whole set any day with one tap from Saved Meals.",defName).then(name=>{
       if(name==null)return;
       const nm=String(name).trim()||defName;
-      mealTemplates.push({id:newId(),name:nm,entries:items.map(e=>({...e}))});
+      mealTemplates.push({id:newId(),name:nm,entries:items.map(e=>({...e,src:entrySrc[e.id]||undefined}))}); // provenance rides along so re-logged meals still unfold / Re-log
       save("mealtemplates",mealTemplates);
       toast(`Saved “${nm}” to Saved Meals`);
     });
@@ -7771,7 +7788,7 @@ document.addEventListener("click",e=>{
   else if(act==="tplapply"){ // SavedMeals.tsx:19-28 — applies to TODAY with meal override, stays on the page
     const tpl=mealTemplates.find(x=>x.id===el.dataset.id);if(!tpl)return;
     applyTemplate(tpl,localDateStr(),el.dataset.m).forEach(x=>foodLog.push(x));
-    saveLog();toast(`Applied "${tpl.name}" to ${el.dataset.m}`);render();
+    saveLog();save("entry_src",entrySrc);toast(`Applied "${tpl.name}" to ${el.dataset.m}`);render();
   }
   else if(act==="tpldel"){
     const ti=mealTemplates.findIndex(x=>x.id===el.dataset.id);
@@ -7800,7 +7817,7 @@ document.addEventListener("click",e=>{
   else if(act==="edel"){closePMenu();sbTomb("food_log",el.dataset.id);foodLog=foodLog.filter(e=>e.id!==el.dataset.id);setEntrySrc(el.dataset.id,null);saveLog();render()} // no toast (real has none)
   else if(act==="edup"){ // FoodLog.tsx:73-81 — duplicate onto the selected date
     closePMenu();const src=foodLog.find(e=>e.id===el.dataset.id);
-    if(src){foodLog.push({...src,id:newId(),date:selDate,ts:Date.now()});saveLog();toast(`Duplicated '${src.name}'`)}
+    if(src){const nid=newId();foodLog.push({...src,id:nid,date:selDate,ts:Date.now()});saveLog();if(entrySrc[src.id])setEntrySrc(nid,entrySrc[src.id]);toast(`Duplicated '${src.name}'`)}
     render();
   }
   else if(act==="eedit"){ // Re-log: pull the entry back up where it was built; logging again UPDATES it — no duplicate
