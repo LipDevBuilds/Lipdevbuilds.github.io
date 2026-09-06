@@ -221,11 +221,24 @@ select.input{appearance:none;-webkit-appearance:none}
 .mrow.lf-glow::before{content:"";position:absolute;inset:0;pointer-events:none;will-change:opacity;box-shadow:inset 0 0 0 1.5px hsl(var(--primary)/.85),inset 0 0 26px hsl(var(--primary)/.3);background:hsl(var(--primary)/.07);animation:lf-edge 1.25s ease-out both}
 @keyframes lf-edge{0%{opacity:1}45%{opacity:.5}100%{opacity:0}}
 .navbtn.lf-navglow svg{filter:drop-shadow(0 0 8px hsl(var(--primary)/.95))}
+.navbtn.lf-burnglow svg{filter:drop-shadow(0 0 9px hsl(var(--warning)/.95));animation:nav-pop .34s cubic-bezier(.2,.9,.3,1)}
+/* the ember, and what a workout paid back catching fire in the bar */
+.lf-dot.burn{background:hsl(var(--warning));box-shadow:0 0 12px 3px hsl(var(--warning)/.55),0 0 30px 10px hsl(var(--warning)/.2)}
+.lf-dot.burn::before{background:linear-gradient(to left,hsl(var(--warning)/.55),hsl(var(--warning)/0))}
+.lf-ring.burn{border-color:hsl(var(--warning)/.6)}
+.lf-gain{position:fixed;z-index:61;pointer-events:none;font-size:12px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;color:hsl(var(--warning));text-shadow:0 0 10px hsl(var(--warning)/.55);animation:lf-gain 1.15s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes lf-gain{0%{opacity:0;transform:translateY(6px) scale(.9)}22%{opacity:1;transform:translateY(-6px) scale(1)}100%{opacity:0;transform:translateY(-30px) scale(1)}}
+.cal-pb{position:absolute;top:0;bottom:0;overflow:hidden;background:hsl(var(--warning)/.28)}
+.cal-pb.fire{animation:pb-grow .95s cubic-bezier(.2,.8,.2,1) both;transform-origin:left center}
+@keyframes pb-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.cal-pb>i{display:none}
+.cal-pb.fire>i{display:block;position:absolute;top:0;bottom:0;left:-50%;width:200%;box-shadow:0 0 14px hsl(var(--warning)/.85);background:linear-gradient(90deg,hsl(45 100% 62%),hsl(28 100% 56%) 35%,hsl(8 92% 58%) 62%,hsl(45 100% 62%));animation:pb-fire 1.7s ease-out both}
+@keyframes pb-fire{0%{opacity:1;transform:translateX(-18%)}30%{opacity:.95}60%{opacity:.7;transform:translateX(2%)}100%{opacity:0;transform:translateX(14%)}}
 /* little attunements: a figure travels to its new value, a deleted row folds away, the tab you land on answers */
 .mrow.gone{overflow:hidden;opacity:0;padding-top:0;padding-bottom:0;transition:height .26s cubic-bezier(.4,0,.2,1),opacity .18s ease,padding .26s cubic-bezier(.4,0,.2,1)}
 .navbtn.pop svg{animation:nav-pop .34s cubic-bezier(.2,.9,.3,1)}
 @keyframes nav-pop{0%{transform:scale(1)}35%{transform:scale(.86)}70%{transform:scale(1.07)}100%{transform:scale(1)}}
-@media (prefers-reduced-motion:reduce){.lf-dot,.lf-ring{display:none}.mrow.lf-hide{visibility:visible}.mrow.lf-reveal>*,.navbtn.pop svg{animation:none}.mrow.lf-reveal::before,.mrow.lf-glow::before{display:none}}
+@media (prefers-reduced-motion:reduce){.lf-dot,.lf-ring,.lf-gain{display:none}.cal-pb.fire,.cal-pb.fire>i{animation:none}.cal-pb.fire>i{display:none}.mrow.lf-hide{visibility:visible}.mrow.lf-reveal>*,.navbtn.pop svg{animation:none}.mrow.lf-reveal::before,.mrow.lf-glow::before{display:none}}
 .mrow.has-bd::after{display:none} /* the drop-down carries the separator */
 .mbd-w{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .25s cubic-bezier(.25,.1,.25,1),opacity .25s cubic-bezier(.25,.1,.25,1);position:relative}
 .mbd-w.open{grid-template-rows:1fr;opacity:1}
@@ -1187,7 +1200,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.17"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.19"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2283,7 +2296,7 @@ function calorieProgress(current,target,opts){
   let bar=`<div style="position:relative;height:12px;border-radius:9999px;margin:2px 0 22px" class="bg-muted">`;
   if(hasBurn){const z0=X(Math.min(target,burn)),z1=X(Math.max(target,burn)); // leeway (cut) / gaining zone (bulk)
     bar+=`<div style="position:absolute;top:0;bottom:0;left:${z0}%;width:${(z1-z0).toFixed(2)}%;background:hsl(var(--success)/.16);border-radius:2px"></div>`}
-  if(pb>0)bar+=`<div style="position:absolute;top:0;bottom:0;left:${X(base)}%;width:${(X(target)-X(base)).toFixed(2)}%;background:hsl(var(--warning)/.28)"></div>`;
+  if(pb>0)bar+=`<div class="cal-pb${burnAnim?" fire":""}" style="left:${X(base)}%;width:${(X(target)-X(base)).toFixed(2)}%"><i></i></div>`;
   bar+=`<div class="bar-anim bg-primary" style="position:absolute;top:0;bottom:0;left:0;border-radius:9999px 0 0 9999px;width:${X(capA)}%"></div>`;
   if(current>target)bar+=`<div class="bg-warning" style="position:absolute;top:0;bottom:0;left:${X(target)}%;width:${(X(capB)-X(target)).toFixed(2)}%"></div>`;
   if(current>Math.max(target,burn))bar+=`<div style="position:absolute;top:0;bottom:0;left:${X(Math.max(target,burn))}%;width:${(X(current)-X(Math.max(target,burn))).toFixed(2)}%;background:hsl(var(--destructive))"></div>`;
@@ -2969,6 +2982,41 @@ function dsSlide(){
   num.style.transition="transform .34s cubic-bezier(.2,.8,.2,1)";num.style.transform="";
   setTimeout(()=>{num.style.transition="";num.style.transform=""},380);
 }
+// ===== the burn flight: what you just earned lands where you spend it =====
+// The Save button condenses into an ember, arcs into the calorie bar, and the calories the workout paid back
+// catch fire and settle to solid orange. If the bar is not on screen the ember hops to Home and the bar lights
+// when you get there. Nothing here is decoration on its own: the segment that burns is the allowance that
+// actually changed, so when Activity payback is off there is no fire — only the ember and what you burned.
+let burnAnim=null;
+function lfGain(x,y,text){const d=document.createElement("div");d.className="lf-gain";d.textContent=text;
+  Object.assign(d.style,{left:x+"px",top:y+"px"});document.body.appendChild(d);setTimeout(()=>d.remove(),1200)}
+function burnFire(){const seg=document.querySelector(".cal-pb");if(!seg)return false;
+  seg.classList.remove("fire");void seg.offsetWidth;seg.classList.add("fire");return true}
+function burnFlight(gain,burned){
+  const from=logFrom;logFrom=null;
+  if(gain>0)burnAnim={t0:Date.now()};                       // the bar lights the first time you see it
+  if(!from||!from.width||lfReduced())return;
+  const dot=document.createElement("div");dot.className="lf-dot burn";
+  const cx=from.left+from.width/2,cy=from.top+from.height/2;
+  dot.style.left=(cx-8)+"px";dot.style.top=(cy-8)+"px";document.body.appendChild(dot);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>dot.classList.add("ball")));
+  setTimeout(()=>dot.classList.add("crouch"),LF.morph);
+  setTimeout(()=>{
+    const seg=document.querySelector(".cal-pb"),nav=document.querySelector('.navbtn[data-t="home"]');
+    const t=seg||nav;if(!t){dot.remove();return}
+    const r=t.getBoundingClientRect(),tx=r.left+r.width/2-8,ty=r.top+r.height/2-8;
+    dot.classList.remove("crouch");dot.classList.add("fly");
+    lfArc(dot,cx-8,cy-8,tx,ty,LF.arc,(hx,hy)=>{
+      const dx=(hx-(cx-8)).toFixed(2),dy=(hy-(cy-8)).toFixed(2);
+      dot.classList.add("hit");dot.style.setProperty("--tail",0);
+      dot.style.transform=`translate3d(${dx}px,${dy}px,0) scale(1.75,.42)`;
+      lfPuff("lf-ring burn",hx+8,hy+8,30,720);
+      lfGain(hx-14,hy-6,gain>0?`+${gain} cal ${profile.goal==="bulk"?"needed":"earned"}`:`${burned} cal burned`);
+      setTimeout(()=>{dot.classList.add("splat");dot.style.transform=`translate3d(${dx}px,${dy}px,0) scale(3.2)`;setTimeout(()=>dot.remove(),470)},95);
+      if(gain>0&&burnFire())burnAnim=null;                   // lit here, so Home does not light it again
+      else{const nv=document.querySelector('.navbtn[data-t="home"]');if(nv){nv.classList.add("lf-burnglow");setTimeout(()=>nv.classList.remove("lf-burnglow"),1500)}}
+    })},LF.lift);
+}
 function lfRowState(id){ // phase classes for a row rendered mid-flight (re-render sync)
   if(!logAnim||logAnim.id!==id)return{cls:"",sty:""};const t=Date.now()-logAnim.t0,land=LF.lift+LF.arc;
   if(t<land)return{cls:" lf-hide",sty:""};
@@ -3007,7 +3055,7 @@ function mealSection(m){
         <div class="mrow-tray"><button class="haptic" data-act="edup" data-id="${e.id}" aria-label="Duplicate">${IC_COPY15}</button><button class="haptic del" data-act="edel" data-id="${e.id}" aria-label="Delete">${IC_TRASH15}</button></div>
       </div>${bd?`<div class="mbd-w${bo?" open":""}" data-bid="${e.id}"><div class="mbd">${bd.map((l,i)=>`<div class="mbd-l${l.adj?" adj":""}"><p class="mbd-n">${esc(l.name)}</p><p class="mbd-m tnum">${macroLine(l.m)}${wtag((wp.find(x=>x.i===i)||{}).ml||0)}</p></div>`).join("")}</div></div>`:""}`}).join("")}</div>
       <div style="display:flex;align-items:stretch">
-        <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}" data-hold="voice" title="Hold to speak it">${IC_PLUS14} Add Food</button>
+        <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}">${IC_PLUS14} Add Food</button>
         <button class="madd haptic" style="flex:0 0 52px" data-act="tplsavemeal" data-meal="${m}" aria-label="Save as meal">${LUCIDE('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',2,15)}</button>
       </div>
     </div></div>`:""}
@@ -8276,6 +8324,7 @@ function render(){
   // MacroRing stroke-dashoffset animation (MacroRing.tsx:39-41): set final offset on a rAF after insert
   requestAnimationFrame(()=>document.querySelectorAll(".ring-anim").forEach(c=>c.setAttribute("stroke-dashoffset",c.dataset.finalOffset)));
   rollNumbers();dsSlide();
+  if(burnAnim&&document.querySelector(".cal-pb.fire"))burnAnim=null; // the earned calories only light the once
   if(tabChanged&&!lfReduced()){const b=document.querySelector(".navbtn.on");if(b){b.classList.remove("pop");void b.offsetWidth;b.classList.add("pop")}}
   resetKeyboardGuard();
 }
@@ -8709,6 +8758,7 @@ document.addEventListener("click",e=>{
   }
   else if(act==="wosave"){ // Workout.tsx:154-200 saveAndDismiss — real WorkoutSession shape
     const a=pendingWorkout;if(!a)return;
+    const pb0=burnPayback(localDateStr()); // read the allowance BEFORE this workout joins the day
     const s=session();
     const durationMin=Math.max(1,Math.round(woElapsed/60));
     const mg=a.muscleGroups||[];
@@ -8723,7 +8773,9 @@ document.addEventListener("click",e=>{
       totalCaloriesBurned:Math.round(durationMin*6), // flat 6 cal/min regardless of category (rough estimate)
       category,muscleGroups:mg.length?mg:["full_body"],notes:(s?s.notes:"").trim()});
     save("workouts",workouts);localStorage.removeItem("active_workout_session");
-    pendingWorkout=null;woError=null;woElapsed=0;woView="dashboard";toast("Workout saved!");render();
+    const gained=burnPayback(localDateStr())-pb0,burnt=workouts[workouts.length-1].totalCaloriesBurned;
+    logFrom=el.getBoundingClientRect();
+    pendingWorkout=null;woError=null;woElapsed=0;woView="dashboard";toast("Workout saved!");render();burnFlight(gained,burnt);
   }
   else if(act==="wodel"){ // useWorkouts.deleteWorkout — per-row delete, no toast
     const i=workouts.findIndex(w=>w.id===el.dataset.id);
@@ -8754,6 +8806,7 @@ document.addEventListener("click",e=>{
   }
   else if(act==="qlogsave"){
     const q=qlogPending;if(!q)return;
+    const pb0=burnPayback(localDateStr()); // read the allowance BEFORE this workout joins the day
     const inp=$("#qlogCal");const val=Math.round(+(inp&&inp.value)||0);
     if(!(val>0)){toast("Enter a calorie estimate");return}
     const edited=val!==q.est.kcal;
@@ -8763,7 +8816,9 @@ document.addEventListener("click",e=>{
       exercises:q.exercises,totalCaloriesBurned:val,category:q.category,muscleGroups:q.muscleGroups,
       notes:q.text,aiEstimated:!edited,estBase:q.est.raw});
     save("workouts",workouts);
-    qlogPending=null;qlogText="";toast("Logged — "+val+" cal"+(edited?" (learned)":""));render();
+    const gained=burnPayback(localDateStr())-pb0;
+    logFrom=el.getBoundingClientRect();
+    qlogPending=null;qlogText="";toast("Logged — "+val+" cal"+(edited?" (learned)":""));render();burnFlight(gained,val);
   }
   else if(act==="qlogcancel"){qlogPending=null;render()}
   else if(act==="qlogmic"){ // in-page dictation when the engine exists; otherwise the keyboard mic works in the textarea
@@ -8989,16 +9044,6 @@ $("#fab").querySelector('[data-act="fabmanual"]').innerHTML=LUCIDE(P_PENCIL,2.2,
   main.addEventListener("touchstart",down,{passive:true});main.addEventListener("touchend",up,{passive:true});main.addEventListener("touchmove",up,{passive:true});
   main.addEventListener("mousedown",down);main.addEventListener("mouseup",up);main.addEventListener("mouseleave",up);
   document.addEventListener("click",e=>{if(fab.classList.contains("open")&&!fab.contains(e.target))open(false)},true);
-})();
-// Hold-to-shortcut, one place for all of them: [data-hold] names what the long press does, and the click it
-// would otherwise have fired is swallowed.
-(function(){let t=null,fired=false,held=null;
-  const start=e=>{const b=e.target.closest&&e.target.closest("[data-hold]");if(!b)return;held=b;fired=false;
-    clearTimeout(t);t=setTimeout(()=>{fired=true;if(b.dataset.hold==="voice")openVoiceLog(b.dataset.meal||activeMeal)},450)};
-  const end=()=>clearTimeout(t);
-  document.addEventListener("touchstart",start,{passive:true});document.addEventListener("touchend",end,{passive:true});document.addEventListener("touchmove",end,{passive:true});
-  document.addEventListener("mousedown",start);document.addEventListener("mouseup",end);document.addEventListener("mouseleave",end);
-  document.addEventListener("click",e=>{if(fired&&held&&held.contains(e.target)){e.preventDefault();e.stopPropagation();fired=false}},true);
 })();
 function fabGo(how){ // "manual" = the search sheet; "voice" = say what you ate. From Home the log lands on the Food tab, on the day Home had selected.
   $("#fab").classList.remove("open");
