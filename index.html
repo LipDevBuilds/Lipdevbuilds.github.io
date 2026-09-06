@@ -685,6 +685,7 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .rb-alloc{display:flex;flex-direction:column;gap:4px;margin-top:10px}
 .rb-allocrow{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:hsl(var(--muted)/.35)}
 .rb-amt{display:inline-block;padding:0 5px;margin-right:2px;border-radius:5px;font-size:10px;font-weight:700;background:hsl(var(--primary)/.18);color:hsl(var(--primary));vertical-align:1px}
+.rb-amt.off{background:hsl(var(--destructive)/.18);color:hsl(var(--destructive))}
 .rb-estnote{font-size:9.5px;line-height:13px;margin:6px 0 0;color:hsl(var(--muted-foreground)/.75)}
 .rb-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;background:hsl(var(--muted));color:hsl(var(--muted-foreground));vertical-align:2px}
 .rb-segbtn small{display:block;font-size:10px;font-weight:500;opacity:.7;line-height:12px}
@@ -1202,7 +1203,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.20"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.21"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -4906,7 +4907,7 @@ const rbFlowChain=()=>!!(RB.restaurant&&RB.restaurant.components.some(c=>c.flowG
 // Chains publish complete nutrition for finished items, and almost none of them publish a per-modifier delta, so
 // these deltas are read off the chain's own builder where it exposes one and are otherwise sized from the
 // ingredient — every section carries an "est." note in the sheet so the number is never mistaken for gospel.
-const RB_MOD_SEC=["Remove","Swap","Add","Sauces","Toppings","Sugar","Ice","Prep"]; // the order the apps present them in
+const RB_MOD_SEC=["Ingredients","Remove","Swap","Add","Sauces","Toppings","Sugar","Ice","Prep"]; // the order the apps present them in
 const RB_MODS={};
 const rbModsFor=(rid,cat)=>{const c=RB_MODS[rid];if(!c)return null;return c[cat]||c["*"]||null};
 const RB_ICE=["Ice",[["No Ice",0,0,0,0,"1"],["Light Ice",0,0,0,0,"1"],["Extra Ice",0,0,0,0,"1"]]];
@@ -5158,16 +5159,164 @@ function rbCustMk(row,sec){ // one option row → the object the sheet and the t
   const [name,cal,p,c,f,flags]=row;
   return{name,sec,macros:{calories:cal,protein:p,carbs:c,fat:f},amt:/a/.test(flags||""),one:/1/.test(flags||"")};
 }
-function rbCustAmt(o,amt){ // Light / Extra of an option: the app's own amount step, halved or doubled
-  if(!amt)return o;const k=RB_AMT[amt];
-  return{...o,name:`${amt} ${o.name}`,base:o.name,amount:amt,
-    macros:{calories:Math.round(o.macros.calories*k),protein:Math.round(o.macros.protein*k*10)/10,carbs:Math.round(o.macros.carbs*k*10)/10,fat:Math.round(o.macros.fat*k*10)/10}};
+function rbCustAmt(o,amt){ // Light / Extra / None of an option, against how the item already comes
+  if(!amt)return o;
+  const M=m=>({calories:Math.round(m.calories),protein:Math.round(m.protein*10)/10,carbs:Math.round(m.carbs*10)/10,fat:Math.round(m.fat*10)/10});
+  const nm=`${amt} ${o.name}`;
+  if(o.ing){ // it is already on there: Extra adds another, Light takes half back, None takes it all off
+    const a=o.add||{calories:0,protein:0,carbs:0,fat:0},off=o.off||{calories:0,protein:0,carbs:0,fat:0};
+    const m=amt==="Extra"?a:amt==="Light"?{calories:off.calories/2,protein:off.protein/2,carbs:off.carbs/2,fat:off.fat/2}:off;
+    return{...o,name:amt==="No"?`No ${o.name}`:nm,base:o.name,amount:amt,macros:M(m)};
+  }
+  const k=RB_AMT[amt]||1;
+  return{...o,name:nm,base:o.name,amount:amt,
+    macros:M({calories:o.macros.calories*k,protein:o.macros.protein*k,carbs:o.macros.carbs*k,fat:o.macros.fat*k})};
 }
 function rbCustByName(name){ // used when an entry is re-opened: "Extra Pickles" resolves back through "Pickles"
   const all=rbCustFor()||[];const hit=all.find(o=>o.name===name);if(hit)return hit;
-  const m=/^(Light|Extra) (.+)$/.exec(name);if(!m)return null;
-  const base=all.find(o=>o.name===m[2]);return base?rbCustAmt(base,m[1]):null;
+  const m=/^(Light|Extra|No) (.+)$/.exec(name);if(!m)return null;
+  const base=all.find(o=>o.name===m[2]);if(base)return rbCustAmt(base,m[1]);
+  const ing=all.find(o=>o.ing&&rbIngKey(o.name)===rbIngKey(name));
+  return ing?rbCustAmt(ing,m[1]):null;
 }
+// ===== What this particular item is built from =====
+// A chain's app does not offer to remove pickles from a fish sandwich: it lists the ingredients of the item in
+// your hand, each one with an amount you can turn down, up or off. RB_HAS is that build, per item. An item with
+// no entry keeps the whole category list, because inventing an ingredient list it does not have would be worse
+// than offering one change too many. Keys are matched on the item's name, longest first, so "Quarter Pounder
+// with Cheese" wins over "Quarter Pounder".
+const RB_HAS={};
+// ---- what the majors are actually built from, item by item ----
+Object.assign(RB_HAS,{
+  mcdonalds:{
+    "Big Mac":["Bun","Patty","Big Mac Sauce","Lettuce","Cheese","Pickles","Onions"],
+    "Quarter Pounder with Cheese":["Bun","Patty","Cheese","Pickles","Onions","Ketchup","Mustard"],
+    "Double Quarter Pounder":["Bun","Patty","Cheese","Pickles","Onions","Ketchup","Mustard"],
+    "McDouble":["Bun","Patty","Cheese","Pickles","Onions","Ketchup","Mustard"],
+    "Cheeseburger":["Bun","Patty","Cheese","Pickles","Onions","Ketchup","Mustard"],
+    "Hamburger":["Bun","Patty","Pickles","Onions","Ketchup","Mustard"],
+    "McChicken":["Bun","Patty","Lettuce","Mayonnaise"],
+    "Filet-O-Fish":["Bun","Patty","Cheese","Tartar Sauce"],
+    "McCrispy":["Bun","Patty","Pickles","Butter"],
+    "Spicy McCrispy":["Bun","Patty","Pickles","Butter"],
+    "Deluxe McCrispy":["Bun","Patty","Pickles","Lettuce","Tomato","Mayonnaise"],
+    "Egg McMuffin":["Bun","Round Egg","Canadian Bacon","Cheese","Butter"],
+    "Sausage McMuffin with Egg":["Bun","Sausage Patty","Round Egg","Cheese","Butter"],
+    "Sausage McMuffin":["Bun","Sausage Patty","Cheese","Butter"],
+    "Bacon, Egg & Cheese Biscuit":["Bun","Bacon","Folded Egg","Cheese","Butter"],
+    "Sausage Biscuit":["Bun","Sausage Patty","Butter"],
+    "McGriddles":["Bun","Sausage Patty","Folded Egg","Cheese"]},
+  wendys:{
+    "Dave's Single":["Bun","Patty","American Cheese","Lettuce","Tomato","Pickles","Onion","Ketchup","Mayo"],
+    "Dave's Double":["Bun","Patty","American Cheese","Lettuce","Tomato","Pickles","Onion","Ketchup","Mayo"],
+    "Dave's Triple":["Bun","Patty","American Cheese","Lettuce","Tomato","Pickles","Onion","Ketchup","Mayo"],
+    "Baconator":["Bun","Patty","American Cheese","Applewood Smoked Bacon","Ketchup","Mayo"],
+    "Jr. Bacon Cheeseburger":["Bun","Patty","American Cheese","Applewood Smoked Bacon","Lettuce","Tomato","Mayo"],
+    "Jr. Cheeseburger":["Bun","Patty","American Cheese","Pickles","Onion","Ketchup","Mustard"],
+    "Spicy Chicken Sandwich":["Bun","Patty","Lettuce","Tomato","Mayo"],
+    "Classic Chicken Sandwich":["Bun","Patty","Lettuce","Tomato","Mayo","Pickles"],
+    "Crispy Chicken Sandwich":["Bun","Patty","Lettuce","Mayo"],
+    "Grilled Chicken Sandwich":["Bun","Patty","Lettuce","Tomato"],
+    "Breakfast Baconator":["Bun","Sausage Patty","Applewood Bacon","Extra Egg","American Cheese"],
+    "Bacon, Egg & Swiss Croissant":["Bun","Applewood Bacon","Extra Egg","Swiss Cheese"],
+    "Sausage, Egg & Cheese Biscuit":["Bun","Sausage Patty","Extra Egg","American Cheese"]},
+  burgerking:{
+    "Whopper":["Bun","Patty","Lettuce","Tomato","Mayo","Ketchup","Pickles","Onions"],
+    "Whopper Jr.":["Bun","Patty","Lettuce","Tomato","Mayo","Ketchup","Pickles","Onions"],
+    "Bacon King":["Bun","Patty","American Cheese","Bacon","Ketchup","Mayo"],
+    "Big King":["Bun","Patty","American Cheese","Lettuce","Pickles","Onions"],
+    "Cheeseburger":["Bun","Patty","American Cheese","Pickles","Ketchup","Mustard"],
+    "Hamburger":["Bun","Patty","Pickles","Ketchup","Mustard"],
+    "Original Chicken Sandwich":["Bun","Patty","Lettuce","Mayo"],
+    "Royal Crispy Chicken":["Bun","Patty","Lettuce","Tomato","Mayo"],
+    "Big Fish":["Bun","Patty","Tartar Sauce","Lettuce","Pickles"],
+    "Croissan'wich":["Bun","Extra Egg","American Cheese","Sausage Patty"]},
+  culvers:{
+    "ButterBurger Cheese":["Bun","Patty","Butter","Cheese"],
+    "ButterBurger":["Bun","Patty","Butter"],
+    "Culver's Deluxe":["Bun","Patty","Butter","Cheese","Lettuce","Tomato","Pickles","Raw Onion","Mayo"],
+    "Bacon Deluxe":["Bun","Patty","Butter","Cheese","Lettuce","Tomato","Pickles","Raw Onion","Mayo","Bacon"],
+    "Mushroom & Swiss":["Bun","Patty","Butter","Cheese","Sautéed Mushrooms"],
+    "Sourdough Melt":["Bun","Patty","Cheese","Grilled Onions"],
+    "Wisconsin Swiss Melt":["Bun","Patty","Cheese","Grilled Onions"],
+    "Fried Pickle Pub Burger":["Bun","Patty","Cheese","Add Fried Pickles"],
+    "Crispy Chicken Sandwich":["Bun","Lettuce","Tomato","Mayo","Pickles"],
+    "Spicy Crispy Chicken Sandwich":["Bun","Lettuce","Tomato","Mayo","Pickles"],
+    "Grilled Chicken Sandwich":["Bun","Lettuce","Tomato","Mayo"],
+    "Harvest Veggie Burger":["Bun","Lettuce","Tomato"],
+    "North Atlantic Cod Sandwich":["Bun","Tartar Sauce","Pickles"]},
+  chickfila:{
+    "Chick-fil-A Sandwich":["Bun","Pickles","Butter"],
+    "Spicy Chicken Sandwich":["Bun","Pickles","Butter"],
+    "Chick-fil-A Deluxe Sandwich":["Bun","Pickles","Lettuce","Tomato","American Cheese"],
+    "Spicy Deluxe Sandwich":["Bun","Pickles","Lettuce","Tomato","Pepper Jack Cheese"],
+    "Grilled Chicken Sandwich":["Bun","Lettuce","Tomato"],
+    "Grilled Chicken Club":["Bun","Lettuce","Tomato","Colby Jack Cheese","Bacon"],
+    "Chick-fil-A Chicken Biscuit":["Bun","Butter"],
+    "Chicken, Egg & Cheese Biscuit":["Bun","Egg","American Cheese","Butter"],
+    "Chick-n-Minis":["Bun","Butter"]},
+  tacobell:{
+    "Crunchy Taco Supreme":["Beef","Lettuce","Three Cheese Blend","Tomato","Sour Cream"],
+    "Crunchy Taco":["Beef","Lettuce","Three Cheese Blend"],
+    "Soft Taco Supreme":["Beef","Lettuce","Three Cheese Blend","Tomato","Sour Cream"],
+    "Soft Taco":["Beef","Lettuce","Three Cheese Blend"],
+    "Bean Burrito":["Refried Beans","Red Sauce","Onions","Three Cheese Blend"],
+    "Burrito Supreme":["Beef","Refried Beans","Red Sauce","Onions","Lettuce","Tomato","Sour Cream","Three Cheese Blend"],
+    "Bean & Cheese Burrito":["Refried Beans","Red Sauce","Three Cheese Blend"],
+    "Crunchwrap Supreme":["Beef","Nacho Cheese Sauce","Sour Cream","Lettuce","Tomato"],
+    "Chalupa Supreme":["Beef","Lettuce","Tomato","Sour Cream","Three Cheese Blend"],
+    "Quesadilla":["Three Cheese Blend","Creamy Jalapeño Sauce"],
+    "Nachos BellGrande":["Beef","Refried Beans","Nacho Cheese Sauce","Sour Cream","Tomato"],
+    "Cheesy Gordita Crunch":["Beef","Lettuce","Three Cheese Blend","Spicy Ranch"]},
+  kfc:{"Chicken Sandwich":["Bun","Pickles","Mayo"],"Spicy Chicken Sandwich":["Bun","Pickles","Mayo"]},
+  popeyes:{"Chicken Sandwich":["Bun","Pickles","Mayo"],"Spicy Chicken Sandwich":["Bun","Pickles","Mayo"],"Blackened Chicken Sandwich":["Bun","Pickles","Mayo"]},
+  arbys:{"Classic Roast Beef":["Bun"],"Beef 'n Cheddar":["Bun","Cheddar Cheese Sauce","Arby's Sauce"],"Crispy Chicken Sandwich":["Bun","Lettuce","Tomato","Mayo"]},
+  dairyqueen:{"Cheeseburger":["Bun","Patty","Cheese Slice","Pickles","Onion","Ketchup","Mustard"],"FlameThrower":["Bun","Patty","Cheese Slice","Jalapeños","Lettuce","Tomato"],"Crispy Chicken Sandwich":["Bun","Lettuce","Tomato","Mayo"],"Hot Dog":["Bun","Ketchup","Mustard"]},
+  portillos:{"Chicago-Style Hot Dog":["Mustard","Relish","Onions","Tomato","Sport Peppers","Pickle"],"Jumbo Hot Dog":["Mustard","Relish","Onions"],"Cheeseburger":["Bun","Cheese Slice","Pickle","Onion","Mayo"],"Italian Beef Sandwich":["Bun"]},
+  freddys:{"Original Double Steakburger":["Bun","Patty","Pickles","Onion"],"California Style Steakburger":["Bun","Patty","Cheese Slice","Lettuce","Tomato","Pickles"],"Patty Melt":["Bun","Patty","Cheese Slice","Grilled Onions"]},
+  steaknshake:{"Single Steakburger":["Bun","Patty","Pickle","Onion"],"Double Steakburger":["Bun","Patty","Pickle","Onion"],"Frisco Melt":["Bun","Patty","Cheese Slice","Steakburger Sauce"]},
+  whitecastle:{"The Original Slider":["Bun","Onion","Pickles"],"Cheese Slider":["Bun","Onion","Pickles","Cheese Slice"],"Egg & Cheese Slider":["Bun","Extra Egg","Cheese Slice"]},
+  fiveguys:{"Hamburger":["Bun","Extra Patty"],"Cheeseburger":["Bun","Extra Patty","Cheese"],"Bacon Cheeseburger":["Bun","Extra Patty","Cheese","Bacon"]},
+});
+const RB_ING_SYN={"cheese slice":"cheese","american cheese":"cheese","swiss cheese":"cheese","pepper jack cheese":"cheese","provolone cheese":"cheese",
+  "shredded lettuce":"lettuce","romaine lettuce":"lettuce","slivered onions":"onions","raw onion":"onions","onion":"onions","pickle":"pickles",
+  "mayonnaise":"mayo","extra patty":"patty","beef patty":"patty","extra beef patty":"patty","muffin":"bun","biscuit":"bun","sub roll":"bun","bread":"bun",
+  "tomatoes":"tomato","jalapeno":"jalapeños","jalapenos":"jalapeños",
+  // the same thing under the name each chain gives it
+  "applewood smoked bacon":"bacon","applewood bacon":"bacon","smoked bacon":"bacon",
+  "refried beans":"beans","three cheese blend":"cheese","shredded cheese":"cheese","cheddar cheese":"cheese",
+  "round egg":"egg","folded egg":"egg","scrambled egg":"egg","sausage patty":"sausage",
+  "creamy ranch":"ranch","buttermilk ranch":"ranch","classic ranch":"ranch",
+  "tangy barbeque":"bbq sauce","tangy bbq":"bbq sauce","barbeque sauce":"bbq sauce","bbq dipping sauce":"bbq sauce","sweet baby ray's bbq":"bbq sauce","honey bbq":"bbq sauce",
+  "sweet & sour":"sweet 'n sour","ketchup packet":"ketchup","mustard packet":"mustard","mayo packet":"mayo",
+  "honey mustard dip":"honey mustard","honey mustard sauce":"honey mustard","honey mustard dressing":"honey mustard"};
+const RB_ING_STRIP=/^(no|without|extra|light|add|double)\s+/i;
+function rbIngKey(name){ // "No Pickles", "Extra Pickles", "Pickles" → the same ingredient
+  let k=String(name).toLowerCase().replace(RB_ING_STRIP,"").replace(/\s*\(.*\)\s*$/,"").trim();
+  k=RB_ING_SYN[k]||k;
+  return RB_ING_SYN[k]||k;
+}
+function rbItemBuild(){ // what the item in hand is made of, in menu order, or null when this menu does not say
+  const it=RB.item,R=RB.restaurant;if(!it||!R)return null;
+  const tbl=RB_HAS[R.id];if(!tbl)return null;
+  const nm=it.name.toLowerCase();
+  let best=null;
+  Object.keys(tbl).forEach(k=>{const kk=k.toLowerCase();
+    if(nm===kk||nm.startsWith(kk+" ")||nm.includes(kk)){if(!best||kk.length>best.length)best=kk}});
+  if(!best)return null;
+  const key=Object.keys(tbl).find(k=>k.toLowerCase()===best);
+  const list=tbl[key];if(!list)return null;
+  const out=[],seen=new Set();
+  const add=label=>{const k=rbIngKey(label);if(seen.has(k))return;seen.add(k);out.push({label:String(label).replace(RB_ING_STRIP,""),key:k})};
+  list.forEach(add);
+  // the name itself finishes the build: a Bacon Deluxe has bacon on it whatever the base row says
+  if(/\bbacon\b/i.test(it.name))add("Bacon");
+  if(/\bcheese\b/i.test(it.name))add("Cheese");
+  if(/\bjalape/i.test(it.name))add("Jalapeños");
+  if(/\bmushroom/i.test(it.name))add("Sautéed Mushrooms");
+  return out;
+}
+const RB_ING_CORE=/^(patty|beef|filet|fish|chicken|steak|shell|tortilla)$/; // the item itself: an app will not take it out
 const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures + the general additions layer
   const it=RB.item;if(!RB.restaurant)return null;
   if(!it){ // build-your-own: no single item to customize, so the chain's own catalogue stands alone
@@ -5180,7 +5329,7 @@ const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures +
   const out=[],idx=new Map(); // key -> {i:position, official}
   const secOf=o=>o.sec||(/^(no|without) /i.test(o.name)?"Remove":/^(sub|swap|make it|on |cut |toasted|well done|extra crispy|light ice|no ice|fresco)/i.test(o.name)?"Prep":/sauce|dressing|ranch|mustard|ketchup|mayo|syrup|dip|aioli|vinaigrette/i.test(o.name)?"Sauces":"Add");
   const push=(o,official)=>{ // official=true → chain-published row: replaces a same-key generic in place
-    o.sec=secOf(o);
+    o.sec=secOf(o);o.official=!!official;
     const k=rbSauceKey(o)||o.name.toLowerCase();
     const e=idx.get(k);
     if(e===undefined){idx.set(k,{i:out.length,official:!!official});out.push(o);return}
@@ -5207,8 +5356,47 @@ const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures +
   if(rows)Object.entries(rows).forEach(([sec,list])=>list.forEach(r=>{const o=rbCustMk(r,sec);
     const dup=out.findIndex(x=>x.name.toLowerCase()===o.name.toLowerCase());
     if(dup>=0)out[dup]=o;else push(o,true)}));
-  return out.length?out:null;
+  return rbFoldBuild(rbDedupeKeys(out));
 };
+// Two ways to add the same thing ("Add Bacon" from the archetype, "Bacon" from the chain's own list) is one way
+// too many: the chain's row keeps the slot.
+function rbDedupeKeys(list){
+  const at=new Map(),keep=[];
+  list.forEach(o=>{
+    if(!/^(Add|Sauces|Toppings)$/.test(o.sec||"")){keep.push(o);return}
+    const k=rbIngKey(o.name),i=at.get(k);
+    if(i===undefined){at.set(k,keep.length);keep.push(o);return}
+    const prev=keep[i];
+    if((o.official&&!prev.official)||(o.amt&&!prev.amt))keep[i]=o;
+  });
+  return keep;
+}
+// An ingredient this item actually has becomes ONE row you can turn up, down or off — the way the apps show it.
+// An ingredient it does not have stays an add. A removal for something that was never on it is dropped.
+function rbFoldBuild(out){
+  const build=rbItemBuild();if(!build)return out.length?out:null;
+  const has=new Set(build.map(b=>b.key));
+  const byKey=new Map();
+  out.forEach(o=>{const k=rbIngKey(o.name);const e=byKey.get(k)||{};if(o.sec==="Remove"){if(!e.rem)e.rem=o}else if(!e.add)e.add=o;byKey.set(k,e)});
+  const rows=[],used=new Set(),done=new Set(),neg=m=>({calories:-m.calories,protein:-m.protein,carbs:-m.carbs,fat:-m.fat});
+  build.forEach(({label,key})=>{
+    const e=byKey.get(key)||{};
+    let off=e.rem?e.rem.macros:null;
+    if(!off&&e.add&&!RB_ING_CORE.test(key))off=neg(e.add.macros); // the chain lists no "no X", but it is on there, so it can come off
+    if(!off)return;                                              // nothing to take off (the patty of a burger) — it stays an add
+    rows.push({name:label,sec:"Ingredients",ing:true,macros:{calories:0,protein:0,carbs:0,fat:0},
+      add:e.add?e.add.macros:null,off:off||{calories:0,protein:0,carbs:0,fat:0}});
+    done.add(key);if(e.rem)used.add(e.rem);if(e.add)used.add(e.add);
+  });
+  // once an ingredient has its own row, a second way to add the same thing ("Slivered Onions" on a burger that
+  // already lists Onions) is noise; a removal for something never on it is not offered at all
+  const rest=out.filter(o=>{const k=rbIngKey(o.name);
+    if(used.has(o))return false;
+    if(o.sec==="Remove")return has.has(k);
+    return !(done.has(k)&&/^(Add|Sauces|Toppings)$/.test(o.sec||""))});
+  const all=rows.concat(rest);
+  return all.length?all:null;
+}
 const rbBrandCfg=()=>RB.restaurant&&RB_BRAND[RB.restaurant.id];
 const rbComboEligible=()=>{const c=rbBrandCfg();return c&&c.combo&&RB.item&&c.mains.includes(RB.item.category)};
 const rbExtrasEligible=()=>{const c=rbBrandCfg();return c&&c.extras&&RB.item&&c.mains.includes(RB.item.category)};
@@ -6201,7 +6389,8 @@ function rbCustBlockHTML(flowChain){
     const order=Object.keys(secs).sort((x,y)=>{const i=RB_MOD_SEC.indexOf(x),j=RB_MOD_SEC.indexOf(y);return (i<0?99:i)-(j<0?99:j)});
     const single=order.length===1;
     const row=c=>{const cur=RB.custom.find(x=>(x.base||x.name)===c.name);const amt=cur&&cur.amount;const m=cur?cur.macros:c.macros;const neg=m.calories<0;
-      return `<button class="rb-modrow${cur?" on":""} haptic" data-act="rbcbcust" data-n="${esc(c.name)}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${amt?`<span class="rb-amt">${amt}</span> `:""}${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${neg?"":"+"}${m.calories} cal${c.amt&&!amt?" · tap again for Extra":""}</p></div>${cur?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`};
+      const sub=c.ing&&!amt?"as it comes · tap for Extra":`${neg?"":"+"}${m.calories} cal${c.amt&&!amt?" · tap again for Extra":""}`;
+      return `<button class="rb-modrow${cur?" on":""} haptic" data-act="rbcbcust" data-n="${esc(c.name)}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${amt?`<span class="rb-amt${amt==="No"?" off":""}">${amt==="No"?"None":amt}</span> `:""}${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${sub}</p></div>${cur?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`};
     custBlock+=`<div style="margin-bottom:16px">${single?`<h4 class="rb-seclabel">${flowChain?"Sweeteners":order[0]==="Customize"?(sauceOnly?"Sauces":"Customize"):order[0]==="Add"&&sauceOnly?"Sauces":esc(order[0])}</h4>`:""}
       ${order.map(sec=>`${single?"":`<h4 class="rb-seclabel">${esc(sec)}</h4>`}<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:${single?0:10}px">${secs[sec].map(row).join("")}</div>`).join("")}
       <p class="rb-estnote">Amounts are the chain's own where it publishes them, otherwise sized from the ingredient.</p></div>`;
@@ -6518,7 +6707,8 @@ function rbAction(act,el){
     case"rbcbcust":{const opts=rbCustFor()||[];const base=opts.find(x=>x.name===el.dataset.n);if(!base)return;
       const at=RB.custom.findIndex(x=>(x.base||x.name)===base.name);
       const cur=at>=0?(RB.custom[at].amount||"Regular"):null;
-      const next=!cur?"Regular":base.amt?(cur==="Regular"?"Extra":cur==="Extra"?"Light":null):null; // Regular → Extra → Light → off
+      const next=base.ing?(!cur?(base.add?"Extra":"Light"):cur==="Extra"?"Light":cur==="Light"?"No":null)  // as it comes → Extra → Light → None
+        :!cur?"Regular":base.amt?(cur==="Regular"?"Extra":cur==="Extra"?"Light":null):null; // off → Regular → Extra → Light
       if(at>=0)RB.custom.splice(at,1);
       if(base.one)RB.custom=RB.custom.filter(x=>x.sec!==base.sec); // one ice level, one sugar level, one doneness
       if(next)RB.custom.push(next==="Regular"?base:rbCustAmt(base,next));
