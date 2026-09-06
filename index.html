@@ -1203,7 +1203,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.21"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.22"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -4957,10 +4957,12 @@ Object.assign(RB_MODS,{
     burgers:{Remove:[["No Bun",-150,-5,-28,-2],["No Butter",-30,0,0,-3],["No Cheese",-70,-4,-1,-6],["No Pickles",-5,0,-1,0],["No Onion",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Mayo",-90,0,-1,-10],["No Ketchup",-20,0,-5,0],["No Mustard",-5,0,0,0]],
       Swap:[["Swiss Cheese",70,5,1,5],["Pepper Jack Cheese",70,5,1,6],["American Cheese",70,4,1,6],["Lettuce Wrap (No Bun)",-140,-5,-27,-2]],
       Add:[["Extra Beef Patty",190,15,0,14],["Bacon",90,6,0,7,"a"],["Grilled Onions",15,0,3,0,"a"],["Raw Onion",5,0,1,0,"a"],["Pickles",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Sautéed Mushrooms",20,1,2,1,"a"],["Jalapeños",5,0,1,0,"a"],["Add Fried Pickles",190,2,16,12]],
-      Sauces:[["Wisconsin Cheese Sauce",70,2,2,6,"a"],["Mayo",90,0,1,10,"a"],["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Buttermilk Ranch",110,0,1,12,"a"],["Sweet Baby Ray's BBQ",70,0,17,0,"a"]]},
+      Sauces:[["Wisconsin Cheese Sauce",70,2,2,6,"a"],["Mayo",90,0,1,10,"a"],["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Buttermilk Ranch",110,0,1,12,"a"],["Sweet Baby Ray's BBQ",70,0,17,0,"a"]],
+      Prep:[["The Works (pickles, ketchup, mustard, raw onions)",35,0,7,0],["The Works, No Onion",30,0,6,0],["Lettuce Wrap (No Bun)",-140,-5,-27,-2]]},
     sandwiches:{Remove:[["No Bun",-150,-5,-28,-2],["No Mayo",-90,0,-1,-10],["No Pickles",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Cheese",-70,-4,-1,-6]],
       Add:[["Bacon",90,6,0,7,"a"],["Cheese Slice",70,4,1,6,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Pickles",5,0,1,0,"a"]],
-      Sauces:[["Buffalo Sauce",15,0,2,1,"a"],["Honey Mustard",60,0,6,4,"a"],["Buttermilk Ranch",110,0,1,12,"a"],["Sweet Baby Ray's BBQ",70,0,17,0,"a"],["Tartar Sauce",90,0,0,10,"a"]]},
+      Sauces:[["Buffalo Sauce",15,0,2,1,"a"],["Honey Mustard",60,0,6,4,"a"],["Buttermilk Ranch",110,0,1,12,"a"],["Sweet Baby Ray's BBQ",70,0,17,0,"a"],["Tartar Sauce",90,0,0,10,"a"]],
+      Prep:[["The Works (pickles, ketchup, mustard, raw onions)",35,0,7,0],["The Works, No Onion",30,0,6,0]]},
     custard:{Toppings:[["OREO Mix-in",150,2,20,7],["Butterfinger Mix-in",170,3,22,8],["Reese's Mix-in",180,4,19,10],["Snickers Mix-in",170,3,21,8],["M&M's Mix-in",170,2,24,7],["Brownie Mix-in",180,2,26,8],["Cookie Dough Mix-in",190,2,27,9],["Chocolate Chips",160,2,20,9],["Strawberries",25,0,6,0],["Bananas",50,1,13,0],["Pecans",180,3,4,18],["Cherry",10,0,2,0],["Hot Fudge",120,2,20,4,"a"],["Salted Caramel",100,0,24,0,"a"],["Whipped Cream",50,0,2,5]]}},
   whitecastle:{
     sliders:{Remove:[["No Onion",-5,0,-1,0],["No Pickle",-5,0,-1,0],["No Cheese",-40,-2,-1,-3],["No Bun",-100,-3,-19,-1]],
