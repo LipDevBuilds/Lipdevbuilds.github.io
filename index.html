@@ -684,6 +684,8 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .rb-prodrow-n{font-size:14px;font-weight:600;margin:0;line-height:20px}.rb-prodrow-d{font-size:11px;margin:0;color:hsl(var(--muted-foreground));line-height:15px}
 .rb-alloc{display:flex;flex-direction:column;gap:4px;margin-top:10px}
 .rb-allocrow{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:hsl(var(--muted)/.35)}
+.rb-amt{display:inline-block;padding:0 5px;margin-right:2px;border-radius:5px;font-size:10px;font-weight:700;background:hsl(var(--primary)/.18);color:hsl(var(--primary));vertical-align:1px}
+.rb-estnote{font-size:9.5px;line-height:13px;margin:6px 0 0;color:hsl(var(--muted-foreground)/.75)}
 .rb-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;background:hsl(var(--muted));color:hsl(var(--muted-foreground));vertical-align:2px}
 .rb-segbtn small{display:block;font-size:10px;font-weight:500;opacity:.7;line-height:12px}
 .rb-chip.sm{padding:5px 10px;font-size:11px;border-radius:10px}
@@ -1200,7 +1202,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.19"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.20"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2864,6 +2866,10 @@ function entryPieces(e){ // every itemizable piece of a logged row as {name,m,ca
       const pre=it.portion==="double"?"2× ":it.portion==="half"?"½ ":it.portion==="light"?"Light ":"";
       const sv=c.sizeVariants&&it.sz?(c.sizeVariants.find(x=>x.sizeId===it.sz)||{}).sizeName:null;
       push(`${pre}${c.name}${sv?` (${sv})`:""}`,base,k,c.category)});
+    if(s.custom&&s.custom.length){ // the changes were logged by name only → they are whatever the total does not account for
+      const sum=lines.reduce((a,l)=>({calories:a.calories+l.m.calories,protein:a.protein+l.m.protein,carbs:a.carbs+l.m.carbs,fat:a.fat+l.m.fat}),{calories:0,protein:0,carbs:0,fat:0});
+      lines.push({name:s.custom.join(", "),m:M4({calories:e.macros.calories-sum.calories,protein:e.macros.protein-sum.protein,carbs:e.macros.carbs-sum.carbs,fat:e.macros.fat-sum.fat}),adj:true});
+    }
   }else if(s.t==="wing"){
     const spec=RB_WINGS[s.rid],D=RB_WING_DATA[s.rid];if(!spec||!D)return null;
     const P=spec.products.find(p=>p.id===s.product)||spec.products[0],S=P.sizes.find(z=>z.n===s.n)||P.sizes[0];
@@ -2875,6 +2881,8 @@ function entryPieces(e){ // every itemizable piece of a logged row as {name,m,ca
     if(S.veg&&spec.veg){const c=side(spec.veg);if(c)push(`${S.veg>1?S.veg+"× ":""}${spec.veg}`,c.macros,S.veg)}
     Object.entries(s.sides||{}).forEach(([id,k])=>{const c=byId(id);if(c)push(`${k>1?k+"× ":""}${c.name}`,c.macros,k,c.category)});
     const dr=(D.drinks||RB_FOUNTAIN.coke||[]);(s.drinks||[]).forEach(n=>{if(n&&n!=="none"){const o=dr.find(x=>x[0]===n);if(o)push(n,{calories:o[1],protein:o[2],carbs:o[3],fat:o[4]},1,"drinks")}});
+    if(s.custom&&s.custom.length){const sum=lines.reduce((a,l)=>({calories:a.calories+l.m.calories,protein:a.protein+l.m.protein,carbs:a.carbs+l.m.carbs,fat:a.fat+l.m.fat}),{calories:0,protein:0,carbs:0,fat:0});
+      lines.push({name:s.custom.join(", "),m:M4({calories:e.macros.calories-sum.calories,protein:e.macros.protein-sum.protein,carbs:e.macros.carbs-sum.carbs,fat:e.macros.fat-sum.fat}),adj:true})}
   }else return null;
   return lines;
 }
@@ -4891,11 +4899,288 @@ function rbSauceKey(o){
 }
 const RB_SWEETENER_RX=/sugar|splenda|stevia|sweet'n low|honey packet|liquid cane/i;
 const rbFlowChain=()=>!!(RB.restaurant&&RB.restaurant.components.some(c=>c.flowGroup));
+// ===== What each chain's own app actually lets you change =====
+// One row per option: [name, cal, protein, carbs, fat, flags]. Flags: "a" = the app offers Light and Extra of it
+// (Light is half, Extra is double, which is how the chains' own calculators treat an amount step); "1" marks a
+// section where picking one replaces the last (ice level, sugar level, how a steak is cooked).
+// Chains publish complete nutrition for finished items, and almost none of them publish a per-modifier delta, so
+// these deltas are read off the chain's own builder where it exposes one and are otherwise sized from the
+// ingredient — every section carries an "est." note in the sheet so the number is never mistaken for gospel.
+const RB_MOD_SEC=["Remove","Swap","Add","Sauces","Toppings","Sugar","Ice","Prep"]; // the order the apps present them in
+const RB_MODS={};
+const rbModsFor=(rid,cat)=>{const c=RB_MODS[rid];if(!c)return null;return c[cat]||c["*"]||null};
+const RB_ICE=["Ice",[["No Ice",0,0,0,0,"1"],["Light Ice",0,0,0,0,"1"],["Extra Ice",0,0,0,0,"1"]]];
+const RB_SUGAR=["Sugar",[["No Sugar",-60,0,-15,0,"1"],["30% Sugar",-42,0,-11,0,"1"],["50% Sugar",-30,0,-8,0,"1"],["70% Sugar",-18,0,-5,0,"1"],["120% Sugar",12,0,3,0,"1"]]];
+const RB_COLD_RX=/iced|cold|frozen|refresher|slush|smoothie|shake|frapp|blizzard|lemonade|soda|cola|coke|pepsi|sprite|dr pepper|mtn dew|starry|fanta|root beer|tea(?!\s*bag)|boba|milk tea|punch|dirty/i;
+const RB_TREAT_RX=/shake|malt|blizzard|concrete|mixer|sundae|custard|cone|float|frosty|mcflurry|ice cream|frappe|frappuccino|freeze|parfait|dish/i;
+const RB_TREAT_TOP=[["Whipped Cream",50,0,2,5],["Cherry",10,0,2,0],["Hot Fudge",120,2,20,4,"a"],["Caramel",100,0,24,0,"a"],["Chocolate Syrup",90,1,20,1,"a"],["Sprinkles",30,0,6,1],["Chopped Peanuts",90,4,3,8],["Crushed Oreo",80,1,11,4],["Extra Mix-in",120,2,17,5]];
+// ---- the burger counters: their apps list the build itself, ingredient by ingredient ----
+Object.assign(RB_MODS,{
+  mcdonalds:{
+    burgers:{Remove:[["No Bun",-150,-5,-28,-2],["No Big Mac Sauce",-90,0,-2,-9],["No Ketchup",-20,0,-5,0],["No Mustard",-5,0,0,0],["No Pickles",-5,0,-1,0],["No Onions",-5,0,-1,0],["No Cheese",-50,-3,-1,-4],["No Lettuce",-5,0,-1,0]],
+      Add:[["Extra Patty",200,12,1,16],["Cheese Slice",50,3,1,4,"a"],["Bacon",90,6,0,7,"a"],["Slivered Onions",5,0,1,0,"a"],["Grilled Onions",15,0,3,0,"a"],["Shredded Lettuce",5,0,1,0,"a"],["Tomato",10,0,2,0,"a"],["Pickles",5,0,1,0,"a"]],
+      Sauces:[["Big Mac Sauce",90,0,2,9,"a"],["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Mayonnaise",90,0,1,10,"a"],["Tartar Sauce",90,0,0,10,"a"]]},
+    chicken:{Remove:[["No Bun",-150,-5,-28,-2],["No Mayo",-90,0,-1,-10],["No Pickles",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Tartar Sauce",-90,0,0,-10],["No Cheese",-50,-3,-1,-4]],
+      Add:[["Cheese Slice",50,3,1,4,"a"],["Bacon",90,6,0,7,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Pickles",5,0,1,0,"a"]],
+      Sauces:[["Tangy Barbeque",45,0,11,0,"a"],["Spicy Buffalo",30,0,1,3,"a"],["Creamy Ranch",110,0,1,12,"a"],["Honey Mustard",60,0,6,4,"a"],["Sweet 'N Sour",50,0,12,0,"a"],["Hot Mustard",60,0,6,4,"a"],["Ketchup",20,0,5,0,"a"]]},
+    breakfast:{Remove:[["No Cheese",-50,-3,-1,-4],["No Butter",-30,0,0,-3],["No Muffin",-150,-5,-27,-2]],
+      Add:[["Round Egg",70,6,0,5],["Folded Egg",90,7,1,7],["Extra Egg",70,6,0,5],["Cheese Slice",50,3,1,4],["Bacon",90,6,0,7],["Sausage Patty",180,7,1,16],["Canadian Bacon",50,6,1,2]],
+      Sauces:[["Grape Jelly",35,0,9,0],["Strawberry Preserves",35,0,9,0],["Butter",30,0,0,3],["Hotcake Syrup",180,0,45,0,"a"]]},
+    mccafe:{Swap:[["Nonfat Milk",-30,0,-1,-3],["Whole Milk",30,1,1,3],["Oat Milk",20,-1,3,1]],
+      Add:[["Extra Espresso Shot",5,1,0,0],["Whipped Cream",50,0,2,5],["Caramel Drizzle",30,0,7,0,"a"],["Chocolate Drizzle",30,0,7,0,"a"]],
+      Sugar:[["Sugar-Free Vanilla Syrup",5,0,1,0,"a"],["Vanilla Syrup",60,0,15,0,"a"],["Caramel Syrup",60,0,15,0,"a"],["French Vanilla Syrup",60,0,15,0,"a"]],
+      Prep:[["Decaf",0,0,0,0],["Extra Hot",0,0,0,0]]},
+    desserts:{Toppings:[["Hot Fudge",120,2,20,4,"a"],["Caramel",100,0,24,0,"a"],["Extra Candy Mix-in",120,2,17,5],["Whipped Cream",50,0,2,5],["Chopped Peanuts",90,4,3,8]]}},
+  wendys:{
+    burgers:{Remove:[["No Bun",-150,-5,-28,-2],["No Cheese",-50,-3,-1,-4],["No Ketchup",-20,0,-5,0],["No Mustard",-5,0,0,0],["No Mayo",-90,0,-1,-10],["No Pickle",-5,0,-1,0],["No Onion",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0]],
+      Add:[["Extra Patty",200,12,1,16],["Applewood Smoked Bacon",90,6,0,7,"a"],["American Cheese",50,3,1,4,"a"],["Asiago Cheese",70,5,1,6],["Crispy Onions",70,1,7,4,"a"],["Jalapeños",5,0,1,0,"a"],["Pickles",5,0,1,0,"a"],["Onion",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["S'Awesome Sauce",70,0,2,7,"a"],["Ghost Pepper Ranch",100,0,1,11,"a"],["Garlic Aioli",90,0,1,10,"a"],["Honey Mustard",60,0,6,4,"a"],["Ranch",70,0,1,7,"a"],["Ketchup",20,0,5,0,"a"],["Mayo",90,0,1,10,"a"],["Spicy Nacho Cheese",60,2,3,4,"a"]]},
+    chicken:{Remove:[["No Bun",-150,-5,-28,-2],["No Mayo",-90,0,-1,-10],["No Pickle",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0]],
+      Add:[["American Cheese",50,3,1,4,"a"],["Applewood Smoked Bacon",90,6,0,7,"a"],["Pickles",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["Honey Mustard",60,0,6,4,"a"],["Ranch",70,0,1,7,"a"],["S'Awesome Sauce",70,0,2,7,"a"],["Buffalo Sauce",15,0,2,1,"a"],["BBQ Sauce",45,0,11,0,"a"]]},
+    breakfast:{Remove:[["No Cheese",-50,-3,-1,-4],["No Sauce",-80,0,-4,-7]],
+      Add:[["Applewood Bacon",90,6,0,7],["Sausage Patty",180,7,1,16],["Extra Egg",70,6,0,5],["Swiss Cheese",70,5,1,5],["American Cheese",50,3,1,4]],
+      Sauces:[["Maple Butter",90,0,10,5,"a"],["Honey Butter",90,0,10,5,"a"],["Jalapeño",5,0,1,0]]},
+    desserts:{Toppings:[["Chocolate Fudge",120,2,20,4,"a"],["Caramel",100,0,24,0,"a"],["Whipped Cream",50,0,2,5]]}},
+  burgerking:{
+    "flame-grilled":{Remove:[["No Bun",-150,-5,-28,-2],["No Mayo",-90,0,-1,-10],["No Ketchup",-20,0,-5,0],["No Pickles",-5,0,-1,0],["No Onions",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Cheese",-50,-3,-1,-4],["No Sesame Seed Bun",-150,-5,-28,-2]],
+      Add:[["Extra Patty",230,13,1,18],["American Cheese",50,3,1,4,"a"],["Bacon",90,6,0,7,"a"],["Pickles",5,0,1,0,"a"],["Onions",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Jalapeños",5,0,1,0,"a"]],
+      Sauces:[["Mayo",90,0,1,10,"a"],["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Zesty Sauce",150,0,2,16,"a"],["BBQ Sauce",45,0,11,0,"a"],["Buffalo Sauce",15,0,2,1,"a"],["Ranch",70,0,1,7,"a"]]},
+    "chicken-fish":{Remove:[["No Bun",-150,-5,-28,-2],["No Mayo",-90,0,-1,-10],["No Tartar Sauce",-90,0,0,-10],["No Lettuce",-5,0,-1,0],["No Cheese",-50,-3,-1,-4]],
+      Add:[["American Cheese",50,3,1,4,"a"],["Bacon",90,6,0,7,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Pickles",5,0,1,0,"a"]],
+      Sauces:[["Zesty Sauce",150,0,2,16,"a"],["Honey Mustard",60,0,6,4,"a"],["Ranch",70,0,1,7,"a"],["BBQ Sauce",45,0,11,0,"a"],["Buffalo Sauce",15,0,2,1,"a"]]},
+    breakfast:{Remove:[["No Cheese",-50,-3,-1,-4],["No Sausage",-180,-7,-1,-16]],
+      Add:[["Extra Egg",70,6,0,5],["Bacon",90,6,0,7],["Sausage Patty",180,7,1,16],["Ham",50,6,1,2],["American Cheese",50,3,1,4]],
+      Sauces:[["Grape Jelly",35,0,9,0],["Butter",30,0,0,3],["Hash Brown Inside",150,1,15,9]]}},
+  culvers:{
+    burgers:{Remove:[["No Bun",-150,-5,-28,-2],["No Butter",-30,0,0,-3],["No Cheese",-70,-4,-1,-6],["No Pickles",-5,0,-1,0],["No Onion",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Mayo",-90,0,-1,-10],["No Ketchup",-20,0,-5,0],["No Mustard",-5,0,0,0]],
+      Swap:[["Swiss Cheese",70,5,1,5],["Pepper Jack Cheese",70,5,1,6],["American Cheese",70,4,1,6],["Lettuce Wrap (No Bun)",-140,-5,-27,-2]],
+      Add:[["Extra Beef Patty",190,15,0,14],["Bacon",90,6,0,7,"a"],["Grilled Onions",15,0,3,0,"a"],["Raw Onion",5,0,1,0,"a"],["Pickles",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Sautéed Mushrooms",20,1,2,1,"a"],["Jalapeños",5,0,1,0,"a"],["Add Fried Pickles",190,2,16,12]],
+      Sauces:[["Wisconsin Cheese Sauce",70,2,2,6,"a"],["Mayo",90,0,1,10,"a"],["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Buttermilk Ranch",110,0,1,12,"a"],["Sweet Baby Ray's BBQ",70,0,17,0,"a"]]},
+    sandwiches:{Remove:[["No Bun",-150,-5,-28,-2],["No Mayo",-90,0,-1,-10],["No Pickles",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Cheese",-70,-4,-1,-6]],
+      Add:[["Bacon",90,6,0,7,"a"],["Cheese Slice",70,4,1,6,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Pickles",5,0,1,0,"a"]],
+      Sauces:[["Buffalo Sauce",15,0,2,1,"a"],["Honey Mustard",60,0,6,4,"a"],["Buttermilk Ranch",110,0,1,12,"a"],["Sweet Baby Ray's BBQ",70,0,17,0,"a"],["Tartar Sauce",90,0,0,10,"a"]]},
+    custard:{Toppings:[["OREO Mix-in",150,2,20,7],["Butterfinger Mix-in",170,3,22,8],["Reese's Mix-in",180,4,19,10],["Snickers Mix-in",170,3,21,8],["M&M's Mix-in",170,2,24,7],["Brownie Mix-in",180,2,26,8],["Cookie Dough Mix-in",190,2,27,9],["Chocolate Chips",160,2,20,9],["Strawberries",25,0,6,0],["Bananas",50,1,13,0],["Pecans",180,3,4,18],["Cherry",10,0,2,0],["Hot Fudge",120,2,20,4,"a"],["Salted Caramel",100,0,24,0,"a"],["Whipped Cream",50,0,2,5]]}},
+  whitecastle:{
+    sliders:{Remove:[["No Onion",-5,0,-1,0],["No Pickle",-5,0,-1,0],["No Cheese",-40,-2,-1,-3],["No Bun",-100,-3,-19,-1]],
+      Add:[["Cheese Slice",40,2,1,3,"a"],["Bacon",70,5,0,5,"a"],["Jalapeño Peppers",5,0,1,0,"a"],["Onion",5,0,1,0,"a"],["Pickles",5,0,1,0,"a"]],
+      Sauces:[["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Zesty Zing Sauce",90,0,3,9,"a"],["Ranch",70,0,1,7,"a"],["Honey Mustard",60,0,6,4,"a"],["BBQ Sauce",45,0,11,0,"a"]]},
+    breakfast:{Add:[["Extra Egg",60,5,0,4],["Cheese Slice",40,2,1,3],["Bacon",70,5,0,5],["Sausage Patty",130,5,1,12]],
+      Sauces:[["Ketchup",20,0,5,0],["Hot Sauce",5,0,1,0]]}},
+  freddys:{
+    steakburgers:{Remove:[["No Mustard Grill",-5,0,0,0],["No Onion",-5,0,-1,0],["No Pickles",-5,0,-1,0],["No Cheese",-60,-4,-1,-5],["No Bun",-140,-5,-26,-2]],
+      Add:[["Extra Patty",150,13,0,11],["Cheese Slice",60,4,1,5,"a"],["Bacon",90,6,0,7,"a"],["Grilled Onions",15,0,3,0,"a"],["Pickles",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Jalapeños",5,0,1,0,"a"]],
+      Sauces:[["Freddy's Fry Sauce",110,0,3,11,"a"],["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Mayo",90,0,1,10,"a"],["Ranch",70,0,1,7,"a"]]},
+    custard:{Toppings:[["Hot Fudge",120,2,20,4,"a"],["Salted Caramel",100,0,24,0,"a"],["Strawberries",25,0,6,0],["Bananas",50,1,13,0],["Pecans",180,3,4,18],["OREO Mix-in",150,2,20,7],["Reese's Mix-in",180,4,19,10],["Whipped Cream",50,0,2,5],["Cherry",10,0,2,0]]}},
+  steaknshake:{
+    steakburgers:{Remove:[["No Onion",-5,0,-1,0],["No Pickle",-5,0,-1,0],["No Cheese",-60,-4,-1,-5],["No Bun",-140,-5,-26,-2],["No Mayo",-90,0,-1,-10]],
+      Add:[["Extra Patty",180,14,0,13],["Cheese Slice",60,4,1,5,"a"],["Bacon",90,6,0,7,"a"],["Grilled Onions",15,0,3,0,"a"],["Pickles",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["Steakburger Sauce",80,0,3,8,"a"],["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Mayo",90,0,1,10,"a"]],
+      Prep:[["Lettuce-Wrapped",-140,-5,-26,-2]]},
+    shakes:{Toppings:[["Add Malt",60,2,11,1],["Whipped Cream",50,0,2,5],["Cherry",10,0,2,0],["Extra Syrup",90,0,20,1,"a"],["Chopped Nuts",90,4,3,8]]}},
+  portillos:{
+    "hot-dogs":{Remove:[["No Mustard",-5,0,0,0],["No Relish",-15,0,4,0],["No Onion",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Sport Peppers",-5,0,-1,0],["No Celery Salt",0,0,0,0],["No Pickle",-5,0,-1,0]],
+      Add:[["Ketchup",20,0,5,0,"a"],["Sport Peppers",5,0,1,0,"a"],["Relish",15,0,4,0,"a"],["Grilled Onions",15,0,3,0,"a"],["Cheese Sauce",70,2,2,6,"a"],["Chili",70,4,6,3,"a"],["Giardiniera",60,0,1,6,"a"]]},
+    burgers:{Remove:[["No Bun",-150,-5,-28,-2],["No Cheese",-60,-4,-1,-5],["No Mayo",-90,0,-1,-10],["No Onion",-5,0,-1,0],["No Pickle",-5,0,-1,0]],
+      Add:[["Cheese Slice",60,4,1,5,"a"],["Bacon",90,6,0,7,"a"],["Grilled Onions",15,0,3,0,"a"],["Giardiniera",60,0,1,6,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["Portillo's Special Sauce",100,0,3,10,"a"],["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Mayo",90,0,1,10,"a"]]},
+    "italian-beef":{Prep:[["Dipped (Extra Jus)",30,2,1,2],["Dry",-30,-1,-1,-2],["Hot (Giardiniera)",60,0,1,6],["Sweet Peppers",20,0,4,0]],
+      Add:[["Mozzarella",80,6,1,6,"a"],["Extra Beef",120,16,1,6],["Giardiniera",60,0,1,6,"a"]]},
+    shakes:{Toppings:[["Add Malt",60,2,11,1],["Whipped Cream",50,0,2,5],["Cherry",10,0,2,0],["Extra Cake Mix",150,2,24,5]]}},
+  dairyqueen:{
+    burgers:{Remove:[["No Bun",-150,-5,-28,-2],["No Cheese",-50,-3,-1,-4],["No Ketchup",-20,0,-5,0],["No Mustard",-5,0,0,0],["No Mayo",-90,0,-1,-10],["No Pickle",-5,0,-1,0],["No Onion",-5,0,-1,0]],
+      Add:[["Cheese Slice",50,3,1,4,"a"],["Bacon",90,6,0,7,"a"],["Pickles",5,0,1,0,"a"],["Onion",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0],["Jalapeños",5,0,1,0,"a"]],
+      Sauces:[["Ketchup",20,0,5,0,"a"],["Mustard",5,0,0,0,"a"],["Mayo",90,0,1,10,"a"],["Ranch",70,0,1,7,"a"],["Honey Mustard",60,0,6,4,"a"],["BBQ Sauce",45,0,11,0,"a"]]},
+    blizzards:{Toppings:[["Extra Candy Mix-in",160,2,23,7],["OREO Mix-in",150,2,20,7],["Reese's Mix-in",180,4,19,10],["M&M's Mix-in",170,2,24,7],["Brownie Mix-in",180,2,26,8],["Cookie Dough Mix-in",190,2,27,9],["Hot Fudge",120,2,20,4,"a"],["Caramel",100,0,24,0,"a"],["Whipped Cream",50,0,2,5],["Cherry",10,0,2,0]]},
+    treats:{Toppings:[["Chocolate Dip",90,1,10,5],["Cherry Dip",90,0,13,4],["Sprinkles",30,0,6,1],["Whipped Cream",50,0,2,5],["Hot Fudge",120,2,20,4,"a"],["Chopped Peanuts",90,4,3,8]]},
+    shakes:{Toppings:[["Add Malt",60,2,11,1],["Whipped Cream",50,0,2,5],["Cherry",10,0,2,0],["Extra Syrup",90,0,20,1,"a"]]}},
+  fiveguys:{
+    burgers:{Prep:[["All the Way",90,1,12,4],["Lettuce Wrap (No Bun)",-160,-6,-30,-3],["Extra Well Done",0,0,0,0]],
+      Add:[["Extra Patty",200,15,0,15],["Bacon",80,6,0,7,"a"],["Cheese",70,4,1,6,"a"]]},
+    shakes:{Toppings:[["Bacon Mix-in",80,6,0,7],["Banana",40,1,10,0],["Malted Milk",70,2,12,1],["OREO Cookie Pieces",90,1,12,4],["Cherries",30,0,7,0],["Chocolate",70,1,14,2],["Coffee",20,0,4,0],["Peanut Butter",180,7,6,16],["Salted Caramel",90,0,20,1],["Strawberry",40,0,9,0],["Vanilla",30,0,7,0],["Whipped Cream",50,0,2,5]]},
+    fries:{Prep:[["Extra Crispy",0,0,0,0],["Extra Cajun Seasoning",5,0,1,0],["Less Salt",0,0,0,0]]}},
+});
+// ---- chicken, Mexican and the sub shops: their apps build the sandwich the same way the line does ----
+Object.assign(RB_MODS,{
+  chickfila:{
+    entrees:{Remove:[["No Bun",-150,-5,-28,-2],["No Pickles",-5,0,-1,0],["No Butter",-30,0,0,-3],["No Cheese",-70,-4,-1,-6],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Mayo",-90,0,-1,-10]],
+      Swap:[["Gluten-Free Bun",-30,-3,2,1],["Multigrain Brioche Bun",30,1,4,1],["Grilled Filet (instead of fried)",-120,4,-14,-9],["Spicy Filet",10,1,1,1]],
+      Add:[["Extra Pickles",5,0,1,0,"a"],["American Cheese",70,4,1,6,"a"],["Pepper Jack Cheese",70,5,1,6,"a"],["Colby Jack Cheese",70,5,1,6,"a"],["Bacon",70,5,0,5,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["Chick-fil-A Sauce",140,0,6,13,"a"],["Polynesian Sauce",110,0,15,6,"a"],["Zesty Buffalo Sauce",25,0,2,2,"a"],["Honey Mustard Sauce",45,0,10,1,"a"],["Garden Herb Ranch",140,0,2,15,"a"],["Barbeque Sauce",45,0,11,0,"a"],["Sweet & Spicy Sriracha",50,0,12,0,"a"],["Honey Roasted BBQ",60,0,5,5,"a"]]},
+    breakfast:{Remove:[["No Butter",-30,0,0,-3],["No Cheese",-70,-4,-1,-6],["No Biscuit",-260,-5,-33,-12]],
+      Add:[["Egg",70,6,0,5],["American Cheese",70,4,1,6],["Bacon",70,5,0,5],["Sausage Patty",180,7,1,16],["Hash Browns Inside",270,3,29,16]],
+      Sauces:[["Jelly",35,0,9,0],["Butter",30,0,0,3],["Honey",60,0,17,0]]},
+    treats:{Toppings:[["Whipped Cream",50,0,2,5],["Cherry",10,0,2,0],["Extra Cookie Pieces",120,1,17,5],["Chocolate Syrup",90,1,20,1,"a"]]},
+    drinks:{Swap:[["Diet Lemonade",-180,0,-45,0],["Half Sweet Tea / Half Lemonade",-40,0,-10,0],["Add Lemon",5,0,1,0]]}},
+  tacobell:{
+    "*":{Prep:[["Fresco Style",-60,-2,0,-6],["Make it Supreme",50,1,2,4],["Grilled",0,0,0,0]],
+      Remove:[["No Cheese",-30,-2,-1,-2.5],["No Sour Cream",-30,-1,-2,-2.5],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Onions",-5,0,-1,0],["No Red Sauce",-5,0,-1,0],["No Beans",-60,-3,-10,-1],["No Rice",-40,-1,-8,-0.5]],
+      Add:[["Extra Meat",90,8,2,6],["Three Cheese Blend",30,2,1,2.5,"a"],["Sour Cream",30,1,2,2.5,"a"],["Guacamole",35,0,2,3,"a"],["Seasoned Beef",90,8,2,6],["Black Beans",35,2,6,0.5,"a"],["Refried Beans",50,3,8,1,"a"],["Seasoned Rice",40,1,8,0.5,"a"],["Potatoes",90,1,12,4.5],["Jalapeños",5,0,1,0,"a"],["Pico de Gallo",5,0,1,0,"a"],["Tortilla Strips",30,0,4,1.5]],
+      Sauces:[["Nacho Cheese Sauce",50,1,3,3.5,"a"],["Creamy Jalapeño Sauce",70,0,1,7,"a"],["Avocado Ranch",70,0,1,7,"a"],["Chipotle Sauce",70,0,1,7,"a"],["Red Sauce",5,0,1,0,"a"],["Spicy Ranch",70,0,1,7,"a"],["Hot Sauce Packet",0,0,0,0]]}},
+  kfc:{
+    sandwiches:{Remove:[["No Pickles",-5,0,-1,0],["No Mayo",-90,0,-1,-10],["No Bun",-150,-5,-28,-2],["No Sauce",-80,0,-4,-7]],
+      Swap:[["Spicy Filet",10,1,1,1],["Grilled Filet",-130,4,-15,-10]],
+      Add:[["Cheese Slice",50,3,1,4,"a"],["Bacon",90,6,0,7,"a"],["Extra Pickles",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["Classic Ranch",110,0,1,12,"a"],["Honey BBQ",45,0,11,0,"a"],["Buffalo",25,0,2,2,"a"],["Honey Mustard",60,0,6,4,"a"],["Comeback Sauce",90,0,3,9,"a"],["Nashville Hot",120,0,1,13,"a"]]},
+    chicken:{Prep:[["Extra Crispy",30,1,3,2],["Original Recipe",0,0,0,0],["Nashville Hot Toss",120,0,1,13],["Sauced (Honey BBQ)",45,0,11,0]],
+      Sauces:[["Classic Ranch",110,0,1,12,"a"],["Honey BBQ",45,0,11,0,"a"],["Buffalo",25,0,2,2,"a"],["Honey Mustard",60,0,6,4,"a"]]},
+    bowls:{Remove:[["No Corn",-40,-1,-9,-0.5],["No Cheese",-50,-3,-1,-4],["No Gravy",-35,-1,-4,-2]],
+      Add:[["Extra Gravy",35,1,4,2,"a"],["Extra Cheese",50,3,1,4,"a"],["Extra Chicken",90,9,4,4]]}},
+  popeyes:{
+    sandwiches:{Remove:[["No Pickles",-5,0,-1,0],["No Mayo",-140,0,-1,-15],["No Bun",-160,-5,-29,-3]],
+      Swap:[["Spicy Filet",10,1,1,1],["Blackened Filet",-140,3,-16,-11]],
+      Add:[["Cheese Slice",50,3,1,4,"a"],["Bacon",90,6,0,7,"a"],["Extra Pickles",5,0,1,0,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["Bayou Buffalo",30,0,2,2,"a"],["Blackened Ranch",130,0,1,14,"a"],["Sweet Heat",60,0,15,0,"a"],["Mardi Gras Mustard",90,0,6,7,"a"],["BBQ Sauce",45,0,11,0,"a"],["Tartar Sauce",110,0,1,12,"a"]]},
+    chicken:{Prep:[["Spicy",10,1,1,1],["Mild",0,0,0,0],["Handcrafted Tenders",0,0,0,0]],
+      Sauces:[["Bayou Buffalo",30,0,2,2,"a"],["Blackened Ranch",130,0,1,14,"a"],["Sweet Heat",60,0,15,0,"a"],["Mardi Gras Mustard",90,0,6,7,"a"]]}},
+  raisingcanes:{
+    "*":{Remove:[["No Cane's Sauce",-190,-1,-4,-19],["No Texas Toast",-150,-3,-16,-8],["No Coleslaw",-140,-1,-11,-10],["No Crinkle-Cut Fries",-310,-4,-40,-15]],
+      Add:[["Extra Cane's Sauce",190,1,4,19,"a"],["Extra Texas Toast",150,3,16,8],["Extra Chicken Finger",130,9,6,7],["Extra Coleslaw",140,1,11,10]],
+      Sauces:[["Cane's Sauce",190,1,4,19,"a"],["Honey Mustard",60,0,6,4,"a"],["BBQ Sauce",45,0,11,0,"a"],["Ranch",110,0,1,12,"a"]]}},
+  wingstop:{
+    "*":{Prep:[["Sauce on the Side",0,0,0,0],["Well Done",0,0,0,0],["Extra Wet (More Sauce)",60,0,2,5],["Light Sauce",-40,0,-1,-4],["No Seasoning",-10,0,-1,0]],
+      Add:[["Extra Ranch Dip",180,1,2,19],["Extra Bleu Cheese Dip",170,1,2,18],["Extra Honey Mustard Dip",160,0,8,14],["Veggie Sticks",25,1,5,0],["Extra Fry Seasoning",10,0,2,0],["Add Cheese Sauce",90,2,4,7]]}},
+  bdubs:{
+    "*":{Prep:[["Sauce on the Side",0,0,0,0],["All Drums",0,0,0,0],["All Flats",0,0,0,0],["Well Done",0,0,0,0],["Extra Sauce",70,0,3,6],["Light Sauce",-45,0,-2,-4]],
+      Add:[["Extra Ranch",170,1,2,18],["Extra Bleu Cheese",180,1,2,19],["Celery & Carrots",30,1,6,0],["Add Fries Seasoning",10,0,2,0],["Add Cheese Sauce",90,2,4,7]]}},
+  arbys:{
+    "roast-beef":{Remove:[["No Bun",-160,-5,-30,-3],["No Cheese",-70,-4,-1,-6],["No Sauce",-15,0,-4,0],["No Mayo",-90,0,-1,-10]],
+      Add:[["Extra Roast Beef",120,16,1,5],["Cheddar Cheese Sauce",60,1,4,4,"a"],["Swiss Cheese",70,5,1,5,"a"],["Bacon",90,6,0,7,"a"],["Crispy Onions",70,1,7,4,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["Arby's Sauce",15,0,4,0,"a"],["Horsey Sauce",60,0,3,6,"a"],["Red Ranch",70,0,5,5,"a"],["Three Pepper Sauce",70,0,2,7,"a"],["BBQ Sauce",45,0,11,0,"a"],["Ranch",110,0,1,12,"a"]]},
+    chicken:{Remove:[["No Bun",-160,-5,-30,-3],["No Mayo",-90,0,-1,-10],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0]],
+      Add:[["Swiss Cheese",70,5,1,5,"a"],["Bacon",90,6,0,7,"a"],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Sauces:[["Buffalo Sauce",25,0,2,2,"a"],["Honey Mustard",60,0,6,4,"a"],["Ranch",110,0,1,12,"a"],["BBQ Sauce",45,0,11,0,"a"]]}},
+  jimmyjohns:{
+    "*":{Prep:[["Unwich (Lettuce Wrap)",-260,-9,-49,-3],["Sliced Pickle on the Side",5,0,1,0],["Extra Sub Roll",260,9,49,3]],
+      Remove:[["No Mayo",-100,0,-1,-11],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Onion",-5,0,-1,0],["No Cheese",-70,-4,-1,-6],["No Oil & Vinegar",-45,0,0,-5]],
+      Add:[["Extra Meat",120,15,1,6],["Provolone Cheese",70,5,1,5,"a"],["Bacon",90,6,0,7,"a"],["Avocado Spread",70,1,4,6,"a"],["Hot Peppers",5,0,1,0,"a"],["Cucumber",5,0,1,0,"a"],["Oregano-Basil",0,0,0,0],["Onion",5,0,1,0,"a"],["Sprouts",5,0,1,0]],
+      Sauces:[["Mayo",100,0,1,11,"a"],["Dijon Mustard",5,0,0,0,"a"],["Oil & Vinegar",45,0,0,5,"a"],["Kickin' Ranch",120,0,1,13,"a"]]}},
+  jerseymikes:{
+    "*":{Prep:[["Mike's Way (onions, lettuce, tomato, oil & vinegar)",60,0,3,5],["Sub in a Tub (No Bread)",-280,-10,-52,-3],["Toasted",0,0,0,0]],
+      Remove:[["No Onions",-5,0,-1,0],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Oil & Vinegar",-45,0,0,-5],["No Cheese",-70,-4,-1,-6],["No Mayo",-100,0,-1,-11]],
+      Add:[["Extra Meat",130,16,1,7],["Extra Cheese",70,5,1,5,"a"],["Bacon",90,6,0,7,"a"],["Jalapeños",5,0,1,0,"a"],["Hot Cherry Peppers",10,0,2,0,"a"],["Banana Peppers",5,0,1,0,"a"],["Pickles",5,0,1,0,"a"],["Green Peppers",5,0,1,0]],
+      Sauces:[["Mayo",100,0,1,11,"a"],["Chipotle Mayo",110,0,1,12,"a"],["Yellow Mustard",5,0,0,0,"a"],["Oil & Vinegar",45,0,0,5,"a"],["Ranch",110,0,1,12,"a"]]}},
+  firehousesubs:{
+    "*":{Prep:[["Fully Involved (mayo, lettuce, tomato, onion, pickle, Italian dressing)",120,0,5,11],["Sub in a Bowl (No Bread)",-260,-9,-48,-3],["Toasted",0,0,0,0]],
+      Remove:[["No Mayo",-100,0,-1,-11],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Onion",-5,0,-1,0],["No Pickle",-5,0,-1,0],["No Cheese",-70,-4,-1,-6],["No Italian Dressing",-45,0,0,-5]],
+      Add:[["Extra Meat",130,16,1,7],["Extra Cheese",70,5,1,5,"a"],["Bacon",90,6,0,7,"a"],["Jalapeños",5,0,1,0,"a"],["Banana Peppers",5,0,1,0,"a"],["Mushrooms",10,1,1,0,"a"],["Green Peppers",5,0,1,0]],
+      Sauces:[["Captain Sorensen's Datil Pepper",5,0,1,0,"a"],["Frank's RedHot",5,0,1,0,"a"],["Mayo",100,0,1,11,"a"],["Deli Mustard",5,0,0,0,"a"],["Italian Dressing",45,0,0,5,"a"]]}},
+  potbelly:{
+    "*":{Prep:[["The Works (mayo, lettuce, tomato, onion, pickle, hot peppers, seasoning)",130,0,6,12],["Toasted",0,0,0,0],["Bread Scooped Out",-70,-3,-13,-1]],
+      Remove:[["No Mayo",-100,0,-1,-11],["No Cheese",-70,-4,-1,-6],["No Lettuce",-5,0,-1,0],["No Tomato",-10,0,-2,0],["No Onion",-5,0,-1,0]],
+      Add:[["Extra Meat",120,15,1,6],["Extra Cheese",70,5,1,5,"a"],["Applewood Bacon",90,6,0,7,"a"],["Avocado",70,1,4,6,"a"],["Hot Peppers",5,0,1,0,"a"],["Mushrooms",10,1,1,0,"a"],["Pickles",5,0,1,0,"a"],["Cucumbers",5,0,1,0]],
+      Sauces:[["Potbelly Sauce",90,0,2,9,"a"],["Hot Pepper Sauce",5,0,1,0,"a"],["Mayo",100,0,1,11,"a"],["Mustard",5,0,0,0,"a"],["Italian Seasoning",0,0,0,0]]}},
+  subway:{
+    "*":{Prep:[["Toasted",0,0,0,0],["Make it a Salad (No Bread)",-200,-8,-38,-2],["Extra Crispy",0,0,0,0],["Cut in Half",0,0,0,0]],
+      Add:[["Double Protein",120,16,2,5],["Double Cheese",50,4,1,4],["Avocado",60,1,3,5,"a"],["Bacon",80,6,0,6,"a"],["Pepperoni",80,4,0,7,"a"],["Extra Veggies",10,0,2,0]],
+      Sauces:[["Mayonnaise",100,0,0,11,"a"],["Chipotle Southwest",100,0,1,10,"a"],["Ranch",110,0,1,12,"a"],["Sweet Onion",40,0,9,0,"a"],["Baja Chipotle",90,0,2,9,"a"],["MVP Vinaigrette",70,0,3,6,"a"],["Yellow Mustard",5,0,0,0,"a"],["Oil",40,0,0,5,"a"],["Vinegar",0,0,0,0],["Buffalo Sauce",70,0,1,7,"a"]]}},
+});
+// ---- the coffee counter, the burrito line, and the sit-down menus ----
+Object.assign(RB_MODS,{
+  dunkin:{
+    "*":{Swap:[["Skim Milk",-20,0,-1,-2],["Whole Milk",30,1,1,3],["Oat Milk",30,-1,4,1],["Almond Milk",-10,-1,0,0],["Coconut Milk",10,-1,1,1],["Cream",50,1,1,5],["Decaf",0,0,0,0]],
+      Add:[["Espresso Shot",5,1,0,0],["Turbo Shot",5,1,0,0],["Whipped Cream",50,0,2,5],["Cinnamon Sugar Topping",25,0,6,0],["Mocha Drizzle",30,0,7,0,"a"],["Caramel Drizzle",30,0,7,0,"a"]],
+      Sugar:[["Caramel Swirl",100,1,24,0,"a"],["French Vanilla Swirl",100,1,24,0,"a"],["Mocha Swirl",110,1,25,0,"a"],["Hazelnut Swirl",100,1,24,0,"a"],["Vanilla Flavor Shot",0,0,0,0,"a"],["Hazelnut Flavor Shot",0,0,0,0,"a"],["Toasted Almond Shot",0,0,0,0,"a"],["Raspberry Flavor Shot",0,0,0,0,"a"],["Coconut Flavor Shot",0,0,0,0,"a"],["Blueberry Flavor Shot",0,0,0,0,"a"],["Sugar",25,0,6,0,"a"],["Splenda",0,0,0,0,"a"]],
+      Prep:[["Extra Hot",0,0,0,0],["Less Ice",0,0,0,0],["No Whipped Cream",-50,0,-2,-5]]},
+    food:{Remove:[["No Cheese",-50,-3,-1,-4],["No Butter",-30,0,0,-3]],
+      Add:[["Extra Egg",70,6,0,5],["Cheese Slice",50,3,1,4],["Bacon",90,6,0,7],["Sausage Patty",180,7,1,16],["Avocado Spread",70,1,4,6]],
+      Prep:[["Toasted",0,0,0,0],["Grilled",0,0,0,0]]},
+    bakery:{Add:[["Plain Cream Cheese",100,2,2,9,"a"],["Veggie Cream Cheese",100,2,3,9,"a"],["Butter",30,0,0,3,"a"],["Avocado Spread",70,1,4,6]],
+      Prep:[["Toasted",0,0,0,0],["Sliced",0,0,0,0]]}},
+  starbucks:{breakfast:{Prep:[["Warmed",0,0,0,0],["Not Warmed",0,0,0,0],["Cut in Half",0,0,0,0]],Add:[["Butter",30,0,0,3],["Hot Sauce Packet",0,0,0,0],["Extra Cheese",70,4,1,6]]},
+    lunch:{Prep:[["Warmed",0,0,0,0],["Not Warmed",0,0,0,0],["Cut in Half",0,0,0,0]],Add:[["Extra Cheese",70,4,1,6],["Hot Sauce Packet",0,0,0,0]]}},
+  peets:{breakfast:{Prep:[["Warmed",0,0,0,0],["Not Warmed",0,0,0,0]],Add:[["Butter",30,0,0,3],["Extra Cheese",70,4,1,6]]}},
+  candycloud:{"cc-food":{Prep:[["Toasted",0,0,0,0],["Extra Crispy",0,0,0,0],["Cut in Half",0,0,0,0]],
+    Add:[["Bacon",90,6,0,7,"a"],["Extra Cheese",80,5,1,6,"a"],["Jalapeños",5,0,1,0,"a"],["Add Egg",70,6,0,5]],
+    Sauces:[["Garlic Parm Drizzle",90,1,2,9,"a"],["Ranch",110,0,1,12,"a"],["Marinara",25,1,5,0,"a"]]}},
+  kungfutea:{"*":{Sugar:[["0% Sugar",-90,0,-23,0,"1"],["30% Sugar",-63,0,-16,0,"1"],["50% Sugar",-45,0,-11,0,"1"],["70% Sugar",-27,0,-7,0,"1"],["120% Sugar",18,0,5,0,"1"]],
+      Swap:[["Oat Milk",20,-1,3,1],["Almond Milk",-15,-1,0,0],["Whole Milk",25,1,1,2],["Hot",0,0,0,0]]}},
+  chipotle:{
+    "*":{Prep:[["Tortilla on the Side",320,8,50,9],["Extra Tortilla",320,8,50,9],["Make it a Bowl (No Tortilla)",-320,-8,-50,-9]],
+      Add:[["Fajita Veggies",20,1,5,0,"a"],["Extra Rice",210,4,40,4],["Extra Beans",130,8,22,2],["Queso Blanco",120,5,4,9,"a"],["Guacamole",230,2,8,22,"a"],["Cheese",110,6,1,8,"a"],["Sour Cream",110,2,2,9,"a"],["Romaine Lettuce",5,0,1,0]],
+      Sauces:[["Chipotle-Honey Vinaigrette",220,0,18,16,"a"],["Tomatillo Red-Chili Salsa",30,0,4,1,"a"],["Tomatillo Green-Chili Salsa",15,0,3,0,"a"],["Roasted Chili-Corn Salsa",80,3,16,2,"a"],["Fresh Tomato Salsa",25,0,4,0,"a"]]}},
+  qdoba:{
+    "*":{Prep:[["Tortilla on the Side",290,8,46,8],["Make it a Bowl (No Tortilla)",-290,-8,-46,-8],["Grilled Tortilla",20,0,2,1]],
+      Add:[["Fajita Veggies",20,1,5,0,"a"],["3-Cheese Queso (Free)",110,5,5,8,"a"],["Guacamole (Free)",190,2,10,17,"a"],["Extra Rice",190,4,37,3],["Extra Beans",130,8,22,2],["Shredded Cheese",100,6,1,8,"a"],["Sour Cream",60,1,2,5,"a"],["Corn Salsa",80,2,15,2,"a"],["Pico de Gallo",10,0,2,0,"a"]],
+      Sauces:[["Chipotle Ranch",120,0,2,13,"a"],["Cilantro Lime Dressing",130,0,3,13,"a"],["Salsa Roja",20,0,4,0,"a"],["Salsa Verde",15,0,3,0,"a"],["Habanero Salsa",15,0,3,0,"a"]]}},
+  panera:{
+    sandwiches:{Swap:[["Sourdough Bread",-20,-1,-3,0],["Whole Grain Bread",-10,2,-2,1],["Tomato Basil Bread",20,1,4,0],["Gluten-Free Ciabatta",30,-1,4,2],["Sliced Baguette",0,0,0,0]],
+      Remove:[["No Mayo",-100,0,-1,-11],["No Cheese",-80,-5,-1,-6],["No Onion",-5,0,-1,0],["No Tomato",-10,0,-2,0]],
+      Add:[["Avocado",80,1,4,7,"a"],["Bacon",90,6,0,7,"a"],["Extra Cheese",80,5,1,6,"a"],["Extra Chicken",120,24,0,3],["Lettuce",5,0,1,0],["Tomato",10,0,2,0]],
+      Prep:[["Toasted",0,0,0,0],["Cut in Half",0,0,0,0]]},
+    salads:{Prep:[["Dressing on the Side",0,0,0,0],["No Dressing",-160,-1,-4,-16],["Extra Dressing",160,1,4,16]],
+      Remove:[["No Cheese",-80,-5,-1,-6],["No Croutons",-70,-2,-9,-3]],
+      Add:[["Grilled Chicken",120,24,0,3],["Avocado",80,1,4,7,"a"],["Bacon",90,6,0,7,"a"]]},
+    soups:{Swap:[["Bread Bowl",560,20,105,6],["No Baguette",-140,-5,-27,-1]],
+      Add:[["Extra Baguette",140,5,27,1],["Side Chips",150,2,17,8]]},
+    sides:{Prep:[["Toasted",0,0,0,0],["Warmed",0,0,0,0]],
+      Add:[["Butter",30,0,0,3,"a"],["Cream Cheese",100,2,2,9,"a"],["Extra Baguette",140,5,27,1]]}},
+  panda:{
+    "*":{Prep:[["Sauce on the Side",0,0,0,0],["Half & Half Sides",0,0,0,0],["Substitute Super Greens",-190,2,-38,-4],["Extra Sauce",60,0,14,0]],
+      Sauces:[["Teriyaki Sauce",70,1,16,0,"a"],["Sweet & Sour Sauce",60,0,15,0,"a"],["Chili Sauce",20,0,5,0,"a"],["Hot Mustard",20,0,2,1,"a"],["Soy Sauce",10,1,1,0,"a"],["Kung Pao Sauce",50,0,10,1,"a"]],
+      Add:[["Extra Entrée Portion",300,15,25,15],["Add Cream Cheese Rangoon (3)",190,4,24,9],["Add Egg Roll",200,6,20,10]]}},
+  noodlesandco:{
+    "*":{Swap:[["Zucchini Noodles (Zoodles)",-260,-8,-52,-2],["Cauliflower Rigatoni",-140,-4,-30,-1],["Gluten-Free Rotini",10,-2,2,0],["Whole Grain Linguine",-10,3,-2,1],["Half Portion",-190,-8,-28,-6]],
+      Add:[["Grilled Chicken Breast",120,24,0,3],["Parmesan-Crusted Chicken",210,20,8,11],["Meatballs",210,14,7,14],["Braised Beef",180,17,2,11],["Sautéed Shrimp",70,14,1,1],["Organic Tofu",90,10,3,5],["Avocado",80,1,4,7],["Bacon",90,6,0,7,"a"],["Extra Parmesan",40,4,0,3,"a"],["Sautéed Mushrooms",25,2,3,1,"a"],["Sautéed Spinach",15,2,2,0]],
+      Remove:[["No Cheese",-80,-5,-1,-6],["No Cream Sauce",-190,-3,-6,-17]],
+      Sauces:[["Extra Sauce",90,1,8,6,"a"],["Sriracha",10,0,2,0,"a"]]}},
+  "texas-roadhouse":{
+    steaks:{Prep:[["Rare",0,0,0,0,"1"],["Medium Rare",0,0,0,0,"1"],["Medium",0,0,0,0,"1"],["Medium Well",0,0,0,0,"1"],["Well Done",0,0,0,0,"1"],["No Seasoning",-10,0,-1,0],["Extra Seasoning",10,0,2,0]],
+      Add:[["Butter Topping",100,0,0,11],["Grilled Onions",60,1,7,3,"a"],["Sautéed Mushrooms",60,2,5,4,"a"],["Bleu Cheese Crumbles",110,7,1,9],["Add Shrimp Skewer",120,14,2,6],["Peppercorn Sauce",90,1,3,8,"a"]],
+      Remove:[["No Butter",-100,0,0,-11]]},
+    sides:{Add:[["Loaded (bacon, cheese, sour cream)",290,11,5,25],["Butter",100,0,0,11,"a"],["Sour Cream",60,1,1,6,"a"],["Shredded Cheese",110,7,1,9,"a"],["Bacon Bits",70,5,0,6,"a"],["Brown Gravy",25,1,3,1,"a"]]},
+    salads:{Prep:[["Dressing on the Side",0,0,0,0],["No Dressing",-180,-1,-3,-19],["Extra Dressing",180,1,3,19]],
+      Add:[["Grilled Chicken",150,28,0,4],["Bleu Cheese Crumbles",110,7,1,9],["Extra Croutons",80,2,11,3]]},
+    burgers:{Remove:[["No Bun",-160,-6,-30,-2],["No Cheese",-80,-5,-1,-6],["No Mayo",-100,0,-1,-11],["No Onion",-5,0,-1,0],["No Pickle",-5,0,-1,0]],
+      Add:[["Cheese Slice",80,5,1,6,"a"],["Bacon",90,6,0,7,"a"],["Grilled Onions",60,1,7,3,"a"],["Sautéed Mushrooms",60,2,5,4,"a"],["Jalapeños",5,0,1,0,"a"]],
+      Prep:[["Medium Rare",0,0,0,0,"1"],["Medium",0,0,0,0,"1"],["Well Done",0,0,0,0,"1"]]}},
+});
+function rbModSecs(rid,cats){ // the chain's catalogue for a set of categories, merged section by section
+  const c=RB_MODS[rid];if(!c)return null;const secs={};
+  const add=o=>{if(o)Object.entries(o).forEach(([k,v])=>{(secs[k]=secs[k]||[]).push(...v)})};
+  add(c["*"]);(cats||[]).forEach(cat=>{if(cat&&c[cat]&&c[cat]!==c["*"])add(c[cat])});
+  return Object.keys(secs).length?secs:null}
+function rbModRows(){ // every section this item can be changed in, in app order
+  const it=RB.item,R=RB.restaurant;if(!it||!R)return null;
+  const cat=it.category,secs={};
+  const push=(label,rows)=>{if(!rows||!rows.length)return;(secs[label]=secs[label]||[]).push(...rows)};
+  const own=rbModSecs(R.id,[cat]);
+  if(own)Object.entries(own).forEach(([label,rows])=>push(label,rows));
+  const kind=SW_CAT_KIND[cat]||"";
+  const poured=/^(icedcoffee|icedmilk|coffee|milk|soda|juice|water|smoothie|alcohol)$/.test(kind)||/drink|beverage/i.test(cat);
+  const cold=/^(icedcoffee|icedmilk|soda|juice|water|smoothie)$/.test(kind)||RB_COLD_RX.test(it.name)||RB_COLD_RX.test(cat);
+  if(poured&&cold&&!RB_TREAT_RX.test(it.name)&&!secs.Ice)push(RB_ICE[0],RB_ICE[1]); // a cup you pour takes an ice level; a dish of custard does not
+  if(RB_TREAT_RX.test(it.name)&&!secs.Toppings)push("Toppings",RB_TREAT_TOP);
+  return Object.keys(secs).length?secs:null;
+}
+const RB_AMT={Light:.5,Extra:2};
+function rbCustMk(row,sec){ // one option row → the object the sheet and the total speak
+  const [name,cal,p,c,f,flags]=row;
+  return{name,sec,macros:{calories:cal,protein:p,carbs:c,fat:f},amt:/a/.test(flags||""),one:/1/.test(flags||"")};
+}
+function rbCustAmt(o,amt){ // Light / Extra of an option: the app's own amount step, halved or doubled
+  if(!amt)return o;const k=RB_AMT[amt];
+  return{...o,name:`${amt} ${o.name}`,base:o.name,amount:amt,
+    macros:{calories:Math.round(o.macros.calories*k),protein:Math.round(o.macros.protein*k*10)/10,carbs:Math.round(o.macros.carbs*k*10)/10,fat:Math.round(o.macros.fat*k*10)/10}};
+}
+function rbCustByName(name){ // used when an entry is re-opened: "Extra Pickles" resolves back through "Pickles"
+  const all=rbCustFor()||[];const hit=all.find(o=>o.name===name);if(hit)return hit;
+  const m=/^(Light|Extra) (.+)$/.exec(name);if(!m)return null;
+  const base=all.find(o=>o.name===m[2]);return base?rbCustAmt(base,m[1]):null;
+}
 const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures + the general additions layer
-  const it=RB.item;if(!it||!RB.restaurant)return null;
+  const it=RB.item;if(!RB.restaurant)return null;
+  if(!it){ // build-your-own: no single item to customize, so the chain's own catalogue stands alone
+    const cats=[...new Set(RB.items.map(p=>p.component.category))];
+    const secs=rbModSecs(RB.restaurant.id,cats);if(!secs)return null;
+    const out=[];Object.entries(secs).forEach(([sec,rows])=>rows.forEach(r=>{const o=rbCustMk(r,sec);if(!out.some(x=>x.name===o.name))out.push(o)}));
+    return out.length?out:null;
+  }
   const cfg=rbBrandCfg()||{};
   const out=[],idx=new Map(); // key -> {i:position, official}
+  const secOf=o=>o.sec||(/^(no|without) /i.test(o.name)?"Remove":/^(sub|swap|make it|on |cut |toasted|well done|extra crispy|light ice|no ice|fresco)/i.test(o.name)?"Prep":/sauce|dressing|ranch|mustard|ketchup|mayo|syrup|dip|aioli|vinaigrette/i.test(o.name)?"Sauces":"Add");
   const push=(o,official)=>{ // official=true → chain-published row: replaces a same-key generic in place
+    o.sec=secOf(o);
     const k=rbSauceKey(o)||o.name.toLowerCase();
     const e=idx.get(k);
     if(e===undefined){idx.set(k,{i:out.length,official:!!official});out.push(o);return}
@@ -4918,6 +5203,10 @@ const rbCustFor=()=>{ // customize options: archetype swaps + brand signatures +
   if(it.category==="bakery"||/bagel|croissant|biscuit|english muffin/i.test(it.name))RB_FIX_BAKERY.forEach(o=>push(RB_MK(o)));
   if(/pancake|hotcake|french toast|waffle/i.test(it.name))RB_FIX_GRIDDLE.forEach(o=>push(RB_MK(o)));
   if(!coffee&&!RB_NOCOND_CATS.has(it.category))(RB_COND[RB.restaurant.id]||[]).forEach(o=>push(RB_MK(o),true));
+  const rows=rbModRows(); // the chain's own catalogue wins over every archetype guess
+  if(rows)Object.entries(rows).forEach(([sec,list])=>list.forEach(r=>{const o=rbCustMk(r,sec);
+    const dup=out.findIndex(x=>x.name.toLowerCase()===o.name.toLowerCase());
+    if(dup>=0)out[dup]=o;else push(o,true)}));
   return out.length?out:null;
 };
 const rbBrandCfg=()=>RB.restaurant&&RB_BRAND[RB.restaurant.id];
@@ -5112,7 +5401,8 @@ function rbWingTotal(spec){
   w.inc.forEach(name=>{if(name&&name!=="none"){const c=rbWingSideComp(name);add(c&&c.macros)}});
   if(S.veg&&spec.veg){const c=rbWingSideComp(spec.veg);add(c&&c.macros,S.veg)}
   const dr=rbWingDrinks(spec);w.drinks.forEach(name=>{if(name&&name!=="none"){const d=dr.find(x=>x.name===name);add(d&&d.macros)}});
-  return{calories:Math.round(t.calories),protein:Math.round(t.protein),carbs:Math.round(t.carbs),fat:Math.round(t.fat)};
+  RB.custom.forEach(c=>add(c.macros));
+  return{calories:Math.max(0,Math.round(t.calories)),protein:Math.max(0,Math.round(t.protein)),carbs:Math.max(0,Math.round(t.carbs)),fat:Math.max(0,Math.round(t.fat))};
 }
 function rbWingName(spec){
   const P=rbWingProduct(spec),S=rbWingSize(spec),w=RB.w,mix=rbWingIsMix(spec);
@@ -5125,14 +5415,17 @@ function rbWingName(spec){
   const drinks=w.drinks.filter(n=>n&&n!=="none");
   const extras=Object.entries(w.sides).map(([id,k])=>{const c=RB.restaurant.components.find(x=>x.id===id);return c?(k>1?`${k}× ${c.name}`:c.name):null}).filter(Boolean);
   const tail=[...dips,...incs,...drinks,...extras];if(tail.length)parts.push(tail.join(" · "));
+  if(RB.custom.length)parts.push(RB.custom.map(c=>c.name).join(", "));
   return parts.join(" · ");
 }
 function rbWingSnap(spec){return{t:"wing",rid:RB.restaurant.id,cat:RB.cat,product:RB.w.product,n:RB.w.n,type:RB.w.type,alloc:RB.w.alloc.map(r=>({f:r.f,n:r.n,t:r.t})),
-  dips:{...RB.w.dips},sides:{...RB.w.sides},inc:RB.w.inc.slice(),drinks:RB.w.drinks.slice()}}
+  dips:{...RB.w.dips},sides:{...RB.w.sides},inc:RB.w.inc.slice(),drinks:RB.w.drinks.slice(),
+  custom:RB.custom.length?RB.custom.map(c=>c.name):undefined}}
 function rbWingRestore(s){ // rebuild builder state from a logged entry's snapshot
   rbWingInit(s.cat,{product:s.product});if(!RB.w)return false;const spec=rbWingSpec();
   rbWingSetProduct(spec,s.product);rbWingSetSize(spec,s.n);rbWingSetType(spec,s.type);
   RB.w.alloc=(s.alloc||[]).filter(r=>rbWingMacro(spec,r.t,r.f)).map(r=>({f:r.f,n:r.n,t:r.t}));
+  RB.custom=s.custom&&s.custom.length?s.custom.map(rbCustByName).filter(Boolean):[];
   const sum=RB.w.alloc.reduce((a,r)=>a+r.n,0);if(sum!==RB.w.n)rbWingResplit();
   RB.w.dips={};Object.entries(s.dips||{}).forEach(([n,k])=>{if(rbWingSideComp(n))RB.w.dips[n]=k});
   RB.w.sides={};Object.entries(s.sides||{}).forEach(([id,k])=>{if(RB.restaurant.components.some(c=>c.id===id))RB.w.sides[id]=k});
@@ -5176,6 +5469,7 @@ function rbWingHTML(spec){
   if(S.drinks){const dr=rbWingDrinks(spec);
     w.drinks.forEach((pick,i)=>{h+=step(w.drinks.length>1?`Drink ${i+1}`:"Drink","included")+`<select class="rb-select" data-act="rbwdrink" data-i="${i}"><option value=""${pick===null?" selected":""} disabled>Choose a drink…</option>${dr.map((d,k)=>`<option value="${k}"${pick===d.name?" selected":""}>${esc(d.name)} ${d.macros.calories>0?`(${d.macros.calories} cal)`:"(0 cal)"}</option>`).join("")}<option value="none"${pick==="none"?" selected":""}>No drink</option></select>`})}
   const sides=(D.sides||[]).map(o=>rbWingSideComp(o[0])).filter(Boolean);
+  h+=rbCustBlockHTML(null); // sauce on the side, well done, an extra dip — the way the wing apps ask
   if(sides.length)h+=step("Add sides","optional")+`<div style="display:flex;flex-direction:column;gap:4px">${sides.map(c=>rbStepRow(c,w.sides[c.id]||0,`${c.macros.calories} cal · ${c.macros.protein}P · ${c.macros.carbs}C · ${c.macros.fat}F`,"rbwsp","rbwsm",false,false)).join("")}</div>`;
   if(!S.drinks&&!D.drinks){}
   return h+`</div>`;
@@ -5682,6 +5976,7 @@ function rbBuilderHTML(){
       body+=`<div><p class="rb-seclabel">Quick Picks</p><div class="no-scrollbar" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px">${R.prebuiltMeals.map((pm,i)=>`<button class="rb-qp haptic" data-act="rbquick" data-i="${i}">${esc(pm.name)}</button>`).join("")}</div></div>`;
     }
     body+=rbVisibleCategories().map(rbCategoryHTML).join("");
+    if(RB.items.length)body+=rbCustBlockHTML(null); // the chain's own changes: on the side, extra, swapped, held
   }
   return rbHeaderHTML()
     +`<div class="rb-scroll"><div class="rb-stack" style="padding:16px">${body}</div></div>`
@@ -5713,8 +6008,11 @@ function rbLog(){
   });
   const nameStr=[...new Set(names)].join(", ");
   const fmt=rbFormat(),fpre=fmt&&fmt.mult?`${fmt.name} `:"";
-  const name=`${RB.restaurant.name}: ${fpre}${nameStr.length>50?nameStr.slice(0,50)+"...":nameStr}`;
+  const cust=RB.custom.map(c=>c.name).join(", ");
+  const name=`${RB.restaurant.name}: ${fpre}${nameStr.length>50?nameStr.slice(0,50)+"...":nameStr}${cust?` (${cust})`:""}`;
   const total=calculateMealMacrosWithPortions(RB.items); // per-item rounded, carries fiber+sodium
+  RB.custom.forEach(c=>{total.calories=Math.max(0,Math.round(total.calories+c.macros.calories));total.protein=Math.max(0,Math.round((total.protein+c.macros.protein)*10)/10);
+    total.carbs=Math.max(0,Math.round((total.carbs+c.macros.carbs)*10)/10);total.fat=Math.max(0,Math.round((total.fat+c.macros.fat)*10)/10)});
   const lid=rbCommitEntry({foodId:"quick-add",name,sv:1,servingUnit:"serving",macros:total,meal:RB.meal},rbSnapMealSrc());
   closeRB();mealOpen[RB.meal]=true;render();logFlight(lid);
 }
@@ -5747,6 +6045,7 @@ function rbSnapItemSrc(){
 // modular builder snapshot (built bowl/burrito): the picked components with portions/sizes
 function rbSnapMealSrc(){
   return{t:"rbm",rid:RB.restaurant.id,format:RB.format||undefined,
+    custom:RB.custom.length?RB.custom.map(c=>c.name):undefined,
     items:RB.items.map(p=>({id:p.component.id,portion:p.portion,sz:p.selectedSizeId}))};
 }
 // Legacy entries predate the provenance map, but their names were BUILT from menu data
@@ -5811,6 +6110,7 @@ function rbOpenEdit(e,s){
   }else if(s.t==="rbm"){ // modular builder (Chipotle-style built meal)
     RB.format=s.format||null;
     RB.items=(s.items||[]).map(x=>{const c=byId(x.id);return c?{component:c,portion:x.portion||"regular",selectedSizeId:x.sz}:null}).filter(Boolean);
+    RB.custom=s.custom&&s.custom.length?s.custom.map(rbCustByName).filter(Boolean):[];
   }else{ // item sheet
     let c=byId(s.cid),aliasSz=null;
     if(!c){c=RB.restaurant.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c)aliasSz=rbAliasSize(c,s.cid)}
@@ -5824,7 +6124,7 @@ function rbOpenEdit(e,s){
     RB.comboSide=null;if(s.comboSide){const c=byId(s.comboSide)||RB.restaurant.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.comboSide));
       if(c){const list=rbComboSides();const want=s.comboSideSz||rbAliasSize(c,s.comboSide)||null;
         RB.comboSide=list.find(x=>x.id===c.id&&(want?x.sz===want:true))||(c.sizeVariants?{id:c.id,sz:want||c.defaultSizeId,name:`${c.name} (${(c.sizeVariants.find(v=>v.sizeId===(want||c.defaultSizeId))||{}).sizeName||""})`,base:c.name,macros:(c.sizeVariants.find(v=>v.sizeId===(want||c.defaultSizeId))||c).macros}:{id:c.id,name:c.name,base:c.name,macros:c.macros})}}
-    RB.custom=s.custom&&s.custom.length?(rbCustFor()||[]).filter(o=>s.custom.includes(o.name)):[];
+    RB.custom=s.custom&&s.custom.length?s.custom.map(rbCustByName).filter(Boolean):[];
     if(s.drink){const opts=rbDrinkOptions()||[];const nm=rbDrinkLegacyName(s.drink),base=nm.replace(RB_SIZE_SUFFIX,"");
       RB.comboDrink=opts.find(o=>o.name===s.drink)||opts.find(o=>o.name===nm)||opts.find(o=>o.name.replace(RB_SIZE_SUFFIX,"")===base)||null}
   }
@@ -5891,6 +6191,23 @@ function rbTabsHTML(){
     &&((cfg[c]&&cfg[c].virtualFlag)||(wing&&wing.products.some(p=>p.cat===c))||R.components.some(x=>x.category===c&&!x.isModifier))); // a tab with nothing behind it is a hole, not a tab
   return `<div style="border-bottom:.5px solid hsl(var(--border));flex-shrink:0"><div class="rb-tabs no-scrollbar">${cats.map(c=>`<button class="rb-tab${RB.cat===c?" on":""}" data-act="rbtab" data-cat="${c}">${esc((cfg[c]&&cfg[c].displayName)||c)}</button>`).join("")}</div></div>`;
 }
+function rbCustBlockHTML(flowChain){
+  const custOpts=rbCustFor();let custBlock="";
+  if(custOpts){
+    // Grouped the way the chains' own apps group them, and an option the app offers an amount of steps
+    // Regular → Extra → Light → off as you keep tapping it.
+    const sauceOnly=custOpts.length>0&&!custOpts.some(o=>/^(No|Add|Extra|Sub|Swap|Double|Light|Lettuce|Grilled|Toasted) /i.test(o.name)); // nothing on the build itself changes → it is a sauce list
+    const secs={};custOpts.forEach(o=>{(secs[o.sec||"Customize"]=secs[o.sec||"Customize"]||[]).push(o)});
+    const order=Object.keys(secs).sort((x,y)=>{const i=RB_MOD_SEC.indexOf(x),j=RB_MOD_SEC.indexOf(y);return (i<0?99:i)-(j<0?99:j)});
+    const single=order.length===1;
+    const row=c=>{const cur=RB.custom.find(x=>(x.base||x.name)===c.name);const amt=cur&&cur.amount;const m=cur?cur.macros:c.macros;const neg=m.calories<0;
+      return `<button class="rb-modrow${cur?" on":""} haptic" data-act="rbcbcust" data-n="${esc(c.name)}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${amt?`<span class="rb-amt">${amt}</span> `:""}${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${neg?"":"+"}${m.calories} cal${c.amt&&!amt?" · tap again for Extra":""}</p></div>${cur?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`};
+    custBlock+=`<div style="margin-bottom:16px">${single?`<h4 class="rb-seclabel">${flowChain?"Sweeteners":order[0]==="Customize"?(sauceOnly?"Sauces":"Customize"):order[0]==="Add"&&sauceOnly?"Sauces":esc(order[0])}</h4>`:""}
+      ${order.map(sec=>`${single?"":`<h4 class="rb-seclabel">${esc(sec)}</h4>`}<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:${single?0:10}px">${secs[sec].map(row).join("")}</div>`).join("")}
+      <p class="rb-estnote">Amounts are the chain's own where it publishes them, otherwise sized from the ingredient.</p></div>`;
+  }
+  return custBlock;
+}
 function rbISBodyHTML(){
   const cfg=RB.restaurant.categoryConfig||{};
   const catItems=rbISCatItems();
@@ -5930,12 +6247,7 @@ function rbISBodyHTML(){
     }else if(RB.item.est){
       h+=`<p style="font-size:10px;margin:-6px 0 14px;line-height:14px;color:hsl(var(--muted-foreground))">Partly estimated — the chain hasn't published full macros for this item yet; confirmed figures are used where available.</p>`;
     }
-    const custOpts=rbCustFor(),flowChain=rbFlowChain();let custBlock="";
-    if(custOpts){
-      const sauceOnly=custOpts.length>0&&!custOpts.some(o=>/^(No|Add|Extra|Sub|Swap|Double|Light|Lettuce|Grilled|Toasted) /i.test(o.name)); // nothing on the build itself changes → it is a sauce list
-      custBlock+=`<div style="margin-bottom:16px"><h4 class="rb-seclabel">${flowChain?"Sweeteners":sauceOnly?"Sauces":"Customize"}</h4><div style="display:flex;flex-direction:column;gap:4px">${custOpts.map(c=>{const on=RB.custom.some(x=>x.name===c.name);const neg=c.macros.calories<0;
-        return `<button class="rb-modrow${on?" on":""} haptic" data-act="rbcbcust" data-n="${esc(c.name)}" style="width:100%;text-align:left"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;line-height:20px">${esc(c.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${neg?"":"+"}${c.macros.calories} cal</p></div>${on?`<span class="text-primary" style="display:flex">${IC_CHECK16}</span>`:""}</button>`}).join("")}</div></div>`;
-    }
+    const flowChain=rbFlowChain(),custBlock=rbCustBlockHTML(flowChain);
     if(!flowChain)h+=custBlock;
     if(rbComboEligible()){
       const sides=rbComboSides(),meal=rbMealCfg();
@@ -6203,8 +6515,14 @@ function rbAction(act,el){
       RB.mods=RB.mods.filter(m=>!grp.includes(m.component.id));
       if(!c.groupDefault)RB.mods.push({component:c});
       rbRender(true);return}
-    case"rbcbcust":{const opts=rbCustFor()||[];const i=RB.custom.findIndex(x=>x.name===el.dataset.n);
-      if(i>=0)RB.custom.splice(i,1);else{const o=opts.find(x=>x.name===el.dataset.n);if(o)RB.custom.push(o)}rbRender(true);return}
+    case"rbcbcust":{const opts=rbCustFor()||[];const base=opts.find(x=>x.name===el.dataset.n);if(!base)return;
+      const at=RB.custom.findIndex(x=>(x.base||x.name)===base.name);
+      const cur=at>=0?(RB.custom[at].amount||"Regular"):null;
+      const next=!cur?"Regular":base.amt?(cur==="Regular"?"Extra":cur==="Extra"?"Light":null):null; // Regular → Extra → Light → off
+      if(at>=0)RB.custom.splice(at,1);
+      if(base.one)RB.custom=RB.custom.filter(x=>x.sec!==base.sec); // one ice level, one sugar level, one doneness
+      if(next)RB.custom.push(next==="Regular"?base:rbCustAmt(base,next));
+      rbRender(true);return}
     case"rbcbextra":{const i=RB.extras.findIndex(e=>e.id===el.dataset.c);if(i>=0)RB.extras.splice(i,1);else{const c=R.components.find(x=>x.id===el.dataset.c);if(c)RB.extras.push(c)}rbRender(true);return}
     case"rbqtym":RB.qty=Math.max(1,RB.qty-1);rbRender(true);return;
     case"rblinep":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=Math.min(10,(it.qty||1)+1);rbRender(true);return}
