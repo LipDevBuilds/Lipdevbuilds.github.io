@@ -1187,7 +1187,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.15"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.17"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2955,6 +2955,20 @@ function rollNumbers(){
       el.textContent=pre+(from+(to-from)*e).toFixed(dec);
       if(u<1)requestAnimationFrame(step)};
     requestAnimationFrame(step)})}
+// The blue day travels to the day you picked: the new pill starts where the old one stood and slides home.
+let dsLastSel=null;
+function dsSlide(){
+  const cell=document.querySelector(".ds-cell.sel");if(!cell){dsLastSel=null;return}
+  const box=cell.getBoundingClientRect(),prev=dsLastSel;
+  dsLastSel={d:cell.dataset.d,x:box.left};
+  if(!prev||prev.d===dsLastSel.d||lfReduced())return;
+  const dx=prev.x-box.left;if(!dx||Math.abs(dx)>box.width*7)return; // a different week is a new strip, not a slide
+  const num=cell.querySelector(".ds-num");if(!num)return;
+  num.style.transition="none";num.style.transform=`translateX(${dx.toFixed(1)}px)`;
+  void num.offsetWidth; // commit the starting place before asking it to travel, or the two collapse into one frame and it blinks
+  num.style.transition="transform .34s cubic-bezier(.2,.8,.2,1)";num.style.transform="";
+  setTimeout(()=>{num.style.transition="";num.style.transform=""},380);
+}
 function lfRowState(id){ // phase classes for a row rendered mid-flight (re-render sync)
   if(!logAnim||logAnim.id!==id)return{cls:"",sty:""};const t=Date.now()-logAnim.t0,land=LF.lift+LF.arc;
   if(t<land)return{cls:" lf-hide",sty:""};
@@ -2976,7 +2990,7 @@ function mealSection(m){
     <button class="meal-h haptic" data-act="${n?"mealtoggle":"search"}" data-k="${key}" data-meal="${m}">
       <div class="mh-l">
         <div class="mh-t"><p class="mh-name">${MEAL_LABELS[m]}</p>${n?`<span class="mh-n tnum">${n}</span>`:""}</div>
-        ${n?`<p class="mh-sub tnum">${tc} cal · ${tp.toFixed(0)}P · ${tcb.toFixed(0)}C · ${tf.toFixed(0)}F</p>`:""}
+        ${n?`<p class="mh-sub tnum"><span data-roll="meal-${m}" data-rollv="${tc}">${tc}</span> cal · ${tp.toFixed(0)}P · ${tcb.toFixed(0)}C · ${tf.toFixed(0)}F</p>`:""}
       </div>
       ${n?`<span class="mh-chev${open?"":" closed"}">${IC_CHEVDOWN18}</span>`:`<span class="mh-plus">${IC_PLUS20}</span>`}
     </button>
@@ -2993,7 +3007,7 @@ function mealSection(m){
         <div class="mrow-tray"><button class="haptic" data-act="edup" data-id="${e.id}" aria-label="Duplicate">${IC_COPY15}</button><button class="haptic del" data-act="edel" data-id="${e.id}" aria-label="Delete">${IC_TRASH15}</button></div>
       </div>${bd?`<div class="mbd-w${bo?" open":""}" data-bid="${e.id}"><div class="mbd">${bd.map((l,i)=>`<div class="mbd-l${l.adj?" adj":""}"><p class="mbd-n">${esc(l.name)}</p><p class="mbd-m tnum">${macroLine(l.m)}${wtag((wp.find(x=>x.i===i)||{}).ml||0)}</p></div>`).join("")}</div></div>`:""}`}).join("")}</div>
       <div style="display:flex;align-items:stretch">
-        <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}">${IC_PLUS14} Add Food</button>
+        <button class="madd haptic" style="flex:1" data-act="search" data-meal="${m}" data-hold="voice" title="Hold to speak it">${IC_PLUS14} Add Food</button>
         <button class="madd haptic" style="flex:0 0 52px" data-act="tplsavemeal" data-meal="${m}" aria-label="Save as meal">${LUCIDE('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',2,15)}</button>
       </div>
     </div></div>`:""}
@@ -3061,7 +3075,22 @@ function closeSheet(){if(sheetEl){sheetEl.remove();sheetEl=null}if(vlRec){try{vl
 function openSheet(html){closeSheet();closePMenu();sheetEl=document.createElement("div");sheetEl.className="scrim";
   sheetEl.innerHTML=`<div class="sheet glass-sheet">${html}</div>`;
   sheetEl.addEventListener("click",e=>{if(e.target===sheetEl)closeSheet()});
-  document.body.appendChild(sheetEl)}
+  document.body.appendChild(sheetEl);sheetDrag(sheetEl.firstElementChild)}
+// A sheet follows your thumb down and lets go if you meant it. The drag only starts when whatever you are
+// touching is already scrolled to its top, so a long list still scrolls normally.
+function sheetDrag(sheet){
+  if(!sheet||lfReduced())return;
+  let y0=0,dy=0,live=false;
+  const scrollerAt=node=>{let el=node;while(el&&el!==sheet){if(el.scrollHeight>el.clientHeight+2&&/auto|scroll/.test(getComputedStyle(el).overflowY))return el;el=el.parentElement}return sheet};
+  sheet.addEventListener("touchstart",e=>{if(e.target.closest("input,textarea,select"))return;
+    const sc=scrollerAt(e.target);if(sc&&sc.scrollTop>0)return;
+    y0=e.touches[0].clientY;dy=0;live=true;sheet.style.transition="none"},{passive:true});
+  sheet.addEventListener("touchmove",e=>{if(!live)return;dy=Math.max(0,e.touches[0].clientY-y0);
+    sheet.style.transform=dy?`translateY(${dy.toFixed(1)}px)`:""},{passive:true});
+  sheet.addEventListener("touchend",()=>{if(!live)return;live=false;
+    sheet.style.transition="transform .3s cubic-bezier(.2,.8,.2,1)";
+    if(dy>90){sheet.style.transform="translateY(110%)";setTimeout(closeSheet,260)}else sheet.style.transform=""},{passive:true});
+}
 
 // ===== tap tooltips — every non-obvious indicator gets a ⓘ that explains itself =====
 // tipI(text) renders the chip; tapping it opens a bubble anchored to the chip,
@@ -8246,7 +8275,7 @@ function render(){
   if(PATH_OF[tab])history.replaceState(null,"","#"+PATH_OF[tab]);
   // MacroRing stroke-dashoffset animation (MacroRing.tsx:39-41): set final offset on a rAF after insert
   requestAnimationFrame(()=>document.querySelectorAll(".ring-anim").forEach(c=>c.setAttribute("stroke-dashoffset",c.dataset.finalOffset)));
-  rollNumbers();
+  rollNumbers();dsSlide();
   if(tabChanged&&!lfReduced()){const b=document.querySelector(".navbtn.on");if(b){b.classList.remove("pop");void b.offsetWidth;b.classList.add("pop")}}
   resetKeyboardGuard();
 }
@@ -8259,7 +8288,9 @@ window.addEventListener("hashchange",()=>{
 document.addEventListener("click",e=>{
   const el=e.target.closest("[data-act]");if(!el)return;
   const act=el.dataset.act;
-  if(act==="tab"){tab=el.dataset.t;render()}
+  if(act==="tab"){const t=el.dataset.t; // tapping the tab you are already on takes that page back to the top
+    if(t===tab){$("#view").scrollTo({top:0,behavior:lfReduced()?"auto":"smooth"});return}
+    tab=t;render()}
   else if(act==="selday"){const d=el.dataset.d,today=localDateStr();selDate=(d===selDate&&d!==today)?today:d;render()} // tapping the selected day again jumps back to today
   else if(act==="dsweek"){ // DayStrip.tsx:45-49 — jump ±7 days
     const d=new Date(selDate+'T12:00:00');d.setDate(d.getDate()+(+el.dataset.dir)*7);
@@ -8958,6 +8989,16 @@ $("#fab").querySelector('[data-act="fabmanual"]').innerHTML=LUCIDE(P_PENCIL,2.2,
   main.addEventListener("touchstart",down,{passive:true});main.addEventListener("touchend",up,{passive:true});main.addEventListener("touchmove",up,{passive:true});
   main.addEventListener("mousedown",down);main.addEventListener("mouseup",up);main.addEventListener("mouseleave",up);
   document.addEventListener("click",e=>{if(fab.classList.contains("open")&&!fab.contains(e.target))open(false)},true);
+})();
+// Hold-to-shortcut, one place for all of them: [data-hold] names what the long press does, and the click it
+// would otherwise have fired is swallowed.
+(function(){let t=null,fired=false,held=null;
+  const start=e=>{const b=e.target.closest&&e.target.closest("[data-hold]");if(!b)return;held=b;fired=false;
+    clearTimeout(t);t=setTimeout(()=>{fired=true;if(b.dataset.hold==="voice")openVoiceLog(b.dataset.meal||activeMeal)},450)};
+  const end=()=>clearTimeout(t);
+  document.addEventListener("touchstart",start,{passive:true});document.addEventListener("touchend",end,{passive:true});document.addEventListener("touchmove",end,{passive:true});
+  document.addEventListener("mousedown",start);document.addEventListener("mouseup",end);document.addEventListener("mouseleave",end);
+  document.addEventListener("click",e=>{if(fired&&held&&held.contains(e.target)){e.preventDefault();e.stopPropagation();fired=false}},true);
 })();
 function fabGo(how){ // "manual" = the search sheet; "voice" = say what you ate. From Home the log lands on the Food tab, on the day Home had selected.
   $("#fab").classList.remove("open");
