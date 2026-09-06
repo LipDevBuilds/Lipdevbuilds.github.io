@@ -1174,7 +1174,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.9"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-06.10"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -4559,7 +4559,7 @@ const RB_BRAND={
   tacobell:{soda:"pepsi",cust:{tacos:"taco",burritos:"taco",specialties:"taco",breakfast:"breakfast"},combo:"Make it a Combo",short:"Combo",mains:["tacos","burritos","specialties"],side:"sides"},
   kfc:{soda:"pepsi",cust:{sandwiches:"chicken"},combo:"Make it a Combo",short:"Combo",mains:["chicken","sandwiches"],side:"sides"},
   popeyes:{cust:{sandwiches:"chicken"},combo:"Make it a Combo",short:"Combo",mains:["chicken","sandwiches"],side:"sides"},
-  culvers:{soda:"pepsi",cust:{burgers:"burger",sandwiches:"chicken"},combo:"Make it a Basket",short:"Basket",mains:["burgers","sandwiches","seafood","dinners"],side:"sides"},
+  culvers:{soda:"pepsi",cust:{burgers:"burger",sandwiches:"chicken"},custPlus:[{name:"Add Fried Pickles",macros:{calories:190,protein:2,carbs:16,fat:12},est:true}],combo:"Make it a Basket",short:"Basket",mains:["burgers","sandwiches","seafood","dinners"],side:"sides"},
   arbys:{soda:"pepsi",cust:{"roast-beef":"beef",chicken:"chicken"},combo:"Make it a Meal",short:"Meal",mains:["roast-beef","chicken"],side:"sides",drink:"shakes"},
   dairyqueen:{soda:"pepsi",cust:{burgers:"burger",chicken:"chicken"},combo:"Make it a Combo",short:"Combo",mains:["burgers","chicken"],side:"sides"},
   whitecastle:{cust:{sliders:"burger",breakfast:"breakfast"},combo:"Make it a Combo",short:"Combo",mains:["sliders","breakfast"],side:"sides"},
@@ -5056,6 +5056,7 @@ const RB_FIX={
       {n:"Wisconsin Cheese Curds",c:"sides",sz:[["Regular",510,20,51,25],["Large",980,34,91,54]],def:"Regular"},
       {n:"Onion Rings",c:"sides",sz:[["Regular",400,6,44,22],["Large",800,12,88,44]],def:"Regular"},
       {n:"Vanilla Concrete Mixer (Short)",c:"custard",m:[680,12,67,40]},
+      {n:"Fried Pickles",c:"sides",sz:[["Regular",380,5,41,21],["Large",760,10,82,42]],def:"Regular",est:true,after:"Onion Rings"},
       // the rest of the drink board: float, coffee, cocoa, milks and juices (est where Culver's does not publish)
       {n:"Root Beer Float (Regular)",c:"drinks",m:[520,8,84,16],est:true},{n:"Coffee",c:"drinks",m:[5,0,0,0]},{n:"Hot Chocolate",c:"drinks",m:[220,4,36,7],est:true},
       {n:"1% Milk (8 oz)",c:"drinks",m:[100,8,12,2]},{n:"Chocolate Milk (8 oz)",c:"drinks",m:[160,8,26,3],est:true},{n:"Orange Juice (8 oz)",c:"drinks",m:[110,2,26,0]},{n:"Apple Juice (8 oz)",c:"drinks",m:[120,0,29,0]}]},
@@ -5106,7 +5107,11 @@ const RB_FIX={
   const M=a=>({calories:a[0],protein:a[1],carbs:a[2],fat:a[3]});
   Object.entries(RB_FIX).forEach(([rid,fx])=>RESTAURANTS_DB.filter(r=>r.id===rid).forEach(r=>{
     const find=n=>r.components.find(c=>c.name===n);
-    if(fx.drop){const dz=new Set(fx.drop);r.components=r.components.filter(c=>!dz.has(c.name))}
+    const anchor={}; // lowercase base name -> {after: id of the row preceding the dropped ones (null = first), cat}
+    if(fx.drop){const dz=new Set(fx.drop);
+      r.components.forEach((c,i)=>{if(!dz.has(c.name))return;const b=c.name.replace(RB_SIZE_SUFFIX,"").trim().toLowerCase();if(b in anchor)return;
+        let j=i-1;while(j>=0&&dz.has(r.components[j].name))j--;anchor[b]={after:j>=0?r.components[j].id:null,cat:c.category}});
+      r.components=r.components.filter(c=>!dz.has(c.name))}
     Object.entries(fx.addCats||{}).forEach(([c,label])=>{r.categoryConfig=r.categoryConfig||{};if(!r.categories.includes(c))r.categories.push(c);r.categoryConfig[c]=Object.assign({name:c,selectMode:"multi"},r.categoryConfig[c]||{},{displayName:label})});
     Object.entries(fx.catNames||{}).forEach(([c,label])=>{if(r.categoryConfig&&r.categoryConfig[c])r.categoryConfig[c].displayName=label});
     Object.entries(fx.ren||{}).forEach(([a,b])=>{const c=find(a);if(c)c.name=b});
@@ -5116,7 +5121,17 @@ const RB_FIX={
     (fx.add||[]).forEach((a,i)=>{if(find(a.n))return;
       const c={id:`fx-${rid}-${rbSlug(a.n)}`,name:a.n,category:a.c,macros:M(a.m||a.sz[a.sz.length-1].slice(1))};
       if(a.sz){c.sizeVariants=a.sz.map(z=>({sizeId:rbSlug(z[0]),sizeName:z[0],macros:M(z.slice(1))}));c.defaultSizeId=rbSlug(a.def||a.sz[a.sz.length-1][0]);c.macros=c.sizeVariants.find(v=>v.sizeId===c.defaultSizeId).macros}
-      if(a.est)c.est=true;r.components.push(c)});
+      if(a.est)c.est=true;
+      const key=a.n.toLowerCase();let an=anchor[key];
+      if(!an){ // a replacement the fix layer also renames ("Fries (Small)" → "French Fries") anchors to the rows it replaced
+        const words=new Set(key.split(/\s+/).filter(w=>w.length>2));let bs=0;
+        Object.entries(anchor).forEach(([k,v])=>{if(v.cat!==a.c)return;const sc=k.split(/\s+/).filter(w=>w.length>2&&words.has(w)).length;if(sc>bs){bs=sc;an=v}});
+        if(!bs)an=null;
+      }
+      let at=-1;
+      if(an)at=an.after===null?0:r.components.findIndex(x=>x.id===an.after)+1;
+      else if(a.after){const k=r.components.findIndex(x=>x.name===a.after);if(k>=0)at=k+1}
+      if(at>=0){r.components.splice(at,0,c);if(an)an.after=c.id}else r.components.push(c)}); // keep several replacements in their own order
     if(!r.categories.includes("drinks")&&(fx.add||[]).some(a=>a.c==="drinks"))r.categories.push("drinks");
     if(fx.ladder){const L=fx.ladder;
       r.components.forEach(c=>{if(c.isModifier||c.sizeVariants||!L.cats.includes(c.category)||!L.match.test(c.name))return;
@@ -5825,7 +5840,7 @@ function rbISBodyHTML(){
     const items=RB.subcat?catItems.filter(c=>c.subcategory===RB.subcat):catItems;
     h=`<div class="rb-sy15" style="padding:16px">
       ${RB.subcat?`<button class="rb-back haptic" data-act="rbsubback" style="display:flex;align-items:center;gap:4px;margin-bottom:8px">${IC_CHEVL14} ${esc((cfg[RB.cat]&&cfg[RB.cat].displayName)||RB.cat)}</button><h3 style="font-size:16px;font-weight:700;margin:0;line-height:24px">${esc(RB.subcat)}</h3>`:""}
-      ${items.map(comp=>`<button class="rb-srow it haptic" data-act="rbitem" data-c="${comp.id}"><span style="text-align:left;flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:500;line-height:20px">${esc(comp.name)}</span>${comp.sizeVariants?`<span style="display:block;font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${comp.sizeVariants.map(sv=>esc(sv.sizeName)).join(" · ")}</span>`:""}</span><span style="text-align:right;flex-shrink:0;margin-left:12px"><span style="display:block;font-size:12px;font-weight:600;line-height:16px">${comp.macros.calories} cal</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground))">${comp.macros.protein}P · ${comp.macros.carbs}C · ${comp.macros.fat}F</span></span></button>`).join("")}
+      ${items.map(comp=>`<button class="rb-srow it haptic" data-act="rbitem" data-c="${comp.id}"><span style="text-align:left;flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:500;line-height:20px">${esc(comp.name)}${comp.est?'<span class="rb-tag">est.</span>':""}</span>${comp.sizeVariants?`<span style="display:block;font-size:10px;color:hsl(var(--muted-foreground));margin-top:2px">${comp.sizeVariants.map(sv=>esc(sv.sizeName)).join(" · ")}</span>`:""}</span><span style="text-align:right;flex-shrink:0;margin-left:12px"><span style="display:block;font-size:12px;font-weight:600;line-height:16px">${comp.macros.calories} cal</span><span style="display:block;font-size:10px;color:hsl(var(--muted-foreground))">${comp.macros.protein}P · ${comp.macros.carbs}C · ${comp.macros.fat}F</span></span></button>`).join("")}
       ${items.length===0?`<p style="font-size:14px;color:hsl(var(--muted-foreground));text-align:center;padding:32px 0;margin:0;line-height:20px">No items in this category</p>`:""}
       ${RB.xform?rbxFormHTML():`<button class="haptic" data-act="rbxopen" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:16px;border:1px dashed hsl(var(--border)/.5);background:none;font-size:13px;color:hsl(var(--muted-foreground))">${IC_PLUS16} New or seasonal item? Add it to this menu</button>`}
       ${(rbExtra[RB.restaurant.id]||[]).some(x=>x.category===RB.cat)?`<p style="font-size:10px;margin:8px 0 0;line-height:14px;color:hsl(var(--muted-foreground))">Your added items appear above like any other — open one to edit or remove it.${(rbExtra[RB.restaurant.id]||[]).some(x=>x.ai&&x.category===RB.cat)?" AI macros are estimates; check against posted values when you can.":""}</p>`:""}
