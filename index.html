@@ -1213,7 +1213,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-08.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-08.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -5174,6 +5174,8 @@ function rbModSecs(rid,cats){ // the chain's catalogue for a set of categories, 
   return Object.keys(secs).length?secs:null}
 // ---- the rest of every board: salads with their protein swap, dinners with their sides, soups, seafood, fries ----
 const RB_FRYPREP=[["Extra Crispy",0,0,0,0],["No Salt",0,0,0,0],["Light Salt",0,0,0,0]];
+const RB_DRESS_ANY=[["Ranch",110,0,1,12,"a"],["Bleu Cheese",150,1,2,16,"a"],["Honey Mustard",130,0,10,10,"a"],["Caesar",130,1,1,14,"a"],["Balsamic Vinaigrette",110,0,4,10,"a"]];
+const RB_COLDSIDE_RX=/salad|fruit cup|apple(sauce| slice)|yogurt|coleslaw|\bslaw\b|cottage cheese|green beans|steamed broccoli|side of veg/i;
 const RB_DRESS_SIDE=[["Dressing on the Side",0,0,0,0],["No Dressing",-150,-1,-4,-15],["Extra Dressing",150,1,4,15]];
 Object.assign(RB_MODS,{
   culvers:Object.assign(RB_MODS.culvers||{},{
@@ -5402,6 +5404,19 @@ function rbModRows(){ // every section this item can be changed in, in app order
   const push=(label,rows)=>{if(!rows||!rows.length)return;(secs[label]=secs[label]||[]).push(...rows)};
   const own=rbModSecs(R.id,[cat]);
   if(own)Object.entries(own).forEach(([label,rows])=>push(label,rows));
+  // A salad on the sides board is a salad, not a fry. Culver's Garden Side Salad was offering
+  // Extra Crispy, No Salt, cheese sauce, ketchup and gravy — none of which Culver's puts on it —
+  // and no dressing at all. A cold side takes the chain's dressings and its dressing prep.
+  if(/^sides?$/i.test(cat)&&RB_COLDSIDE_RX.test(it.name)){
+    delete secs.Prep;delete secs.Sauces;                       // applesauce takes no ketchup and no fryer
+    if(/green beans|broccoli/i.test(it.name))push("Add",[["Butter",30,0,0,3,"a"],["No Butter",-30,0,0,-3]]); // these go out buttered
+    if(/salad/i.test(it.name)){                                 // a side salad does take the chain's dressings
+      const sal=rbModSecs(R.id,["salads"]);
+      if(sal&&sal.Sauces)secs.Sauces=sal.Sauces.slice();
+      else push("Sauces",RB_DRESS_ANY);            // a chain with no salad board still hands you a dressing
+      if(sal&&sal.Prep)secs.Prep=sal.Prep.slice();else push("Prep",RB_DRESS_SIDE);
+    }
+  }
   const kind=SW_CAT_KIND[cat]||"";
   const poured=/^(icedcoffee|icedmilk|coffee|milk|soda|juice|water|smoothie|alcohol)$/.test(kind)||/drink|beverage/i.test(cat);
   const cold=/^(icedcoffee|icedmilk|soda|juice|water|smoothie)$/.test(kind)||RB_COLD_RX.test(it.name)||RB_COLD_RX.test(cat);
