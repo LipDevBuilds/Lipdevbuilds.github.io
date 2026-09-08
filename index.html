@@ -1097,7 +1097,7 @@ async function sbToken(){
     throw e;
   }
 }
-async function sbRest(method,pathq,body,prefer){
+async function sbRest(method,pathq,body,prefer,retried){
   const tok=await sbToken();
   const payload=body===undefined?undefined:JSON.stringify(body);
   // keepalive lets a push started as the app is being closed/suspended still complete
@@ -1106,6 +1106,8 @@ async function sbRest(method,pathq,body,prefer){
     headers:Object.assign({"Content-Type":"application/json",apikey:sbKey(),Authorization:"Bearer "+tok},
       prefer?{Prefer:prefer}:{}),
     body:payload});
+  if(r.status===401&&!retried&&sbSess){ // the token looked live by our clock but the server rejected it
+    sbSess.expires_at=0;save0("sb_session",sbSess);return sbRest(method,pathq,body,prefer,true)}
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("Sync "+r.status+(t?": "+t.slice(0,120):""))}
   if(r.status===204)return null;
   return r.json().catch(()=>null);
@@ -1175,12 +1177,20 @@ async function sbSync(reason){
     }
     const uidRow=r=>Object.assign({user_id:uid},r); // push every table as isolated upserts — one failure never blocks the rest
     const fails=[];
-    const attempt=async(label,fn)=>{try{await fn()}catch(e){fails.push(label)}};
-    await attempt("food",()=>foodLog.length?sbRest("POST","food_log?on_conflict=id",foodLog.map(e=>uidRow({id:e.id,food_id:e.foodId,name:e.name,servings:e.sv,serving_unit:e.servingUnit,macros:e.macros,meal:e.meal,date:e.date,timestamp:e.ts})),"resolution=merge-duplicates"):null);
-    await attempt("weight",()=>weights.length?sbRest("POST","weight_log?on_conflict=user_id,date",weights.map(w=>uidRow({date:w.date,weight:w.weight})),"resolution=merge-duplicates"):null);
-    await attempt("workouts",()=>workouts.length?sbRest("POST","workout_log?on_conflict=id",workouts.map(w=>uidRow({id:w.id,date:w.date,name:w.name,start_time:w.startTime,end_time:w.endTime,duration:w.duration,exercises:w.exercises,total_calories_burned:w.totalCaloriesBurned,category:w.category,muscle_groups:w.muscleGroups,notes:w.notes||null})),"resolution=merge-duplicates"):null);
-    await attempt("calendar",()=>events.length?sbRest("POST","calendar_events?on_conflict=id",events.map(e=>uidRow({id:e.id,type:e.type,title:e.title,description:e.description||null,start_date:e.startDate,end_date:e.endDate||null,color:e.color||null,macro_targets:e.macroTargets||null})),"resolution=merge-duplicates"):null);
-    await attempt("templates",()=>mealTemplates.length?sbRest("POST","meal_templates?on_conflict=id",mealTemplates.map(t=>uidRow({id:t.id,name:t.name,entries:t.entries})),"resolution=merge-duplicates"):null);
+    // The reason was being thrown away, so "Sync problem" could never say what broke or be acted on.
+    const attempt=async(label,fn)=>{try{await fn()}catch(e){fails.push(label+" ("+String(e&&e.message||e).replace(/^Sync /,"").slice(0,60)+")")}};
+    // A whole table in one POST grows without bound; past the server's body limit it fails on every
+    // attempt forever. 200 rows a call keeps each request small and lets most of a table through.
+    const CHUNK=200;
+    const upsert=async(pathq,rows,prefer)=>{let bad=0,why="";
+      for(let i=0;i<rows.length;i+=CHUNK){try{await sbRest("POST",pathq,rows.slice(i,i+CHUNK),prefer)}
+        catch(e){bad++;why=why||String(e&&e.message||e)}} // a bad chunk must not strand the ones after it
+      if(bad)throw new Error(why+" ["+bad+" of "+Math.ceil(rows.length/CHUNK)+" batches]")};
+    await attempt("food",()=>foodLog.length?upsert("food_log?on_conflict=id",foodLog.map(e=>uidRow({id:e.id,food_id:e.foodId,name:e.name,servings:e.sv,serving_unit:e.servingUnit,macros:e.macros,meal:e.meal,date:e.date,timestamp:e.ts})),"resolution=merge-duplicates"):null);
+    await attempt("weight",()=>weights.length?upsert("weight_log?on_conflict=user_id,date",weights.map(w=>uidRow({date:w.date,weight:w.weight})),"resolution=merge-duplicates"):null);
+    await attempt("workouts",()=>workouts.length?upsert("workout_log?on_conflict=id",workouts.map(w=>uidRow({id:w.id,date:w.date,name:w.name,start_time:w.startTime,end_time:w.endTime,duration:w.duration,exercises:w.exercises,total_calories_burned:w.totalCaloriesBurned,category:w.category,muscle_groups:w.muscleGroups,notes:w.notes||null})),"resolution=merge-duplicates"):null);
+    await attempt("calendar",()=>events.length?upsert("calendar_events?on_conflict=id",events.map(e=>uidRow({id:e.id,type:e.type,title:e.title,description:e.description||null,start_date:e.startDate,end_date:e.endDate||null,color:e.color||null,macro_targets:e.macroTargets||null})),"resolution=merge-duplicates"):null);
+    await attempt("templates",()=>mealTemplates.length?upsert("meal_templates?on_conflict=id",mealTemplates.map(t=>uidRow({id:t.id,name:t.name,entries:t.entries})),"resolution=merge-duplicates"):null);
     await attempt("settings",()=>{const jsonKeys={};for(const k of SYNC_JSON_KEYS)jsonKeys[k]=load(k,null);
       return sbRest("POST","user_settings?on_conflict=user_id",[{user_id:uid,settings:{jsonKeys,v:1}}],"resolution=merge-duplicates")});
     if(fails.length)sbSetSync("error","Didn't sync: "+fails.join(", ")+" — will retry on next save or Sync now");
@@ -1203,7 +1213,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-06.31"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-08.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
