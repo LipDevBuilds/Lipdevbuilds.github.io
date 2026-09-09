@@ -228,7 +228,7 @@ select.input{appearance:none;-webkit-appearance:none}
 .lf-ring.burn{border-color:hsl(var(--warning)/.6)}
 .lf-gain{position:fixed;z-index:61;pointer-events:none;font-size:12px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;color:hsl(var(--warning));text-shadow:0 0 10px hsl(var(--warning)/.55);animation:lf-gain 1.15s cubic-bezier(.2,.8,.2,1) forwards}
 @keyframes lf-gain{0%{opacity:0;transform:translateY(6px) scale(.9)}22%{opacity:1;transform:translateY(-6px) scale(1)}100%{opacity:0;transform:translateY(-30px) scale(1)}}
-.cal-pb{position:absolute;top:0;bottom:0;overflow:hidden;background:hsl(var(--warning)/.28)}
+.cal-pb{position:absolute;top:0;bottom:0;overflow:hidden;background:hsl(var(--warning)/.38);background-image:repeating-linear-gradient(115deg,hsl(var(--warning)/.30) 0 3px,transparent 3px 7px);box-shadow:inset 2px 0 0 hsl(var(--warning)/.95)} /* the inset edge is where your target sat BEFORE the workout */
 .cal-pb.fire{animation:pb-grow .95s cubic-bezier(.2,.8,.2,1) both;transform-origin:left center}
 @keyframes pb-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .cal-pb>i{display:none}
@@ -1213,7 +1213,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-09.8"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-09.9"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1773,20 +1773,26 @@ function dayTargetsFor(profile, restDays /* array of date strings */, workouts, 
   }
   return { calories: profile.targetCalories, protein: profile.targetProtein, carbs: profile.targetCarbs, fat: profile.targetFat };
 }
-// ===== Activity payback (opt-in, off by default; profile.burnPayback) =====
+// ===== Activity payback (ON unless you turn it off; profile.burnPayback) =====
 // Adds back a GOAL-AWARE fraction of the day's logged workout burn to that day's
-// calorie target — deliberately discounted, because machine consoles and MET math
-// run hot and include resting burn: cut/recomp 50%, maintain/bulk 75%. Unverified
-// quick-log estimates count at 85% first (same grain-of-salt as the coach), and
-// the payback is capped per day so a typo'd workout can't blow up the target.
+// calorie target, so what you burned shows up on the home bar as calories you can
+// actually eat. It is deliberately discounted: cut/recomp 50%, maintain/bulk 75%.
+// The burn feeding it is already NET of resting metabolism (see BURN_CFG.MET_REST),
+// so the discount is now covering estimator error alone rather than double-counting
+// rest — that is why the rates stay conservative even though the input got honest.
+// Unverified estimates count at 85% first (same grain-of-salt as the coach), and the
+// payback is capped per day so a typo'd workout can't blow up the target.
 // On workout days it SUPERSEDES the flat Calorie Shifting training-day boost
 // (never both); the rest-day reduction still applies on no-workout days.
 const BURN_PAYBACK_RATE={cut:0.5,recomp:0.5,maintain:0.75,bulk:0.75}; // fraction of discounted burn returned
 const BURN_PAYBACK_CAP=600;                                           // cal/day ceiling
+// Default ON: a burn you can't see is a burn the app may as well not have logged. Only an
+// explicit `false`/"off" (the Settings toggle writes one) turns it back into a display-only number.
+function paybackOn(){return !(profile.burnPayback===false||profile.burnPayback==="off")}
 function dayWorkoutBurn(date){return workouts.filter(w=>w.date===date)
   .reduce((s,w)=>s+(w.aiEstimated?Math.round(w.totalCaloriesBurned*0.85):w.totalCaloriesBurned),0)}
 function burnPayback(date){
-  if(!(profile.burnPayback===true||profile.burnPayback==="on"))return 0;
+  if(!paybackOn())return 0;
   const rate=BURN_PAYBACK_RATE[profile.goal]||0.5;
   return Math.min(BURN_PAYBACK_CAP,Math.round(dayWorkoutBurn(date)*rate));
 }
@@ -2307,6 +2313,7 @@ function dayStrip(opts){
 function calorieProgress(current,target,opts){
   opts=opts||{};
   const burn=Math.max(0,Math.round(opts.burn||0)),goal=opts.goal||"maintain",pb=Math.max(0,Math.round(opts.pb||0));
+  const wo=Math.max(0,Math.round(opts.wo||0)); // today's logged workout burn, before the payback discount
   const percentage=(current/target)*100, isOver=current>target, overBy=current-target;
   const hasBurn=burn>0&&Math.abs(burn-target)>target*0.03;
   const gaugeMax=Math.max(target,burn,current)*1.06;
@@ -2317,7 +2324,9 @@ function calorieProgress(current,target,opts){
   let bar=`<div style="position:relative;height:12px;border-radius:9999px;margin:2px 0 22px" class="bg-muted">`;
   if(hasBurn){const z0=X(Math.min(target,burn)),z1=X(Math.max(target,burn)); // leeway (cut) / gaining zone (bulk)
     bar+=`<div style="position:absolute;top:0;bottom:0;left:${z0}%;width:${(z1-z0).toFixed(2)}%;background:hsl(var(--success)/.16);border-radius:2px"></div>`}
-  if(pb>0)bar+=`<div class="cal-pb${burnAnim?" fire":""}" style="left:${X(base)}%;width:${(X(target)-X(base)).toFixed(2)}%"><i></i></div>`;
+  if(pb>0){bar+=`<div class="cal-pb${burnAnim?" fire":""}" style="left:${X(base)}%;width:${(X(target)-X(base)).toFixed(2)}%"><i></i></div>`;
+    // name it on the bar: the slice is calories you EARNED, and it sits between the old target and the new one
+    if(X(target)-X(base)>7)bar+=`<div style="position:absolute;bottom:100%;margin-bottom:3px;left:${((X(base)+X(target))/2).toFixed(2)}%;transform:translateX(-50%);font-size:8px;font-weight:700;white-space:nowrap" class="text-warning">+${pb}</div>`;} // the header already says "earned"; here it just needs a number
   bar+=`<div class="bar-anim bg-primary" style="position:absolute;top:0;bottom:0;left:0;border-radius:9999px 0 0 9999px;width:${X(capA)}%"></div>`;
   if(current>target)bar+=`<div class="bg-warning" style="position:absolute;top:0;bottom:0;left:${X(target)}%;width:${(X(capB)-X(target)).toFixed(2)}%"></div>`;
   if(current>Math.max(target,burn))bar+=`<div style="position:absolute;top:0;bottom:0;left:${X(Math.max(target,burn))}%;width:${(X(current)-X(Math.max(target,burn))).toFixed(2)}%;background:hsl(var(--destructive))"></div>`;
@@ -2354,10 +2363,12 @@ function calorieProgress(current,target,opts){
       <div style="text-align:right">
         <p style="font-size:11px;margin:0 0 2px" class="text-muted-foreground">${isOver?'Over by':'Remaining'}</p>
         <p style="font-size:24px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:36px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="${isOver?'text-over':'text-primary'}" data-roll="calleft" data-rollp="${isOver?"+":""}" data-rollv="${isOver?Math.round(overBy):Math.round(Math.max(0,target-current))}">${isOver?`+${Math.round(overBy)}`:Math.round(Math.max(0,target-current))}</p>
+        ${pb>0?`<p style="font-size:11px;font-weight:700;margin:2px 0 0;line-height:14px" class="text-warning" data-roll="calearn" data-rollp="+" data-rollv="${pb}">+${pb} earned</p>`
+          :wo>0?`<p style="font-size:10px;font-weight:600;margin:2px 0 0;line-height:14px" class="text-muted-foreground">${wo} burned · not added</p>`:""}
       </div>
     </div>
     ${bar}
-    <p style="font-size:11px;margin:6px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("You earned extra calories from today's workouts, but only a discounted share is added back — machine burn readouts run high, and eating back every burned calorie usually stalls the plan. The discount depends on your goal (stricter on a cut).")}`:""}</p>
+    <p style="font-size:11px;margin:6px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("You earned extra calories from today's workouts, but only a discounted share is added back — machine burn readouts run high, and eating back every burned calorie usually stalls the plan. The discount depends on your goal (stricter on a cut).")}`:wo>0?` · ${wo} cal burned today, not added${tipI("Adding workout burn to your daily target is switched off in Settings → Activity, so today's session shows as a number but does not widen what you can eat.")}`:""}</p>
     ${lee?`<p style="font-size:11px;margin:4px 0 0;font-weight:500;letter-spacing:-.025em" class="${leeCls}">${lee}</p>`:""}
   </div>`;
 }
@@ -2754,7 +2765,7 @@ function homePage(){
       <p class="apple-section" style="margin:0">Nutrition</p>
       <button data-act="viewmode" class="haptic text-primary" style="font-size:12px;font-weight:600;padding:4px 8px;margin:-4px;background:none;border:0;line-height:18px">${viewMode==='consumed'?'Remaining':'Consumed'}</button>
     </div>
-    ${calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday})}
+    ${calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday,wo:dayWorkoutBurn(selDate)})}
     ${shiftOn&&targets.calories!==baseCals&&!pbToday?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
     ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
@@ -7702,48 +7713,181 @@ function parseWorkoutLocal(notes,elapsedSeconds){
     totalSets,totalVolume,duration:formatTime(elapsedSeconds),summary};
 }
 
-// ===== Quick-log expenditure estimator =====
-// MET-based (kcal = MET × kg × hours), personalized three ways: the user's current
-// trended body weight; a lean-mass factor when body fat is known (MET tables assume
-// ~20% BF); and the user's measured metabolism (adaptive TDEE ÷ formula TDEE, applied
-// only at medium/high confidence). A per-activity calibration ratio learned from the
-// user's own corrections is applied last. Every factor is clamped: gym-console readouts
-// and MET tables are both routinely ±100+ cal, so unverified estimates also get a
-// grain-of-salt discount where they feed the coach (see workoutCalsBurnedPerDay).
-const BURN_ACTS=[
-  {key:"bike",rx:/stationary bike|spin\b|cycling|\bcycle\b|\bbike\b|peloton|airdyne|assault bike/i,met:6.8,label:"Cycling",
-    cues:[[/(?:gear|level|resistance)\s*(\d+)/i,n=>n<=4?4.8:n<=8?6.8:n<=12?8.5:10.5],[/\b(?:easy|light|casual)\b/i,()=>4.8],[/\b(?:hard|intense|sprint|hiit)\b/i,()=>9.5]]},
-  {key:"run",rx:/\brun(?:ning)?\b|\bjog|treadmill|\bsprints?\b/i,met:8.8,label:"Running",
-    cues:[[/(\d+(?:\.\d+)?)\s*mph/i,n=>Math.max(4.5,Math.min(14,n*1.55))],[/\b(?:easy|light)\b/i,()=>7],[/\b(?:hard|intense|tempo)\b/i,()=>11]]},
-  {key:"walk",rx:/\bwalk(?:ing)?\b/i,met:3.4,label:"Walking",cues:[[/incline|hill|uphill/i,()=>5.2],[/\b(?:brisk|fast)\b/i,()=>4.3]]},
-  {key:"row",rx:/\brow(?:ing|er)?\b|\berg\b/i,met:7,label:"Rowing",cues:[[/\b(?:hard|intense)\b/i,()=>8.5]]},
-  {key:"elliptical",rx:/elliptical/i,met:5.5,label:"Elliptical",cues:[[/(?:level|resistance)\s*(\d+)/i,n=>n<=5?5:n<=10?6.3:7.5]]},
-  {key:"stairs",rx:/stair|stepmill|step mill|stairmaster/i,met:9,label:"Stairs"},
-  {key:"swim",rx:/\bswim|\blaps\b/i,met:6.5,label:"Swimming"},
-  {key:"hiit",rx:/\bhiit\b|crossfit|circuit|metcon/i,met:8,label:"HIIT"},
-  {key:"jumprope",rx:/jump ?rope|skipping/i,met:11,label:"Jump Rope"},
-  {key:"hike",rx:/\bhik(?:e|ing)\b|\bruck/i,met:6,label:"Hiking"},
-  {key:"sport",rx:/basketball|soccer|tennis|boxing|pickleball|volleyball|football/i,met:7,label:"Sport"},
-  {key:"yoga",rx:/yoga|stretch|pilates|mobility/i,met:2.8,label:"Yoga / Mobility"},
-  {key:"lift",rx:/\blift|weights?\b|strength|bench|squat|deadlift|press\b|curl|\bgym\b/i,met:4.2,label:"Strength",cues:[[/\b(?:heavy|intense|superset)\b/i,()=>5.5]]},
-];
-function estimateBurn(text,minutes){
-  const act=BURN_ACTS.find(a=>a.rx.test(text))||{key:"general",met:5,label:"Workout"};
-  let met=act.met;
-  (act.cues||[]).forEach(([rx,f])=>{const m=text.match(rx);if(m)met=f(m[1]!=null?+m[1]:0)});
+// Activity table: MET is the table value for a middling effort; `cues` read effort out of the
+// user's own words (gear, pace, "hard"), and `epoc` picks the afterburn class for the activity.
+// ===== the expenditure model =====
+// One set of named, documented constants drives BOTH estimators (quick log and tracked session).
+// Units: kcal, kg, minutes, metres, joules, seconds. A MET is kcal per kg of body mass per hour.
+// Tune these numbers — never bury a new one in the logic below.
+const BURN_CFG={
+  MET_REST:1.0,          // quiet sitting. Compendium METs are GROSS, so this is subtracted: you only
+                         // earn the energy spent ABOVE doing nothing, which is what "extra to eat" means.
+  EFF_MECH:0.22,         // gross mechanical efficiency of lifting (0.18-0.26 measured) — metabolic cost = work / this
+  ROM_M:0.45,            // mean bar travel per rep, metres (compounds ~0.5, isolation ~0.35)
+  ECC_ADD:0.35,          // the eccentric adds ~35% of the concentric cost again (cheaper per newton-metre)
+  G:9.80665,             // m/s^2
+  J_PER_KCAL:4184,
+  LIFT_MET_SPARSE:3.0,   // session tempo floor: long rests, about one set every four minutes
+  LIFT_MET_DENSE:6.0,    // circuit / superset tempo, about one set a minute
+  DENSITY_SPARSE:0.25,   // sets per minute that maps to LIFT_MET_SPARSE
+  DENSITY_DENSE:1.0,     // sets per minute that maps to LIFT_MET_DENSE
+  DENSITY_MAX:1.5,       // no one performs working sets faster than this — above it the CLOCK is wrong,
+                         // so the duration is floored at sets/DENSITY_MAX rather than the burn collapsing
+  WORK_MET_CAP:3.0,      // ceiling on the external-work surcharge, in METs
+  EPOC:{lift:0.07,hiit:0.10,steady:0.03}, // afterburn, as a fraction of the session's net cost
+  LEAN_REF_BF:20,        // MET tables are calibrated on roughly 20% body fat
+  LEAN_CLAMP:[0.90,1.10],
+  META_CLAMP:[0.85,1.15],// personal metabolism multiplier = adaptive TDEE / formula TDEE
+  CAL_CLAMP:[0.50,1.60], // learned per-activity calibration
+  HR_MIN:80,HR_MAX:210,  // plausible average-HR window for the heart-rate override
+  HR_REST:65,            // resting heart rate assumed when the user has not measured one, bpm
+  HRMAX_TANAKA:[208,0.7],// Tanaka et al. (2001): HRmax = 208 - 0.7 x age. Beats 220-age at every age.
+  VO2MAX_REF:{male:42,female:36}, // ml O2 per kg per min for an average 30-year-old
+  VO2MAX_DECLINE:0.35,   // ml/kg/min lost per year past 30 (about 8-10% a decade)
+  VO2_REST:3.5,          // ml/kg/min — the definition of one MET
+  MIN_PER_MILE:[4,25],   // plausible pace window, min/mile — outside it the number was not a pace
+};
+// Body and metabolism factors, shared so both estimators personalise a burn identically.
+function burnFactors(){
   const tr=trended();
   const wRaw=(tr.length?tr[tr.length-1].weight:0)||+profile.startWeight||165;
   const kg=profile.weightUnit==="kg"?wRaw:wRaw*0.45359;
   const bf=+profile.bodyFatEstimate||0;
-  const leanF=bf?Math.min(1.1,Math.max(0.9,(1-bf/100)/0.8)):1;
+  const LC=BURN_CFG.LEAN_CLAMP;
+  const leanF=bf?Math.min(LC[1],Math.max(LC[0],(1-bf/100)/(1-BURN_CFG.LEAN_REF_BF/100))):1;
   let metaF=1;
-  try{const ex=expenditure(),f=calculateInitialTDEE(engineProfile());
-    if(ex.confidence!=="low"&&f>0)metaF=Math.min(1.15,Math.max(0.85,ex.tdee/f));}catch(e){}
-  const raw=Math.max(1,Math.round(met*kg*(minutes/60)*leanF*metaF));
-  const c=burnCal[act.key];
-  const calF=c&&c.n>=1?Math.min(1.6,Math.max(0.5,c.r)):1;
+  try{const ex=expenditure(),f=calculateInitialTDEE(engineProfile()),MC=BURN_CFG.META_CLAMP;
+    if(ex.confidence!=="low"&&f>0)metaF=Math.min(MC[1],Math.max(MC[0],ex.tdee/f));}catch(e){}
+  return{kg,leanF,metaF};
+}
+// NET kcal for `minutes` held at `met`: gross MET cost minus the resting cost of the same minutes.
+function burnNet(met,minutes,F){
+  return Math.max(0,(met-BURN_CFG.MET_REST)*F.kg*(minutes/60)*F.leanF*F.metaF);
+}
+// A measured average heart rate beats any table lookup, so when the user tells us one it takes over.
+// The route is physiological rather than a fitted regression (Keytel and friends run hot at moderate
+// HR because they carry no fitness term): heart-rate reserve maps essentially one-to-one onto oxygen-
+// uptake reserve, oxygen uptake IS energy — 1 MET is 3.5 ml O2/kg/min by definition — so
+//   %HRR = (HR - HRrest) / (HRmax - HRrest)
+//   VO2  = %HRR x (VO2max - VO2rest) + VO2rest      ->  MET = VO2 / 3.5
+// VO2max is the one quantity we cannot measure here, so it is an age- and sex-referenced default
+// (BURN_CFG.VO2MAX_REF/VO2MAX_DECLINE) — a fitter user's true burn is higher, and their corrections
+// teach it through learnBurn. Returns the MET so the caller can price it like any other activity.
+function hrMET(hr){
+  const ep=engineProfile(),age=getAge(ep)||30,T=BURN_CFG.HRMAX_TANAKA;
+  const hrMax=Math.max(150,T[0]-T[1]*age),hrRest=+profile.restingHR||BURN_CFG.HR_REST;
+  const hrr=Math.min(1.05,Math.max(0,(hr-hrRest)/Math.max(40,hrMax-hrRest)));
+  const vo2max=Math.max(20,(BURN_CFG.VO2MAX_REF[profile.gender==="female"?"female":"male"])
+    -Math.max(0,age-30)*BURN_CFG.VO2MAX_DECLINE);
+  return Math.max(BURN_CFG.MET_REST,(hrr*(vo2max-BURN_CFG.VO2_REST)+BURN_CFG.VO2_REST)/BURN_CFG.VO2_REST);
+}
+// External work of a resistance session, expressed in METs so it rides on top of the tempo baseline.
+// Work = load x g x displacement per rep (concentric plus a discounted eccentric); the metabolic cost
+// is that work divided by mechanical efficiency. Unloaded movements contribute nothing here — their
+// cost is already inside the tempo term, so counting them again would double-book.
+function liftWorkMET(exercises,minutes,F){
+  if(!(minutes>0)||!(F.kg>0))return 0;
+  let joules=0;
+  (exercises||[]).forEach(ex=>{
+    const wLbs=+(ex.weight||0);if(!(wLbs>0))return;
+    const loadKg=wLbs*0.45359,reps=(ex.reps||[]).reduce((a,r)=>a+(+r||0),0);
+    joules+=loadKg*BURN_CFG.G*BURN_CFG.ROM_M*reps*(1+BURN_CFG.ECC_ADD);
+  });
+  if(!joules)return 0;
+  const kcal=joules/BURN_CFG.EFF_MECH/BURN_CFG.J_PER_KCAL;
+  return Math.min(BURN_CFG.WORK_MET_CAP,kcal/(F.kg*(minutes/60))); // kcal per kg per hour IS a MET
+}
+// ===== Quick-log expenditure estimator =====
+const BURN_ACTS=[
+  {key:"bike",rx:/stationary bike|spin\b|cycling|\bcycle\b|\bbike\b|peloton|airdyne|assault bike/i,met:6.8,label:"Cycling",epoc:"steady",speed:[m=>Math.max(3.5,Math.min(15.8,0.49*m+1.6))],
+    cues:[[/(?:gear|level|resistance)\s*(\d+)/i,n=>n<=4?4.8:n<=8?6.8:n<=12?8.5:10.5],[/\b(?:easy|light|casual|recovery)\b/i,()=>4.8],[/\b(?:hard|intense|sprint|hiit|threshold)\b/i,()=>9.5],[/(\d+)\s*(?:w|watts?)\b/i,n=>Math.max(3,Math.min(16,n/25))]]},
+  {key:"run",rx:/\brun(?:ning)?\b|\bran\b|\bjog|treadmill|\bsprints?\b/i,met:8.8,label:"Running",epoc:"steady",speed:[m=>Math.max(4.5,Math.min(19,m*1.55))],
+    cues:[[/(\d+(?:\.\d+)?)\s*mph/i,n=>Math.max(4.5,Math.min(19,n*1.55))],[/\b(?:easy|light|recovery)\b/i,()=>7],[/\b(?:hard|intense|tempo|threshold)\b/i,()=>11],[/(\d+(?:\.\d+)?)\s*%?\s*incline/i,n=>8.8+Math.min(6,n*0.55)]]},
+  {key:"walk",rx:/\bwalk(?:ing)?\b|\bstroll|\btreadmill walk/i,met:3.4,label:"Walking",epoc:"steady",speed:[m=>Math.max(2,Math.min(7.5,0.9*m+0.6))],
+    cues:[[/incline|hill|uphill/i,()=>5.2],[/\b(?:brisk|fast)\b/i,()=>4.3],[/(\d+(?:\.\d+)?)\s*%?\s*incline/i,n=>3.4+Math.min(5,n*0.4)]]},
+  {key:"row",rx:/\brow(?:ing|er)?\b|\berg\b|concept ?2/i,met:7,label:"Rowing",epoc:"steady",
+    cues:[[/\b(?:hard|intense|race)\b/i,()=>8.5],[/\b(?:easy|light)\b/i,()=>4.8],[/(\d+)\s*(?:w|watts?)\b/i,n=>Math.max(3,Math.min(16,n/23))]]},
+  {key:"elliptical",rx:/elliptical|cross ?trainer|arc ?trainer/i,met:5.5,label:"Elliptical",epoc:"steady",cues:[[/(?:level|resistance)\s*(\d+)/i,n=>n<=5?5:n<=10?6.3:7.5]]},
+  {key:"stairs",rx:/stair|stepmill|step mill|stairmaster/i,met:9,label:"Stairs",epoc:"steady",cues:[[/(?:level|speed)\s*(\d+)/i,n=>Math.max(6,Math.min(13,4+n*0.6))]]},
+  {key:"swim",rx:/\bswim|\blaps\b|freestyle|breaststroke/i,met:6.5,label:"Swimming",epoc:"steady",cues:[[/\b(?:hard|intense|sprint)\b/i,()=>9.8],[/\b(?:easy|light)\b/i,()=>5.3]]},
+  {key:"hiit",rx:/\bhiit\b|crossfit|circuit|metcon|\bwod\b|\btabata\b|bootcamp|orange ?theory/i,met:8,label:"HIIT",epoc:"hiit",cues:[[/\b(?:hard|all.?out)\b/i,()=>10]]},
+  {key:"jumprope",rx:/jump ?rope|skipping|double ?unders/i,met:11,label:"Jump Rope",epoc:"hiit"},
+  {key:"hike",rx:/\bhik(?:e|ing)\b|\bruck|backpacking|trail/i,met:6,label:"Hiking",epoc:"steady",cues:[[/(\d+(?:\.\d+)?)\s*lb\s*(?:pack|ruck|vest)/i,n=>6+Math.min(3,n*0.05)],[/steep|mountain|scramble/i,()=>7.8]]},
+  {key:"climb",rx:/rock climb|bouldering|climbing gym|belay/i,met:7.5,label:"Climbing",epoc:"hiit"},
+  {key:"martial",rx:/boxing|kickbox|\bmma\b|jiu.?jitsu|\bbjj\b|muay thai|wrestling|karate|judo/i,met:8.5,label:"Martial Arts",epoc:"hiit",cues:[[/\b(?:spar|sparring|rolls?|rolling)\b/i,()=>10]]},
+  {key:"sport",rx:/basketball|soccer|tennis|pickleball|volleyball|football|hockey|squash|racquetball|lacrosse|ultimate/i,met:7,label:"Sport",epoc:"hiit",cues:[[/\b(?:casual|shootaround|rec(?:reational)?)\b/i,()=>5.5],[/\b(?:game|competitive|full ?court)\b/i,()=>8.3]]},
+  {key:"paddle",rx:/kayak|canoe|paddle ?board|\bsup\b|rowing shell/i,met:5,label:"Paddling",epoc:"steady"},
+  {key:"ski",rx:/\bski(?:ing)?\b|snowboard|ski ?erg|nordic/i,met:7,label:"Skiing",epoc:"steady"},
+  {key:"dance",rx:/danc(?:e|ing)|zumba|barre(?!ll)/i,met:5.5,label:"Dance",epoc:"steady"},
+  {key:"yoga",rx:/yoga|stretch|pilates|mobility|foam roll/i,met:2.8,label:"Yoga / Mobility",epoc:"steady",cues:[[/\b(?:power|vinyasa|hot|ashtanga)\b/i,()=>4.2],[/\b(?:yin|restorative|gentle)\b/i,()=>2.3]]},
+  {key:"chores",rx:/mow|shovel|yard ?work|garden|rak(?:e|ing)|moving boxes|clean(?:ing)? the/i,met:4.5,label:"Yard / Chores",epoc:"steady"},
+  {key:"lift",rx:/\blift|weights?\b|strength|bench|squat|deadlift|press\b|curl|\bgym\b|resistance|hypertrophy/i,met:4.2,label:"Strength",epoc:"lift",
+    cues:[[/\b(?:heavy|intense|superset|circuit)\b/i,()=>5.5],[/\b(?:light|easy|deload|technique)\b/i,()=>3.2]]},
+];
+// Distance + duration beats every adjective in the sentence, so pull a real speed out of the text when
+// one is there: "3 miles", "5k", "8:30 pace" all resolve to mph, which the activity maps to a MET.
+function burnSpeedMph(text,minutes){
+  let m,miles=0;
+  if(m=text.match(/(\d+(?:\.\d+)?)\s*(?:mi\b|miles?\b)/i))miles=+m[1];
+  else if(m=text.match(/(\d+(?:\.\d+)?)\s*(?:km|kilometer|kilometre)s?\b/i))miles=+m[1]*0.621371;
+  else if(m=text.match(/\b(\d+(?:\.\d+)?)\s*k\b/i))miles=+m[1]*0.621371;      // "5k"
+  else if(m=text.match(/\b(\d+(?:\.\d+)?)\s*m\b(?!in)/i)&&+m[1]>=400)miles=+m[1]*0.000621371;
+  if(m=text.match(/(\d{1,2}):(\d{2})\s*(?:\/|per\s*)?\s*(?:mi\b|mile|pace)/i)){ // explicit pace
+    const pm=+m[1]+ +m[2]/60;
+    if(pm>=BURN_CFG.MIN_PER_MILE[0]&&pm<=BURN_CFG.MIN_PER_MILE[1])return 60/pm;
+  }
+  if(miles>0&&minutes>0){const mph=miles/(minutes/60);if(mph>0.5&&mph<25)return mph}
+  return 0;
+}
+// The headline estimator for a described workout. Order of authority, strongest first:
+// measured average heart rate -> measured pace/distance -> an effort cue in the user's own words
+// -> the activity's table MET. Whatever wins is converted to a NET burn (gross minus the resting
+// cost of those same minutes), personalised by body mass, leanness and measured metabolism, given
+// the activity's afterburn, and finally scaled by what past corrections taught us about this user.
+function estimateBurn(text,minutes){
+  const act=BURN_ACTS.find(a=>a.rx.test(text))||{key:"general",met:5,label:"Workout",epoc:"steady"};
+  const F=burnFactors();
+  let met=act.met,src="table",m;
+  const mph=act.speed?burnSpeedMph(text,minutes):0;
+  if(mph>0){met=act.speed[0](mph);src="pace"}
+  (act.cues||[]).forEach(c=>{const hit=text.match(c[0]);if(hit){met=c[1](hit[1]!=null?+hit[1]:0);src=src==="pace"?"pace+cue":"cue"}});
+  if(mph>0&&src==="pace+cue")met=act.speed[0](mph); // a measured pace outranks the adjective next to it
+  let net=burnNet(met,minutes,F);
+  const hr=(m=text.match(/(?:avg|average|mean)?\s*(?:hr|heart ?rate|bpm)\D{0,6}(\d{2,3})|(\d{2,3})\s*(?:bpm|avg hr)/i))
+    ?+(m[1]||m[2]):0;
+  if(hr>=BURN_CFG.HR_MIN&&hr<=BURN_CFG.HR_MAX){met=hrMET(hr);src="hr";
+    net=Math.max(0,(met-BURN_CFG.MET_REST)*F.kg*(minutes/60))} // VO2 is already per kg of THIS body
+
+  const epoc=BURN_CFG.EPOC[act.epoc||"steady"];
+  const raw=Math.max(1,Math.round(net*(1+epoc)));
+  const c=burnCal[act.key],CC=BURN_CFG.CAL_CLAMP;
+  const calF=c&&c.n>=1?Math.min(CC[1],Math.max(CC[0],c.r)):1;
   return{kcal:Math.max(1,Math.round(raw*calF)),raw,met:+met.toFixed(1),key:act.key,label:act.label,
-    kg:Math.round(kg),metaF:+metaF.toFixed(2),calF:+calF.toFixed(2)};
+    kg:Math.round(F.kg),metaF:+F.metaF.toFixed(2),calF:+calF.toFixed(2),src,epoc,net:true};
+}
+// Tracked-session burn — what the stopwatch page saves. It reads the session the user actually logged
+// (sets, reps, loads, minutes) instead of a flat rate: tempo (sets per minute) sets the baseline MET,
+// the bar work adds a load surcharge on top, resting cost comes off, and the afterburn goes on.
+// A cardio session has no sets to read, so it routes back through the MET table on its own words.
+function estimateSessionBurn(a,minutes,notes){
+  const F=burnFactors(),sets=(a&&a.totalSets)||0;
+  const text=((notes||"")+" "+((a&&a.summary)||"")+" "+((a&&a.exercises||[]).map(e=>e.name).join(" "))).trim();
+  if(!sets||(a&&(a.muscleGroups||[]).includes("cardio")&&!(a.totalVolume>0))){
+    const e=estimateBurn(text||"workout",minutes);return{kcal:e.kcal,raw:e.raw,met:e.met,key:e.key,src:e.src}}
+  // a stopped or never-started timer would otherwise read as a 40-set minute; the clock is the
+  // suspect part, not the sets, so floor the duration at the fastest tempo a human actually sustains
+  const mins=Math.max(minutes,sets/BURN_CFG.DENSITY_MAX);
+  const density=sets/Math.max(1,mins);
+  const span=BURN_CFG.DENSITY_DENSE-BURN_CFG.DENSITY_SPARSE;
+  const u=Math.min(1.35,Math.max(0,(density-BURN_CFG.DENSITY_SPARSE)/span)); // above 1 = denser than a circuit
+  let met=BURN_CFG.LIFT_MET_SPARSE+u*(BURN_CFG.LIFT_MET_DENSE-BURN_CFG.LIFT_MET_SPARSE);
+  const workMET=liftWorkMET(a&&a.exercises,mins,F);
+  met+=workMET;
+  const raw=Math.max(1,Math.round(burnNet(met,mins,F)*(1+BURN_CFG.EPOC.lift)));
+  const c=burnCal.lift,CC=BURN_CFG.CAL_CLAMP;
+  const calF=c&&c.n>=1?Math.min(CC[1],Math.max(CC[0],c.r)):1;
+  return{kcal:Math.max(1,Math.round(raw*calF)),raw,met:+met.toFixed(1),key:"lift",src:"session",
+    density:+density.toFixed(2),workMET:+workMET.toFixed(2),mins:Math.round(mins)};
 }
 function learnBurn(key,rawEst,userVal){ // EWMA of (user value ÷ uncalibrated estimate) — learns the true burn per activity
   if(!(rawEst>0&&userVal>0))return;
@@ -7777,6 +7921,17 @@ function workoutPage(){
         <p style="font-size:12px;text-align:center;margin:0 0 24px;line-height:16px" class="text-muted-foreground">${dateLong}</p></div>
       <div class="anim" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;animation-delay:.2s">
         ${stat(a.totalSets,"total sets")}${stat(a.exercises.length,"exercises")}${stat(a.totalVolume>1000?(a.totalVolume/1000).toFixed(1)+"k":a.totalVolume,"volume (lbs)")}</div>
+      ${(()=>{ // what the session cost, and why — the same estimate the save writes, shown before you commit it
+        const mins=Math.max(1,Math.round(woElapsed/60)),e=estimateSessionBurn(a,mins,(s?s.notes:"")||""),pbv=paybackOn()?Math.min(BURN_PAYBACK_CAP,Math.round(e.kcal*0.85*(BURN_PAYBACK_RATE[profile.goal]||0.5))):0;
+        const why=e.src==="session"
+          ?`${e.density} sets/min tempo${e.workMET>0?` + ${e.workMET} MET of bar work`:""} · MET ${e.met} · net of resting burn · +${Math.round(BURN_CFG.EPOC.lift*100)}% afterburn`
+          :`MET ${e.met} from your description · net of resting burn`;
+        return `<div class="anim apple-card" style="padding:14px;margin-bottom:24px;animation-delay:.22s">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_FLAME,2,16,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Energy</p></div>
+            <p style="font-size:20px;font-weight:700;margin:0;line-height:28px" class="text-warning">${e.kcal} cal</p></div>
+          <p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">${why}</p>
+          ${pbv>0?`<p style="font-size:10px;font-weight:600;margin:4px 0 0;line-height:14px" class="text-primary">+${pbv} cal added to today's target</p>`:""}</div>`})()}
       <div class="anim" style="margin-bottom:24px;animation-delay:.25s">
         <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;line-height:16px" class="text-muted-foreground">Exercises</p>
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -9486,9 +9641,9 @@ function setsHealth(){
   </div>
   <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between">
     <div style="min-width:0;padding-right:12px"><p class="text-foreground" style="font-size:12px;font-weight:600;margin:0;line-height:16px">Add workout burn to daily target</p>
-      <p class="text-muted-foreground" style="font-size:10px;margin:0;line-height:14px">Safely discounted by goal: ${Math.round((BURN_PAYBACK_RATE[profile.goal]||0.5)*100)}% of logged burn on a ${profile.goal||"cut"}, capped at +${BURN_PAYBACK_CAP}/day. Unconfirmed estimates count at 85%.</p></div>
-    <button class="haptic" data-act="ptoggle" data-k="burnPayback" style="width:51px;height:31px;border-radius:9999px;border:0;position:relative;flex-shrink:0;transition:background .2s ease;background:${(profile.burnPayback===true||profile.burnPayback==="on")?"#34C759":"rgba(120,120,128,.32)"}">
-      <span style="position:absolute;top:2px;left:0;width:27px;height:27px;border-radius:9999px;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .2s cubic-bezier(.3,.9,.4,1.1);transform:translateX(${(profile.burnPayback===true||profile.burnPayback==="on")?22:2}px)"></span>
+      <p class="text-muted-foreground" style="font-size:10px;margin:0;line-height:14px">On — the flame slice on your calorie bar. Safely discounted by goal: ${Math.round((BURN_PAYBACK_RATE[profile.goal]||0.5)*100)}% of logged burn on a ${profile.goal||"cut"}, capped at +${BURN_PAYBACK_CAP}/day. Unconfirmed estimates count at 85%. Turn it off to keep burn as a number only.</p></div>
+    <button class="haptic" data-act="ptoggle" data-k="burnPayback" style="width:51px;height:31px;border-radius:9999px;border:0;position:relative;flex-shrink:0;transition:background .2s ease;background:${paybackOn()?"#34C759":"rgba(120,120,128,.32)"}">
+      <span style="position:absolute;top:2px;left:0;width:27px;height:27px;border-radius:9999px;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .2s cubic-bezier(.3,.9,.4,1.1);transform:translateX(${paybackOn()?22:2}px)"></span>
     </button>
   </div>
   <p class="text-muted-foreground" style="font-size:10px;margin:12px 0 0;line-height:1.625">Activity data feeds into your expenditure estimate and coaching recommendations. More data = more accurate TDEE calculations.</p>`;
@@ -9731,7 +9886,9 @@ document.addEventListener("click",e=>{
     if(k==="goal"&&v!==profile.goal)profile.goalStart=localDateStr(); // diet-break clock starts at goal change
     profile[k]=v;save("profile",profile);rerenderSettings();
   }
-  else if(act==="ptoggle"){profile[el.dataset.k]=!profile[el.dataset.k];save("profile",profile);rerenderSettings()}
+  else if(act==="ptoggle"){const pk=el.dataset.k;
+    profile[pk]=pk==="burnPayback"?!paybackOn():!profile[pk]; // default-on keys toggle off their EFFECTIVE state
+    save("profile",profile);rerenderSettings()}
   else if(act==="explain"){settingsExplain=!settingsExplain;rerenderSettings()}
   else if(act==="applytargets"){ // Settings.tsx:170-173 applyCalculatedTargets
     const c=settingsCalcTargets();
@@ -10120,6 +10277,7 @@ document.addEventListener("click",e=>{
     const durationMin=Math.max(1,Math.round(woElapsed/60));
     const mg=a.muscleGroups||[];
     const category=mg.includes("cardio")?"cardio":"strength"; // ANY cardio -> cardio
+    const woEst=estimateSessionBurn(a,durationMin,(s?s.notes:"")||"");
     workouts.push({id:newId(),date:localDateStr(),
       name:mg.length?mg.map(m=>MUSCLE_LABELS[m]||m).join(" + ")+" Workout":"Workout",
       startTime:s&&s.startTimestamp?s.startTimestamp:Date.now()-woElapsed*1000,endTime:Date.now(),
@@ -10127,7 +10285,8 @@ document.addEventListener("click",e=>{
       exercises:(a.exercises||[]).map(ex=>({id:newId(),exerciseName:ex.name,
         muscleGroup:mg[0]||"full_body",category,
         sets:(ex.reps||[]).map(r=>({id:newId(),weight:ex.weight,reps:r})),caloriesBurned:0})),
-      totalCaloriesBurned:Math.round(durationMin*6), // flat 6 cal/min regardless of category (rough estimate)
+      totalCaloriesBurned:woEst.kcal, // modelled from the session you logged, not a flat rate — see estimateSessionBurn
+      estBase:woEst.raw,aiEstimated:true, // "(est.)" until you correct it; a correction teaches the real burn
       category,muscleGroups:mg.length?mg:["full_body"],notes:(s?s.notes:"").trim()});
     save("workouts",workouts);localStorage.removeItem("active_workout_session");
     const gained=burnPayback(localDateStr())-pb0,burnt=workouts[workouts.length-1].totalCaloriesBurned;
@@ -10200,7 +10359,7 @@ document.addEventListener("click",e=>{
       if(!(n>0)){toast("Enter a number");return}
       if(n!==w2.totalCaloriesBurned&&w2.estBase){
         const hit=BURN_ACTS.find(x=>x.rx.test(w2.notes||w2.name));
-        if(hit)learnBurn(hit.key,w2.estBase,n);
+        learnBurn(hit?hit.key:(w2.category==="cardio"?"general":"lift"),w2.estBase,n); // a tracked lift still teaches "lift"
       }
       w2.totalCaloriesBurned=n;w2.aiEstimated=false;
       save("workouts",workouts);toast("Updated to "+n+" cal");render();
