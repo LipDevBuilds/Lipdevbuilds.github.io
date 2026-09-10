@@ -27,26 +27,47 @@
 <link rel="icon" id="favIcon" type="image/png">
 <link rel="manifest" id="mfLink">
 <style>
-/* ===== Design system: dark-only, iOS 18 semantic tokens (HSL vars) ===== */
+/* ===== Design system: dark-only, iOS semantic tokens (HSL vars) =====
+   The greys here are Apple's actual dark-mode system values, not neutral greys. iOS never uses a
+   flat #A3A3A3 for secondary text — it uses rgba(235,235,245,0.6), a faintly blue-tinted white laid
+   over the surface. That tint is most of the reason system greys read as "considered" and flat greys
+   read as a web page. These vars are the flattened equivalents over --card, so existing
+   hsl(var(--x)) call sites keep working unchanged.
+     --card       #1C1C1E  secondarySystemBackground (dark)
+     --secondary  #2C2C2E  tertiarySystemBackground / filled control
+     --border     #38383A  opaqueSeparator
+     --muted-foreground  #98989F  secondaryLabel flattened  (5.9:1 on --card, AA)
+     --label-3    #6B6B72  tertiaryLabel flattened — for text that must not compete at all */
 :root{
-  --background:0 0% 0%; --foreground:0 0% 98%;
-  --card:240 6% 10%; --popover:240 5% 12%;
-  --primary:211 100% 50%; --secondary:240 4% 16%; --muted:240 5% 12%;
-  --muted-foreground:0 0% 64%; --border:240 4% 16%; /* 55%→64%: ~4.5:1 gray-on-card contrast (was ≈3.4:1, under WCAG AA for small text) */
-  --destructive:0 72% 51%; --radius:.75rem;
+  --background:0 0% 0%; --foreground:0 0% 100%;
+  --card:240 3% 11%; --popover:240 3% 14%;
+  --primary:210 100% 52%; --secondary:240 2% 18%; --muted:240 3% 13%;
+  --muted-foreground:240 4% 61%; --border:240 2% 22%;
+  --label-3:240 4% 43%;
+  --destructive:3 100% 61%; --radius:.75rem;
+  /* Concentric radii — an inner corner should be the outer corner minus the padding between them,
+     or the two curves fight. One ramp, used everywhere. */
+  --r-sheet:22px; --r-card:16px; --r-ctl:11px; --r-sm:9px;
   --primary-foreground:0 0% 100%;
   --card-foreground:0 0% 98%; --popover-foreground:0 0% 98%;
   --secondary-foreground:0 0% 70%;
-  --accent:211 100% 50%; --accent-foreground:0 0% 100%;
+  --accent:210 100% 52%; --accent-foreground:0 0% 100%;
   --destructive-foreground:0 0% 98%;
-  --input:240 5% 14%; --ring:211 100% 50%;
+  --input:240 2% 18%; --ring:210 100% 52%;
   --card-shadow:none;
-  --protein:340 82% 52%; --carbs:36 100% 50%; --fat:210 80% 56%;
-  --success:142 71% 45%; --warning:36 100% 50%; --info:211 100% 50%;
-  --water:200 80% 55%; --over:0 72% 51%;
+  /* iOS DARK system colors — the app was using the LIGHT-mode variants, which is why everything
+     looked slightly too dense and too saturated against black. Dark-mode system colors are lighter
+     and a touch less saturated on purpose, so they sit on black without vibrating.
+       systemBlue #0A84FF · systemGreen #30D158 · systemRed #FF453A
+       systemOrange #FF9F0A · systemPink #FF375F · systemIndigo #5E5CE6 · systemTeal #64D2FF */
+  --protein:348 100% 61%; --carbs:37 100% 52%; --fat:241 71% 63%;
+  --success:135 62% 51%; --warning:37 100% 52%; --info:210 100% 52%;
+  --water:199 100% 70%; --over:3 100% 61%;
 }
 *{box-sizing:border-box;margin:0}
-html{height:100%;background:hsl(var(--background));touch-action:manipulation;-ms-touch-action:manipulation;-webkit-touch-callout:none}
+html{height:100%;background:hsl(var(--background));touch-action:manipulation;-ms-touch-action:manipulation;-webkit-touch-callout:none;
+  -webkit-user-select:none;user-select:none} /* chrome is not a document — but see the input rule below */
+input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text}
 body{
   /* height:100% (not 100dvh): iOS standalone web apps report dvh short by the top
      safe-area inset, which floated the whole shell above the screen bottom. The
@@ -56,7 +77,10 @@ body{
   background:hsl(var(--background));color:hsl(var(--foreground));
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',system-ui,sans-serif;
   line-height:1.5; /* Tailwind preflight (html{line-height:1.5}) — sized text pairs its own line-height below */
-  letter-spacing:-.015em;
+  /* SF's optical tracking is close to a constant -0.4pt from 13pt up, NOT a constant em. Expressing
+     it in em (as this did) over-tightens headlines and under-tightens captions — the exact reason
+     the big titles read as cramped and heavy rather than as SF. */
+  letter-spacing:-.4px;
   -webkit-text-size-adjust:100%;touch-action:manipulation;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
 }
@@ -71,20 +95,38 @@ button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inh
 /* page container: real pages carry "px-4 pt-14 pb-4 max-w-md mx-auto" (Dashboard pb-28) */
 .page{padding:56px 16px 16px;max-width:28rem;margin:0 auto;width:100%}
 .page.fab-room{padding-bottom:112px} /* pages with the floating + button need scroll room so it never hides content */
-.apple-title{font-size:34px;font-weight:700;letter-spacing:-.025em;line-height:1.12}
-.apple-section{font-size:13px;font-weight:600;letter-spacing:-.01em;text-transform:uppercase;color:hsl(var(--muted-foreground))}
-.glass{background:hsl(240 6% 7% / 0.92);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);border-top:0.5px solid hsl(0 0% 100% / 0.08)}
+.apple-title{font-size:34px;font-weight:700;letter-spacing:-.4px;line-height:41px}
+/* One page header everywhere: title and its actions on one row, a footnote line beneath. Actions are
+   icon-only — a labelled pill next to a date sentence has nowhere to go on a 390pt screen and wraps. */
+.pg-head{display:flex;align-items:center;gap:8px;margin:0 0 2px;min-height:44px}
+.pg-sub{font-size:15px;line-height:20px;margin:0 0 14px;font-weight:400;color:hsl(var(--muted-foreground))}
+.icon-btn{width:36px;height:36px;flex:0 0 36px;border-radius:9999px;border:0;background:hsl(var(--secondary));
+  color:hsl(var(--foreground));display:flex;align-items:center;justify-content:center;position:relative;
+  transition:transform .26s cubic-bezier(.2,.8,.28,1),background .2s}
+.icon-btn:active{transition-duration:.045s;transform:scale(.9);background:hsl(var(--border))}
+/* 36pt reads better next to a 34pt title than a 44pt circle does, so the TARGET is grown instead of
+   the button — Apple's 44pt minimum is about the touch area, not the paint. */
+.icon-btn::after{content:"";position:absolute;inset:-4px;border-radius:9999px}
+.apple-title.compact{font-size:17px;font-weight:600;line-height:22px} /* what a large title becomes once you scroll past it */
+/* Section headers are STRUCTURE, not emphasis. Grey, small, quiet — they name a group, they do
+   not compete with the group's contents. iOS grouped-list headers behave exactly this way. */
+.apple-section{font-size:13px;font-weight:590;letter-spacing:-.08px;text-transform:uppercase;color:hsl(var(--muted-foreground))}
+/* A material only reads as glass if you can see through it. At 0.92 alpha the blur was doing
+   nothing but costing frames; iOS also gets expensive past ~16-20px of radius. */
+.glass{background:hsl(240 6% 8% / 0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-top:0.5px solid hsl(0 0% 100% / 0.08)}
 .glass-card{background:hsl(240 6% 10% / 0.9);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 .glass-sheet{background:hsl(240 5% 10% / 0.97);backdrop-filter:blur(50px) saturate(200%);-webkit-backdrop-filter:blur(50px) saturate(200%)}
 .bg-protein{background:hsl(var(--protein))}.bg-carbs{background:hsl(var(--carbs))}.bg-fat{background:hsl(var(--fat))}.bg-water{background:hsl(var(--water))}.dim{opacity:.55}
 .text-water{color:hsl(var(--water))}
 .text-gradient-primary{background:linear-gradient(135deg,hsl(211 100% 60%),hsl(211 100% 45%));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.apple-card{background:hsl(240 6% 10%);border-radius:14px;border:none}
+.apple-card{background:hsl(var(--card));border-radius:var(--r-card);border:none}
 .apple-row{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;min-height:44px}
-.haptic{transition:transform 0.12s ease,opacity 0.12s ease}
-.haptic:active{transform:scale(0.97);opacity:0.7}
+/* A press must be acknowledged in the same frame you make it; only the RELEASE is allowed to ease.
+   The old rule eased both ways over 120ms, which is long enough to read as the app thinking. */
+.haptic{transition:transform .26s cubic-bezier(.2,.8,.28,1),opacity .26s cubic-bezier(.2,.8,.28,1)}
+.haptic:active{transition-duration:.045s;transform:scale(.968);opacity:.72}
 .apple-pill{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:100px;font-size:13px;font-weight:600;transition:all 0.15s ease}
-.glow-primary{box-shadow:0 4px 20px hsl(211 100% 50% / 0.2)}
+.glow-primary{box-shadow:0 6px 20px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.3)}
 /* Tailwind-equivalent spacing utilities for page markup (real pages use p-4/p-5 etc.) */
 .p-4{padding:16px}.p-5{padding:20px}
 .hairline-b{border-bottom:.5px solid hsl(var(--border))}
@@ -98,25 +140,33 @@ button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inh
 @keyframes enterUp{from{opacity:0;transform:translateY(10px)}}
 @keyframes enterDown{from{opacity:0;transform:translateY(-10px)}}
 @media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+/* Every render used to replace the whole view, so every tap re-ran every entrance animation and
+   re-grew every bar from zero. That is the flicker that reads as "laggy and papery": the page
+   visibly re-materialising when you only changed one number. Entrance motion now belongs to
+   ARRIVING on a page. A state update inside a page is silent — the numbers just change. */
+#view.quiet .anim,#view.quiet .enter-up,#view.quiet .enter-down,
+#view.quiet .bar-anim,#view.quiet .bar-anim-08,#view.quiet .bar-anim-06,
+#view.quiet .swipe-pane.from-right,#view.quiet .swipe-pane.from-left{animation:none !important}
 
 /* day strip (DayStrip.tsx) */
-.daystrip{margin-bottom:20px}
-.ds-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.ds-chev{padding:8px;margin:-4px;border-radius:9999px;background:none;border:0;color:hsl(var(--muted-foreground));transition:transform .12s ease,opacity .12s ease}
-.ds-chev:active{transform:scale(.97);opacity:.7}
+.daystrip{margin-bottom:18px}
+.ds-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ds-chev{padding:8px;margin:-4px;border-radius:9999px;background:none;border:0;color:hsl(var(--muted-foreground));transition:transform .26s cubic-bezier(.2,.8,.28,1),opacity .26s}
+.ds-chev:active{transition-duration:.045s;transform:scale(.9);opacity:.6}
 .ds-mid{display:flex;align-items:center;gap:8px}
 .ds-month{font-size:13px;font-weight:600;color:hsl(var(--foreground))}
-.ds-today{font-size:12px;font-weight:600;color:hsl(var(--primary));background:none;border:0;transition:transform .12s ease,opacity .12s ease;line-height:16px}
-.ds-today:active{transform:scale(.97);opacity:.7}
+.ds-today{font-size:12px;font-weight:600;color:hsl(var(--primary));background:none;border:0;transition:transform .26s cubic-bezier(.2,.8,.28,1),opacity .26s;line-height:16px}
+.ds-today:active{transition-duration:.045s;transform:scale(.94);opacity:.6}
 .ds-week{display:flex;justify-content:space-between}
-.ds-cell{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;background:none;border:0;padding:0;color:hsl(var(--foreground));transition:transform .12s ease,opacity .12s ease}
-.ds-cell:active{transform:scale(.97);opacity:.7}
-.ds-wd{font-size:11px;font-weight:600;color:hsl(var(--muted-foreground) / .6)}
+.ds-cell{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;background:none;border:0;padding:0;color:hsl(var(--foreground));transition:transform .26s cubic-bezier(.2,.8,.28,1)}
+.ds-cell:active{transition-duration:.045s}
+.ds-wd{font-size:11px;font-weight:590;color:hsl(var(--label-3));letter-spacing:.06px}
 .ds-cell.sel .ds-wd{color:hsl(var(--primary))}
-.ds-num{width:40px;height:40px;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:hsl(var(--foreground) / .7);transition:all .2s}
-.ds-cell:active .ds-num{transform:scale(.85)}
-.ds-cell.sel .ds-num{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:0 10px 15px -3px hsl(211 100% 50% / .25),0 4px 6px -4px hsl(211 100% 50% / .25)}
-.ds-cell.today:not(.sel) .ds-num{box-shadow:0 0 0 2px hsl(var(--primary) / .4);color:hsl(var(--primary))}
+.ds-num{width:34px;height:34px;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500;color:hsl(var(--foreground)/.85);transition:background .2s ease,color .2s ease,transform .26s cubic-bezier(.2,.8,.28,1)}
+.ds-cell:active .ds-num{transition-duration:.045s;transform:scale(.88)}
+/* flat fill, no drop shadow: a coloured elevation shadow under a circle is a Material date picker */
+.ds-cell.sel .ds-num{background:hsl(var(--primary));color:#fff;font-weight:600}
+.ds-cell.today:not(.sel) .ds-num{color:hsl(var(--primary));font-weight:600}
 .ds-dots{display:flex;gap:3px;height:5px;align-items:center}
 .ds-dots i{width:4px;height:4px;border-radius:9999px;display:block}
 
@@ -146,21 +196,21 @@ button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inh
 /* generic rows/controls */
 .row{display:flex;align-items:center;gap:10px;min-height:44px}
 .grow{flex:1;min-width:0}
-.btn{min-height:44px;min-width:44px;border:0;border-radius:12px;padding:10px 16px;font-weight:600;font-size:15px;background:hsl(var(--secondary));color:hsl(var(--foreground));transition:transform .12s ease,opacity .12s ease}
-.btn:active{transform:scale(.97);opacity:.7}
+.btn{min-height:44px;min-width:44px;border:0;border-radius:12px;padding:10px 16px;font-weight:600;font-size:15px;background:hsl(var(--secondary));color:hsl(var(--foreground));transition:transform .26s cubic-bezier(.2,.8,.28,1),opacity .26s}
+.btn:active{transition-duration:.045s;transform:scale(.968);opacity:.72}
 .btn.primary{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
 .btn.small{min-height:44px;min-width:44px;padding:8px 12px;font-size:13px;border-radius:10px}
 .btn.ghost{background:none;color:hsl(var(--primary))}
 .btn.danger{color:hsl(var(--destructive));background:hsl(var(--destructive)/.12)}
-.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;background:hsl(var(--secondary));color:hsl(var(--muted-foreground));border:.5px solid hsl(var(--border));line-height:16px}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;background:hsl(var(--secondary));color:hsl(var(--muted-foreground));border:0;line-height:16px}
 button.chip{min-height:44px;padding:10px 14px}
-.chip.on{background:hsl(var(--primary)/.18);color:hsl(var(--primary));border-color:hsl(var(--primary)/.4)}
-.input{width:100%;background:hsl(var(--secondary));border:.5px solid hsl(var(--border));border-radius:12px;padding:11px 14px;outline:none;min-height:44px}
-.input:focus{border-color:hsl(var(--primary))}
+.chip.on{background:hsl(var(--primary)/.2);color:hsl(var(--primary))}
+.input{width:100%;background:hsl(var(--secondary));border:0;border-radius:var(--r-ctl);padding:11px 14px;outline:none;min-height:44px;transition:box-shadow .18s ease}
+.input:focus{box-shadow:0 0 0 3px hsl(var(--primary)/.35)}
 select.input{appearance:none;-webkit-appearance:none}
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.stat{background:hsl(var(--card));border:.5px solid hsl(var(--border));border-radius:var(--radius);padding:12px;text-align:center}
+.stat{background:hsl(var(--card));border:0;border-radius:var(--r-ctl);padding:12px;text-align:center}
 .stat b{display:block;font-size:20px;letter-spacing:-.02em;line-height:28px}
 .stat span{font-size:11px;color:hsl(var(--muted-foreground))}
 
@@ -198,7 +248,8 @@ select.input{appearance:none;-webkit-appearance:none}
 .mrow-n{color:hsl(var(--primary));font-weight:600}
 .mrow-chev{padding:8px 4px;margin:-4px 0;background:none;border:0;color:hsl(var(--muted-foreground));display:flex;transition:transform .2s}
 .mrow-chev.closed{transform:rotate(-90deg)}
-.mrow-water{display:inline-flex;align-items:center;gap:2px;color:hsl(var(--water));font-weight:600;vertical-align:-1px}
+.mrow-water{display:inline-flex;align-items:center;gap:2px;color:hsl(var(--muted-foreground));font-weight:400;vertical-align:-1px}
+.mrow-water svg{color:hsl(var(--water))}
 /* the log flight — transform and opacity only, so a phone can composite every frame of it */
 .lf-dot{position:fixed;z-index:60;pointer-events:none;width:16px;height:16px;border-radius:9999px;background:hsl(var(--primary));box-shadow:0 0 12px 3px hsl(var(--primary)/.5),0 0 30px 10px hsl(var(--primary)/.16);will-change:transform,opacity;transform:scale(3.4);opacity:0;transition:transform .34s cubic-bezier(.2,.86,.3,1.08),opacity .24s ease}
 .lf-dot::before{content:"";position:absolute;right:50%;top:50%;width:46px;height:7px;margin-top:-3.5px;border-radius:9999px;background:linear-gradient(to left,hsl(var(--primary)/.5),hsl(var(--primary)/0));transform-origin:100% 50%;transform:scaleX(var(--tail,0));pointer-events:none}
@@ -250,7 +301,9 @@ select.input{appearance:none;-webkit-appearance:none}
 .mbd-n{font-size:12.5px;color:hsl(var(--foreground));margin:0;line-height:17px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mbd-m{font-size:11px;color:hsl(var(--muted-foreground));margin:0;flex-shrink:0;line-height:17px}
 .mbd-l.adj .mbd-n{color:hsl(var(--muted-foreground));font-style:italic}
-.madd{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 16px;border:0;border-top:.5px solid hsl(var(--border)/.3);background:none;font-size:13px;font-weight:600;color:hsl(var(--primary))}
+.madd{width:100%;display:flex;align-items:center;justify-content:flex-start;gap:8px;padding:12px 16px;border:0;border-top:.5px solid hsl(var(--border)/.45);background:none;font-size:15px;font-weight:400;color:hsl(var(--muted-foreground));transition:color .2s,transform .26s cubic-bezier(.2,.8,.28,1)}
+.madd:active{transition-duration:.045s;transform:scale(.985);color:hsl(var(--foreground))}
+.madd svg{color:hsl(var(--primary))} /* the accent marks the ACTION, the label stays quiet */
 .cfd-trigger{width:100%;margin:4px 0 16px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:16px;border:1px dashed hsl(var(--border)/.4);background:none;font-size:13px;color:hsl(var(--muted-foreground));transition:color .15s,border-color .15s}
 /* legacy .entry rows still used by restaurant cart + workout summary */
 .entry{display:flex;align-items:center;gap:10px;padding:9px 0;min-height:44px}
@@ -295,20 +348,23 @@ select.input{appearance:none;-webkit-appearance:none}
 .qa-submit{width:100%;background:hsl(var(--primary));color:hsl(var(--primary-foreground));padding:12px 0;border-radius:8px;font-weight:600;border:0}
 
 /* bottom nav */
-.bottomnav{position:relative;flex:0 0 auto;height:calc(60px + env(safe-area-inset-bottom,0px)/2);box-sizing:border-box;display:flex;align-items:center;touch-action:manipulation;overflow:hidden;overscroll-behavior:none;z-index:30;transition:transform .2s,opacity .2s;will-change:transform,opacity}
+.bottomnav{position:relative;flex:0 0 auto;height:calc(56px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box;display:flex;align-items:center;touch-action:manipulation;overflow:hidden;overscroll-behavior:none;z-index:30;transition:transform .2s,opacity .2s;will-change:transform,opacity}
 /* same slab (60px row + half the home-indicator inset) so the nav top doesn't move; the
    background runs to the physical bottom and the 60px row centers in it vertically */
-.bottomnav.kb-hidden{transform:translate3d(0,calc(100% + env(safe-area-inset-bottom,0px)),0);opacity:0;pointer-events:none}
+.bottomnav.kb-hidden{transform:translate3d(0,100%,0);opacity:0;pointer-events:none}
 /* inner row: "flex justify-around items-center h-[60px] max-w-md mx-auto" */
-.navrow{display:flex;justify-content:space-around;align-items:center;height:60px;max-width:28rem;margin:0 auto;width:100%}
+.navrow{display:flex;justify-content:space-around;align-items:center;height:56px;max-width:28rem;margin:0 auto;width:100%}
 /* buttons: "flex flex-col items-center gap-[2px] px-3 py-1 transition-colors duration-150" */
-.navbtn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 12px;background:none;border:0;color:hsl(var(--muted-foreground));transition:color .15s}
+.navbtn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 12px;background:none;border:0;
+  color:hsl(var(--label-3));transition:color .2s ease,transform .26s cubic-bezier(.2,.8,.28,1)}
+.navbtn:active{transition-duration:.045s;transform:scale(.9)}
 .navbtn.on{color:hsl(var(--primary))}
+.navbtn.on span{font-weight:590}
 /* label: "text-[10px] font-medium tracking-tight" */
-.navbtn span{font-size:10px;font-weight:500;letter-spacing:-0.025em}
+.navbtn span{font-size:10px;font-weight:510;letter-spacing:0}
 
 /* FAB */
-#fab{position:fixed;z-index:40;width:56px;height:56px;border-radius:9999px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));display:none;align-items:center;justify-content:flex-end;bottom:calc(68px + env(safe-area-inset-bottom,0px)/2);box-shadow:0 4px 20px hsl(211 100% 50% / 0.2);overflow:hidden;transition:width .28s cubic-bezier(.2,.8,.2,1)}
+#fab{position:fixed;z-index:40;width:56px;height:56px;border-radius:9999px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));display:none;align-items:center;justify-content:flex-end;bottom:calc(56px + env(safe-area-inset-bottom,0px) + 16px);box-shadow:0 6px 20px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35),inset 0 .5px 0 hsl(0 0% 100%/.22);overflow:hidden;transition:width .28s cubic-bezier(.2,.8,.2,1)}
 #fab.open{width:180px} /* the + extends left into a pill: voice | manual | + */
 .fab-main{width:56px;height:56px;flex:0 0 56px;border-radius:9999px;border:0;background:none;color:inherit;display:flex;align-items:center;justify-content:center;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .12s;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
 #fab.open .fab-main{transform:rotate(45deg)}
@@ -330,10 +386,9 @@ select.input{appearance:none;-webkit-appearance:none}
 /* sheets */
 .scrim{position:fixed;inset:0;background:hsl(var(--background)/.8);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:40;display:flex;flex-direction:column;justify-content:flex-end;animation:fadein .2s}
 @keyframes fadein{from{opacity:0}}
-.sheet{border-radius:18px 18px 0 0;}
-.sheet:has(.qa-wrap){border-radius:16px 16px 0 0}   /* QuickAdd.tsx:76 rounded-t-2xl */
-.sheet:has(.cfd){border-radius:24px 24px 0 0}       /* FoodLog.tsx:232 rounded-t-3xl */
-.sheet{border-top:.5px solid hsl(var(--border));max-height:88dvh;display:flex;flex-direction:column;animation:up .45s cubic-bezier(.34,1.56,.64,1);padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.sheet{border-radius:var(--r-sheet) var(--r-sheet) 0 0;}
+/* one sheet radius; the old per-sheet radii were three different curves for the same gesture */
+.sheet{border-top:0;max-height:88dvh;display:flex;flex-direction:column;animation:up .45s cubic-bezier(.34,1.56,.64,1);padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
 @keyframes up{from{transform:translateY(40px);opacity:.5}}
 .sheet-h{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
 .sheet-h b{font-size:17px}
@@ -399,15 +454,39 @@ select.input{appearance:none;-webkit-appearance:none}
 .acc-body{overflow:hidden;max-height:0;opacity:0;transition:max-height .35s cubic-bezier(.32,.72,0,1),opacity .25s ease}
 .acc-open .acc-body{max-height:3000px;opacity:1}
 .set-label{font-size:12px;color:hsl(var(--muted-foreground));line-height:16px}
-.set-input{width:100%;background:hsl(var(--muted));border:0;border-radius:8px;padding:10px 12px;font-size:14px;margin-top:4px;color:hsl(var(--foreground));outline:none;line-height:20px}
-.set-input:focus{box-shadow:0 0 0 2px hsl(var(--primary))}
+.set-input{width:100%;background:hsl(var(--secondary));border:0;border-radius:var(--r-ctl);padding:11px 13px;font-size:15px;margin-top:5px;color:hsl(var(--foreground));outline:none;line-height:20px;transition:box-shadow .18s ease}
+.set-input:focus{box-shadow:0 0 0 3px hsl(var(--primary)/.35)}
 .set-input::placeholder{color:hsl(var(--muted-foreground))}
-.seg-btn{flex:1;padding:8px 0;border:0;border-radius:8px;font-size:12px;font-weight:600;background:hsl(var(--muted));color:hsl(var(--muted-foreground));transition:all .15s ease;line-height:16px}
-.seg-btn.on{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+/* ===== iOS segmented control =====
+   These were rendered as a row of separate pill buttons with a blue fill on the selected one —
+   which is a Material chip group, not a segmented control. iOS puts ONE recessed track down and
+   slides a neutral thumb inside it; the accent stays free for actions. `:has()` lets the existing
+   markup become a real control with no call-site changes: any row whose direct children are
+   segments IS the track. */
+:where(div):has(>.seg-btn){background:hsl(var(--secondary));border-radius:var(--r-ctl);padding:2px;gap:2px !important}
+.seg-btn{flex:1;padding:7px 0;border:0;border-radius:calc(var(--r-ctl) - 2px);font-size:13px;font-weight:510;
+  background:transparent;color:hsl(var(--muted-foreground));line-height:18px;
+  transition:background .22s cubic-bezier(.2,.8,.28,1),color .22s,transform .26s cubic-bezier(.2,.8,.28,1)}
+.seg-btn:active{transition-duration:.045s;transform:scale(.96)}
+.seg-btn.on{background:hsl(240 2% 39%);color:#fff;font-weight:590;box-shadow:0 2px 6px rgba(0,0,0,.35),0 0 0 .5px rgba(0,0,0,.25)}
+
+/* ===== iOS slider =====
+   A bare <input type=range> renders the UA control — a white rail with a grey knob. That single
+   element does more to make a screen look like a web form than anything else on it. */
+input[type=range].rng{-webkit-appearance:none;appearance:none;background:transparent;height:28px;flex:1;margin:0}
+input[type=range].rng::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+  background:linear-gradient(to right,hsl(var(--primary)) 0 var(--fill,50%),hsl(var(--secondary)) var(--fill,50%) 100%)}
+input[type=range].rng::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:26px;height:26px;border-radius:50%;
+  background:#fff;margin-top:-11px;box-shadow:0 3px 8px rgba(0,0,0,.5),0 1px 1px rgba(0,0,0,.3);
+  transition:transform .18s cubic-bezier(.2,.8,.28,1)}
+input[type=range].rng:active::-webkit-slider-thumb{transform:scale(1.12)}
+input[type=range].rng::-moz-range-track{height:4px;border-radius:2px;background:hsl(var(--secondary))}
+input[type=range].rng::-moz-range-progress{height:4px;border-radius:2px;background:hsl(var(--primary))}
+input[type=range].rng::-moz-range-thumb{width:26px;height:26px;border:0;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.5)}
 .opt-row{text-align:left;padding:8px 12px;border:0;border-radius:8px;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px;background:none;color:hsl(var(--muted-foreground));transition:all .15s ease;line-height:20px}
-.opt-row.on{background:hsl(var(--primary)/.1);color:hsl(var(--primary));border-color:hsl(var(--primary)/.3);border:1px solid hsl(var(--primary)/.3)}
-.card-opt{text-align:left;padding:10px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--muted-foreground));transition:all .15s ease}
-.card-opt.on{border-color:hsl(var(--primary));background:hsl(var(--primary)/.1);color:hsl(var(--primary))}
+.opt-row.on{background:hsl(var(--primary)/.16);color:hsl(var(--primary))}
+.card-opt{text-align:left;padding:10px;border-radius:var(--r-sm);border:0;background:hsl(var(--secondary));color:hsl(var(--muted-foreground));transition:background .18s ease,color .18s ease}
+.card-opt.on{background:hsl(var(--primary)/.2);color:hsl(var(--primary))}
 .card-opt p{margin:0}
 input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 /* ----- resident coach: dock orb, speech card, hero, feed ----- */
@@ -419,13 +498,13 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .coach-ago{font-size:10px;font-weight:500;color:hsl(var(--muted-foreground));margin-left:auto;flex-shrink:0}
 .coach-card-b{font-size:12.5px;line-height:1.55;margin:4px 0 0;color:hsl(var(--muted-foreground))}
 .coach-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.coach-act{padding:7px 12px;border-radius:9999px;border:.5px solid hsl(var(--border));background:hsl(var(--secondary));color:hsl(var(--foreground));font-size:12px;font-weight:600;line-height:16px}
-.coach-act.pri{background:hsl(var(--primary));border-color:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+.coach-act{padding:8px 14px;border-radius:9999px;border:0;background:hsl(var(--secondary));color:hsl(var(--foreground));font-size:13px;font-weight:590;line-height:16px}
+.coach-act.pri{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
 .coach-act.ghost{background:none;border-color:transparent;color:hsl(var(--primary));margin-left:auto}
 .coach-state{font-size:11px;font-weight:600;color:hsl(var(--muted-foreground));padding:7px 0}
-.coach-hero{background:linear-gradient(180deg,hsl(var(--primary)/.10),hsl(var(--card)) 70%);border:1px solid hsl(var(--primary)/.2);border-radius:20px;padding:16px;margin-bottom:16px}
+.coach-hero{background:linear-gradient(180deg,hsl(var(--primary)/.13),hsl(var(--card)) 72%);border:0;border-radius:var(--r-card);padding:18px;margin-bottom:16px}
 .coach-live{display:inline-block;width:6px;height:6px;border-radius:3px;background:hsl(var(--success));margin-right:6px;vertical-align:1px;animation:coachBreathe 2s ease-in-out infinite}
-.coach-say{margin-top:14px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:14px;padding:12px 14px}
+.coach-say{margin-top:14px;background:hsl(var(--secondary));border:0;border-radius:var(--r-card);padding:13px 15px}
 .coach-row{width:100%;display:flex;align-items:flex-start;gap:10px;padding:10px 4px;background:none;border:0;border-top:.5px solid hsl(var(--border)/.4);text-align:left;color:inherit}
 .coach-row.new .coach-row-t{color:hsl(var(--foreground))}
 .coach-row-i{width:14px;text-align:center;font-size:11px;color:hsl(var(--primary));line-height:18px;flex-shrink:0}
@@ -449,10 +528,19 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .coach-note.out,.coach-say.out{transition:transform .2s ease,opacity .2s ease;transform:translateX(-48px);opacity:0}
 .sw-line{display:flex;align-items:center;gap:5px;background:none;border:0;padding:0 0 10px;margin-top:-4px;font-size:11px;font-weight:500;color:hsl(var(--water))}
 .coach-note{padding:12px 0;border-top:.5px solid hsl(var(--border)/.4)}.coach-note.new .coach-card-t{color:hsl(var(--foreground))}.coach-note:first-of-type{border-top:0}
-.toast.coach{gap:10px;border-color:hsl(var(--primary)/.35)}
+.toast.coach{gap:10px}
 .navdot{position:absolute;top:2px;right:8px;width:8px;height:8px;border-radius:4px;background:hsl(var(--destructive));box-shadow:0 0 0 2px hsl(var(--background))}
 .navbtn{position:relative}
-.toast{position:fixed;left:16px;width:calc(100% - 32px);max-width:358px;bottom:16px;pointer-events:none;background:#000;border:1px solid hsl(var(--border));display:flex;align-items:center;gap:6px;text-align:left;border-radius:8px;padding:16px;font-size:13px;font-weight:500;color:hsl(var(--foreground));z-index:60;animation:enter .25s;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1)}
+/* A system toast has no stroke, floats clear of the tab bar, and is made of material. The old one
+   was a bordered glowing rectangle sitting ON the nav — two tells at once. */
+.toast{position:fixed;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 40px);
+  bottom:calc(56px + env(safe-area-inset-bottom,0px) + 84px);pointer-events:none;
+  background:hsl(240 3% 14% / .82);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  border:0;display:flex;align-items:center;gap:8px;text-align:left;border-radius:9999px;padding:11px 18px;
+  font-size:14px;font-weight:510;letter-spacing:-.4px;color:hsl(var(--foreground));z-index:60;
+  box-shadow:0 8px 28px rgba(0,0,0,.55),inset 0 .5px 0 hsl(0 0% 100% /.10);
+  animation:toastIn .34s cubic-bezier(.2,.9,.3,1.06) both}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(14px) scale(.94)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
 .toast svg{flex-shrink:0}
 /* Portrait lock. The manifest's orientation:"portrait" locks installed Android; iOS ignores
    manifest orientation entirely, so phones that rotate get a full-screen guard instead of a
@@ -1213,7 +1301,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-10.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-10.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2343,23 +2431,19 @@ function calorieProgress(current,target,opts){
   const base=Math.max(0,target-pb);
   // fill segments: eaten up to target (primary) / target→break-even overflow (amber) / beyond (red)
   const capA=Math.min(current,target),capB=hasBurn?Math.min(current,Math.max(target,burn)):Math.min(current,target);
-  let bar=`<div style="position:relative;height:12px;border-radius:9999px;margin:2px 0 22px" class="bg-muted">`;
+  let bar=`<div style="position:relative;height:10px;border-radius:9999px;margin:2px 0 6px" class="bg-secondary">`;
   if(hasBurn){const z0=X(Math.min(target,burn)),z1=X(Math.max(target,burn)); // leeway (cut) / gaining zone (bulk)
     bar+=`<div style="position:absolute;top:0;bottom:0;left:${z0}%;width:${(z1-z0).toFixed(2)}%;background:hsl(var(--success)/.16);border-radius:2px"></div>`}
   if(pb>0){bar+=`<div class="cal-pb${burnAnim?" fire":""}" style="left:${X(base)}%;width:${(X(target)-X(base)).toFixed(2)}%"><i></i></div>`;
     // name it on the bar: the slice is calories you EARNED, and it sits between the old target and the new one
-    if(X(target)-X(base)>7)bar+=`<div style="position:absolute;bottom:100%;margin-bottom:3px;left:${((X(base)+X(target))/2).toFixed(2)}%;transform:translateX(-50%);font-size:8px;font-weight:700;white-space:nowrap" class="text-warning">+${pb}</div>`;} // the header already says "earned"; here it just needs a number
+} // the header already says "earned"; here it just needs a number
   bar+=`<div class="bar-anim bg-primary" style="position:absolute;top:0;bottom:0;left:0;border-radius:9999px 0 0 9999px;width:${X(capA)}%"></div>`;
   if(current>target)bar+=`<div class="bg-warning" style="position:absolute;top:0;bottom:0;left:${X(target)}%;width:${(X(capB)-X(target)).toFixed(2)}%"></div>`;
   if(current>Math.max(target,burn))bar+=`<div style="position:absolute;top:0;bottom:0;left:${X(Math.max(target,burn))}%;width:${(X(current)-X(Math.max(target,burn))).toFixed(2)}%;background:hsl(var(--destructive))"></div>`;
-  const ticksClose=hasBurn&&Math.abs(X(target)-X(burn))<16; // labels would collide — stagger them
-  const tick=(v,label,cls,drop)=>`<div style="position:absolute;top:-3px;display:flex;flex-direction:column;align-items:center;left:${X(v)}%;transform:translateX(-50%)">
-      <div style="height:${drop?28:18}px;width:2px;border-radius:9999px;${cls==='primary'?'background:hsl(var(--primary))':'background:hsl(var(--muted-foreground)/.6)'}"></div>
-      <span style="font-size:8px;font-weight:600;margin-top:3px;white-space:nowrap" class="${cls==='primary'?'text-primary':'text-muted-foreground'}">${label}</span></div>`;
-  bar+=tick(target,"Target","primary");
-  if(hasBurn)bar+=tick(burn,"Break-even","muted",ticksClose);
+  const tick=(v,cls)=>`<div style="position:absolute;top:-4px;bottom:-4px;width:2px;border-radius:9999px;left:${X(v)}%;transform:translateX(-50%);${cls==='primary'?'background:hsl(var(--primary))':'background:hsl(var(--muted-foreground)/.55)'}"></div>`;
+  bar+=tick(target,"primary");
+  if(hasBurn)bar+=tick(burn,"muted");
   bar+=`</div>`;
-  if(ticksClose)bar=bar.replace("margin:2px 0 22px","margin:2px 0 34px"); // room for the staggered label
   // goal-aware leeway / needed line
   let lee="",leeCls="text-muted-foreground";
   if(hasBurn){
@@ -2376,22 +2460,24 @@ function calorieProgress(current,target,opts){
       if(current>burn)leeCls="text-warning";
     }
   }
+  // ONE hero. The card used to run a 42px number and a 24px number side by side, both bold, one of
+  // them blue — two things claiming to be the answer, so neither read as it. The hero is now whichever
+  // number you asked for (the Consumed/Remaining switch), and its counterpart is a quiet line under it.
+  const left=Math.round(Math.max(0,target-current)),eaten=Math.round(current);
+  const wantLeft=(typeof viewMode!=="undefined"&&viewMode!=="consumed");
+  const heroN=isOver?Math.round(overBy):(wantLeft?left:eaten);
+  const heroLbl=isOver?"Over by":(wantLeft?"Remaining":"Eaten");
+  const heroCls=isOver?"text-over":(wantLeft?"text-primary":"text-foreground");
+  const under=isOver?`${eaten} eaten of ${target}`:(wantLeft?`${eaten} eaten of ${target}`:`${left} left of ${target}`);
   return `<div class="apple-card" style="padding:20px">
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px">
-      <div>
-        <p style="font-size:13px;font-weight:600;letter-spacing:-.025em;margin:0 0 4px" class="text-muted-foreground">Calories${tipI("The bar is your whole day: blue is what you've eaten, the flame-tinted slice is extra calories earned from today's workouts, and the shaded band between Target and Break-even is your cushion — on a cut you can drift into it and still lose weight; on a bulk you need to eat past break-even to gain. Break-even is your daily burn.")}</p>
-        <p style="font-size:42px;font-weight:700;letter-spacing:-.05em;line-height:1;margin:0;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="${isOver?'text-over':'text-foreground'}" data-roll="cal" data-rollv="${Math.round(current)}">${Math.round(current)}</p>
-      </div>
-      <div style="text-align:right">
-        <p style="font-size:11px;margin:0 0 2px" class="text-muted-foreground">${isOver?'Over by':'Remaining'}</p>
-        <p style="font-size:24px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:36px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="${isOver?'text-over':'text-primary'}" data-roll="calleft" data-rollp="${isOver?"+":""}" data-rollv="${isOver?Math.round(overBy):Math.round(Math.max(0,target-current))}">${isOver?`+${Math.round(overBy)}`:Math.round(Math.max(0,target-current))}</p>
-        ${pb>0?`<p style="font-size:11px;font-weight:700;margin:2px 0 0;line-height:14px" class="text-warning" data-roll="calearn" data-rollp="+" data-rollv="${pb}">+${pb} earned</p>`
-          :wo>0?`<p style="font-size:10px;font-weight:600;margin:2px 0 0;line-height:14px" class="text-muted-foreground">${wo} burned · not added</p>`:""}
-      </div>
+    <div style="margin-bottom:14px">
+      <p style="font-size:13px;font-weight:510;margin:0 0 2px;line-height:18px" class="text-muted-foreground">${heroLbl}${tipI("The bar is your whole day: blue is what you've eaten, the flame-tinted slice is extra calories earned from today's workouts, and the shaded band up to Break-even is your cushion — on a cut you can drift into it and still lose weight; on a bulk you need to eat past break-even to gain. Break-even is your daily burn.")}</p>
+      <p class="sfr ${heroCls}" style="font-size:52px;font-weight:700;letter-spacing:-1.4px;line-height:56px;margin:0;font-variant-numeric:tabular-nums" data-roll="calhero" data-rollp="${isOver?"+":""}" data-rollv="${heroN}">${isOver?"+":""}${heroN}</p>
+      <p style="font-size:14px;margin:2px 0 0;line-height:19px" class="text-muted-foreground tnum">${under} cal${pb>0?` · <span class="text-warning" style="font-weight:590" data-roll="calearn" data-rollp="+" data-rollv="${pb}">+${pb} earned</span>`:wo>0?` · ${wo} burned · not added`:""}</p>
     </div>
     ${bar}
-    <p style="font-size:11px;margin:6px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("Calories you earned from today's workouts. Nothing is padded or shaved: the figure added is what today burned beyond your habitual daily training, because your break-even already includes that habit and adding it a second time would inflate the target.")}`:wo>0?` · ${wo} cal burned today, not added${tipI("Adding workout burn to your daily target is switched off in Settings → Activity, so today's session shows as a number but does not widen what you can eat.")}`:""}</p>
-    ${lee?`<p style="font-size:11px;margin:4px 0 0;font-weight:500;letter-spacing:-.025em" class="${leeCls}">${lee}</p>`:""}
+    <p style="font-size:12px;margin:8px 0 0;font-weight:400;line-height:16px" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("Calories you earned from today's workouts. Nothing is padded or shaved: the figure added is what today burned beyond your habitual daily training, because your break-even already includes that habit and adding it a second time would inflate the target.")}`:wo>0?` · ${wo} cal burned today, not added${tipI("Adding workout burn to your daily target is switched off in Settings → Activity, so today's session shows as a number but does not widen what you can eat.")}`:""}</p>
+    ${lee&&current>target?`<p style="font-size:12px;margin:3px 0 0;font-weight:400;line-height:16px" class="${leeCls}">${lee}</p>`:""}
   </div>`;
 }
 // DeficitVisual.tsx — Target header + confidence chip, gauge with TDEE/Target markers, three pills
@@ -2419,10 +2505,10 @@ function deficitVisual(consumed,target,tdee,confidence){
   const planWord=plannedDeficit>0?Math.round(plannedDeficit)+" deficit":plannedDeficit<0?Math.round(-plannedDeficit)+" surplus":"break-even";
   return `<div class="apple-card" style="padding:12px 16px;margin-top:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <p style="font-size:13px;margin:0;line-height:19px;min-width:0" class="text-foreground">${trendIco} On pace for a <b class="${paceCls}">${Math.abs(Math.round(currentDeficit))} cal ${word}</b> today <span class="text-muted-foreground">· plan: ${planWord}</span>${tipI("Your deficit is the gap between what you burn in a day and what you eat. Eating under your burn loses weight; over it gains. Green means today is tracking near YOUR plan — not just any loss.")}</p>
-      <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:9999px;flex-shrink:0;${chip}" data-tip="How well the app knows your true daily burn. It starts from a formula and learns from your actual weigh-ins and food logs — confidence rises with consistent logging.">${confidence} confidence</span>
+      <p style="font-size:15px;margin:0;line-height:20px;min-width:0;font-weight:400" class="text-foreground">${trendIco} On pace for a <b class="${paceCls}" style="font-weight:590">${Math.abs(Math.round(currentDeficit))} cal ${word}</b> today <span class="text-muted-foreground">· plan: ${planWord}</span>${tipI("Your deficit is the gap between what you burn in a day and what you eat. Eating under your burn loses weight; over it gains. Green means today is tracking near YOUR plan — not just any loss.")}</p>
+      <span style="font-size:11px;font-weight:510;padding:3px 8px;border-radius:9999px;flex-shrink:0;${chip}" data-tip="How well the app knows your true daily burn. It starts from a formula and learns from your actual weigh-ins and food logs — confidence rises with consistent logging.">${confidence} confidence</span>
     </div>
-    <p style="font-size:11px;margin:6px 0 0;line-height:15px" class="${paceCls}">If every day looked like today: ${weeklyChange>0?"\u2212":"+"}${Math.abs(weeklyChange).toFixed(1)} lb/wk${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
+    <p style="font-size:12px;margin:6px 0 0;line-height:16px" class="text-muted-foreground">If every day looked like today: ${weeklyChange>0?"\u2212":"+"}${Math.abs(weeklyChange).toFixed(1)} lb/wk${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
   </div>`;
 }
 // MacroRing.tsx (size=76, r=34, stroke 5); colors — Index.tsx:232-234
@@ -2600,7 +2686,7 @@ function waterTracker(currentMl,goalMl,canAdd,canUndo,autoMl=0,manualMl=currentM
       </div>
     </div>
     <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">
-      <p style="font-size:30px;font-weight:700;letter-spacing:-.025em;margin:0;line-height:36px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="text-foreground" data-roll="water" data-rollv="${waterConvert(currentMl,waterUnit)}">${waterConvert(currentMl,waterUnit)}</p>
+      <p style="font-size:26px;font-weight:600;letter-spacing:-.5px;margin:0;line-height:32px;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif" class="text-foreground" data-roll="water" data-rollv="${waterConvert(currentMl,waterUnit)}">${waterConvert(currentMl,waterUnit)}</p>
       <span style="font-size:14px;font-weight:500;line-height:20px" class="text-muted-foreground">/ ${waterConvert(goalMl,waterUnit)} ${cfg.label}</span>
       <span style="font-size:11px;color:hsl(var(--muted-foreground)/.6);margin-left:auto">${waterConvert(remaining,waterUnit)} ${cfg.label} left</span>
     </div>
@@ -2740,11 +2826,11 @@ function homePage(){
         ?`${Math.round(display[key])}g / ${targets[key]}g${over?` <span class="text-over" style="font-weight:600">· ${ob}g over</span>`:''}`
         :(over?`<span class="text-over" style="font-weight:600">${ob}g over</span>`:`${Math.round(display[key])}g left`);
       return `<div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;line-height:16px">
-        <span style="font-weight:600" class="${color}">${label}${showNetCarbs&&label==='Carbs'&&totals.fiber?`<span style="font-size:10px;margin-left:4px" class="text-muted-foreground">(net: ${Math.max(0,totals.carbs-(totals.fiber||0)).toFixed(0)}g)</span>`:''}</span>
-        <span class="text-muted-foreground">${cap}</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:6px;line-height:18px">
+        <span style="font-weight:510" class="text-foreground">${label}${showNetCarbs&&label==='Carbs'&&totals.fiber?`<span style="font-size:11px;margin-left:5px" class="text-muted-foreground">net ${Math.max(0,totals.carbs-(totals.fiber||0)).toFixed(0)}g</span>`:''}</span>
+        <span class="text-muted-foreground tnum">${cap}</span>
       </div>
-      <div style="position:relative;height:6px;border-radius:9999px" class="bg-muted">
+      <div style="position:relative;height:8px;border-radius:9999px" class="bg-secondary">
         <div class="bar-anim-08 ${bg}" style="position:absolute;top:0;bottom:0;left:0;border-radius:${over?'9999px 0 0 9999px':'9999px'};width:${X(Math.min(cur,tgt)).toFixed(2)}%"></div>
         ${over?`<div class="bar-anim-08 bg-over" style="position:absolute;top:0;bottom:0;left:${X(tgt).toFixed(2)}%;width:${(X(cur)-X(tgt)).toFixed(2)}%;border-radius:0 9999px 9999px 0"></div>
         <div class="mtick" style="left:${X(tgt).toFixed(2)}%"></div>`:''}
@@ -2753,17 +2839,13 @@ function homePage(){
 
   return `<div class="home-page">
   <div class="anim">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
-      <h1 class="apple-title text-foreground" style="margin:0">Dashboard<span class="text-primary">.</span></h1>
+    <div class="pg-head">
+      <h1 class="apple-title text-foreground" style="margin:0;flex:1;min-width:0">Today</h1>
+      <button data-act="goprog" class="icon-btn haptic" aria-label="Trends">${LUCIDE_C(P_TRENDDOWN,2,17)}</button>
+      <button data-act="tab" data-t="calendar" class="icon-btn haptic" aria-label="Calendar">${LUCIDE_C(P_CALDAYS,2,17)}</button>
+      <button data-act="coach:inbox" class="icon-btn haptic bell" aria-label="Notifications${coachUnread()?`, ${coachUnread()} new`:""}">${LUCIDE_C(P_BELL,2,17)}${coachUnread()?`<span class="bell-n">${coachUnread()}</span>`:""}</button>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px">
-      <p style="font-size:13px;margin:0;font-weight:500" class="text-muted-foreground">${subtitle}</p>
-      <div style="display:flex;gap:8px;flex-shrink:0">
-        <button data-act="goprog" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${LUCIDE_C(P_TRENDDOWN,2,14)} Trends</button>
-        <button data-act="tab" data-t="calendar" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${LUCIDE_C(P_CALDAYS,2,14)} Calendar</button>
-        <button data-act="coach:inbox" class="apple-pill bg-secondary haptic bell" style="border:0;color:hsl(var(--secondary-foreground))" aria-label="Notifications${coachUnread()?`, ${coachUnread()} new`:""}">${LUCIDE_C(P_BELL,2,14)}${coachUnread()?`<span class="bell-n">${coachUnread()}</span>`:""}</button>
-      </div>
-    </div>
+    <p class="pg-sub">${subtitle}</p>
   </div>
   <div class="anim" style="animation-delay:.05s">${dayStrip({hasFoodLog:d=>entriesFor(d).length>0,hasWeighIn:d=>weightOn(d)!=null,
     hasWorkout:d=>workouts.some(w=>w.date===d),hasEvent:d=>eventsOn(d).length>0})}</div>
@@ -2785,7 +2867,7 @@ function homePage(){
   <div class="anim" style="animation-delay:.1s">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <p class="apple-section" style="margin:0">Nutrition</p>
-      <button data-act="viewmode" class="haptic text-primary" style="font-size:12px;font-weight:600;padding:4px 8px;margin:-4px;background:none;border:0;line-height:18px">${viewMode==='consumed'?'Remaining':'Consumed'}</button>
+      <button data-act="viewmode" class="haptic" style="font-size:13px;font-weight:510;padding:4px 8px;margin:-4px;background:none;border:0;line-height:18px;color:hsl(var(--muted-foreground))">Show ${viewMode==='consumed'?'remaining':'eaten'}</button>
     </div>
     ${calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday,wo:dayWorkoutBurn(selDate)})}
     ${shiftOn&&targets.calories!==baseCals&&!pbToday?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
@@ -2864,7 +2946,8 @@ const IC_ZAP14=LUCIDE('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/
 // "Add Food" inside the expanded block, Plus header icon + open-search on empty meals.
 // serving label with the REAL unit: "6 oz ·", "1.5 cup ·" — "6×" only when the unit is a bare serving
 const svLabel=e=>{const u=String(e.servingUnit||"").trim();
-  if(!u||/^servings?$/i.test(u))return e.sv!==1?`${e.sv}× · `:"";
+  const sv=+e.sv; // an entry written by an older build (or an import) may carry no serving count at all
+  if(!u||/^servings?$/i.test(u))return isFinite(sv)&&sv!==1?`${+sv.toFixed(2)}× · `:"";
   return `${e.amt!=null?e.amt:e.sv} ${esc(u)} · `}; // amt = what was typed in that unit; sv = servings (older rows carry the amount in sv)
 // ----- Logged-entry breakdown: a basket, combo, built bowl or wing order is logged as ONE entry, so the
 // log row shows the total. The provenance snapshot still knows every piece — rebuild the pieces with their
@@ -3124,8 +3207,8 @@ function mealSection(m){
 }
 function foodPage(){
   return `<div class="page fab-room">
-    <div class="fl-head" style="display:flex;align-items:center;justify-content:space-between"><h1 class="apple-title text-foreground" style="margin:0">Food Log<span class="text-primary">.</span></h1>
-      <button data-act="tab" data-t="saved" class="apple-pill bg-secondary haptic" style="border:0;color:hsl(var(--secondary-foreground))">${IC_COPY14} Saved Meals</button></div>
+    <div class="pg-head"><h1 class="apple-title text-foreground" style="margin:0;flex:1;min-width:0">Food</h1>
+      <button data-act="tab" data-t="saved" class="icon-btn haptic" aria-label="Saved meals">${IC_COPY14}</button></div>
     ${dayStrip({hasFoodLog:d=>entriesFor(d).length>0})}
     ${MEALS.map(mealSection).join("")}
     <button class="cfd-trigger haptic" data-act="copydaysheet">${IC_COPY14} Copy from another day</button>
@@ -8064,7 +8147,7 @@ function workoutPage(){
   return `<div class="page">
     <div style="animation:enterDown .3s ease both">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.workout,2,22,'text-primary')}<h1 class="apple-title text-foreground" style="margin:0">Workout<span class="text-primary">.</span></h1></div>
+        <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.workout,2,22,'text-primary')}<h1 class="apple-title text-foreground" style="margin:0">Workout</h1></div>
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:4px">
         <button class="haptic bg-muted" data-act="restday" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;${isRestDay?"border:1px solid hsl(var(--primary)/.3);":""}color:hsl(var(--${isRestDay?"foreground":"muted-foreground"}))">${LUCIDE(P_MOON,2,14)} ${isRestDay?"Rest day ✓":"Rest day"}</button>
@@ -8383,7 +8466,7 @@ function progressPage(){
     yMin:0,yMax:4*stp,yTicks:[0,stp,2*stp,3*stp,4*stp],yFmt:v=>String(Math.round(v))});
   // Page: no back button, no section headers — h1 then Log Weight / Weight Trend / Calorie History
   return `<div class="page">
-  <h1 class="apple-title text-foreground" style="margin:0 0 20px">Progress<span class="text-primary">.</span></h1>
+  <div class="pg-head" style="margin-bottom:14px"><h1 class="apple-title text-foreground" style="margin:0">Progress</h1></div>
   <div class="enter-up apple-card" style="padding:16px;margin-bottom:20px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${LUCIDE_C(P_SCALE,2,16,'text-primary')}<h3 class="text-foreground" style="font-size:14px;font-weight:600;margin:0;line-height:20px">Log Weight</h3></div>
     <div style="display:flex;gap:8px">
@@ -8932,7 +9015,7 @@ function coachPage(){
   }
   return `<div class="page">
   <div class="enter-down">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h1 class="apple-title text-foreground" style="margin:0">Coach<span class="text-primary">.</span></h1></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h1 class="apple-title text-foreground" style="margin:0">Coach</h1></div>
     <p style="font-size:13px;font-weight:500;margin:0 0 20px" class="text-muted-foreground">${sub}</p></div>
   ${coachHeroHTML()}
   ${ciPanel}${streaksRow}${goalCardHtml}
@@ -9785,8 +9868,8 @@ function setsTargets(){
 }
 function settingsPage(animate=true){
   return `<div class="page">
-  <h1 class="apple-title text-foreground" style="margin:0 0 4px">Settings<span class="text-primary">.</span></h1>
-  <p class="text-muted-foreground" style="font-size:13px;margin:0 0 20px;font-weight:500">Configure your body profile, goals, and coaching preferences</p>
+  <div class="pg-head"><h1 class="apple-title text-foreground" style="margin:0;flex:1;min-width:0">Settings</h1></div>
+  <div style="height:14px"></div>
   ${accSection("body",P_USER,"Body Profile",setsBody(),animate)}
   ${accSection("activity",P_ACTIVITY,"Activity &amp; Training",setsActivity(),animate)}
   ${accSection("diet",P_UTENSILS,"Diet Preferences",setsDiet(),animate)}
@@ -9845,6 +9928,18 @@ function renderNav(){
     }).join("")+`</div>`;
 }
 let renderedTab=null;
+// An iOS slider's track is tinted up to the thumb. CSS has no way to know where that is, so the
+// track is a gradient and this hands it the stop position.
+function rngFill(el){
+  const lo=+el.min||0,hi=+el.max||100,v=+el.value;
+  el.style.setProperty("--fill",(hi>lo?((v-lo)/(hi-lo))*100:0).toFixed(2)+"%");
+}
+// A tab switch that swaps the DOM in one frame reads as a reload. Safari 18+ can cross-fade it for
+// free; anywhere else this is a no-op and the swap happens exactly as it did before.
+function renderTransition(){
+  if(renderedTab===tab||!document.startViewTransition||lfReduced()){render();return}
+  try{document.startViewTransition(()=>render())}catch(e){render()}
+}
 function render(){
   closePMenu();renderNav();
   // Index remounts reset viewMode/showInsights/water unit like fresh React state (Index.tsx:40-42)
@@ -9873,18 +9968,35 @@ function render(){
   const sameTab=renderedTab===tab,keepScroll=sameTab?$("#view").scrollTop:0;
   const tabChanged=!sameTab;
   renderedTab=tab;
+  // Replacing innerHTML destroys the focused field mid-type. Remember where the caret was so a
+  // re-render triggered by what you are typing does not throw you out of the box you are typing in.
+  const ae=document.activeElement;
+  const focusKey=ae&&ae!==document.body&&$("#view").contains(ae)
+    ?{id:ae.id,act:ae.dataset&&ae.dataset.act,set:ae.dataset&&ae.dataset.set,
+      s0:ae.selectionStart,s1:ae.selectionEnd}:null;
+  // a page you have arrived on animates in; a page you are already on just updates
+  $("#view").classList.toggle("quiet",sameTab);
   $("#view").innerHTML=tab==="home"?homePage():tab==="food"?foodPage():tab==="workout"?workoutPage():tab==="coach"?coachPage()
     :tab==="progress"?progressPage():tab==="calendar"?calendarPage():tab==="saved"?savedMealsPage():tab==="settings"?settingsPage()
     :tab==="auth"?authPage():notFoundPage();
   if(typeof coachMount==="function"){coachMount();if(tab==="coach"){coachTypewriter();if(tabChanged)coachMem.inbox.filter(m=>m.state==="new").slice(0,1).forEach(m=>m.state="read")}if(tabChanged)coachSchedule("tab")}
   // React state updates never scroll; only an actual page change starts at the top
   $("#view").scrollTop=keepScroll;
+  if(focusKey){
+    const sel=focusKey.id?"#"+focusKey.id:focusKey.set?`[data-set="${focusKey.set}"]`:focusKey.act?`[data-act="${focusKey.act}"]`:null;
+    const el2=sel&&$("#view").querySelector(sel);
+    if(el2&&el2!==document.activeElement&&typeof el2.focus==="function"){
+      el2.focus({preventScroll:true});
+      try{if(focusKey.s0!=null&&el2.setSelectionRange)el2.setSelectionRange(focusKey.s0,focusKey.s1)}catch(e){}
+    }
+  }
   // BottomNav.tsx:149 — nav hidden on /auth
   $("#nav").style.display=tab==="auth"?"none":"";
   const fab=$("#fab");
   fab.style.display=(tab==="home"||tab==="food")?"flex":"none";
   fab.style.right=tab==="home"?"20px":"16px"; // Index.tsx:497 vs FoodLog.tsx:150
   if(PATH_OF[tab])history.replaceState(null,"","#"+PATH_OF[tab]);
+  $("#view").querySelectorAll("input[type=range].rng").forEach(rngFill); // tint each track up to its thumb
   // MacroRing stroke-dashoffset animation (MacroRing.tsx:39-41): set final offset on a rAF after insert
   requestAnimationFrame(()=>document.querySelectorAll(".ring-anim").forEach(c=>c.setAttribute("stroke-dashoffset",c.dataset.finalOffset)));
   rollNumbers();dsSlide();
@@ -9903,7 +10015,7 @@ document.addEventListener("click",e=>{
   const act=el.dataset.act;
   if(act==="tab"){const t=el.dataset.t; // tapping the tab you are already on takes that page back to the top
     if(t===tab){$("#view").scrollTo({top:0,behavior:lfReduced()?"auto":"smooth"});return}
-    tab=t;render()}
+    tab=t;renderTransition()}
   else if(act==="selday"){const d=el.dataset.d,today=localDateStr();selDate=(d===selDate&&d!==today)?today:d;render()} // tapping the selected day again jumps back to today
   else if(act==="dsweek"){ // DayStrip.tsx:45-49 — jump ±7 days
     const d=new Date(selDate+'T12:00:00');d.setDate(d.getDate()+(+el.dataset.dir)*7);
@@ -10591,6 +10703,7 @@ document.addEventListener("input",e=>{
 document.addEventListener("input",e=>{
   // Settings sliders — live readout while dragging (full refresh happens on 'change')
   if(e.target.type==="range"&&e.target.dataset.rangeval){
+    rngFill(e.target);
     const sp=document.getElementById(e.target.dataset.rangeval);
     if(sp)sp.textContent=e.target.value+(e.target.dataset.rangefmt||"");
   }
