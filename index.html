@@ -1213,7 +1213,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-09.9"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-10.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1774,27 +1774,55 @@ function dayTargetsFor(profile, restDays /* array of date strings */, workouts, 
   return { calories: profile.targetCalories, protein: profile.targetProtein, carbs: profile.targetCarbs, fat: profile.targetFat };
 }
 // ===== Activity payback (ON unless you turn it off; profile.burnPayback) =====
-// Adds back a GOAL-AWARE fraction of the day's logged workout burn to that day's
-// calorie target, so what you burned shows up on the home bar as calories you can
-// actually eat. It is deliberately discounted: cut/recomp 50%, maintain/bulk 75%.
-// The burn feeding it is already NET of resting metabolism (see BURN_CFG.MET_REST),
-// so the discount is now covering estimator error alone rather than double-counting
-// rest — that is why the rates stay conservative even though the input got honest.
-// Unverified estimates count at 85% first (same grain-of-salt as the coach), and the
-// payback is capped per day so a typo'd workout can't blow up the target.
-// On workout days it SUPERSEDES the flat Calorie Shifting training-day boost
-// (never both); the rest-day reduction still applies on no-workout days.
-const BURN_PAYBACK_RATE={cut:0.5,recomp:0.5,maintain:0.75,bulk:0.75}; // fraction of discounted burn returned
-const BURN_PAYBACK_CAP=600;                                           // cal/day ceiling
+// What a workout adds to that day's calorie target. There is NO discount rate here, no
+// grain-of-salt haircut, and nothing is padded in either direction: a logged burn is used
+// at exactly the number that is stored on the entry.
+//
+// It is still not the whole burn, and the reason is arithmetic rather than caution. The
+// break-even this app plans against is your ADAPTIVE TDEE — read back out of your own intake
+// and weight trend — and when confidence is low it falls back to the Mifflin-St Jeor formula
+// TDEE with your declared activity level. Either way that number ALREADY contains the training
+// you habitually do. Paying today's whole session back on top of it would count the same
+// calories twice and quietly inflate the target. What is genuinely new today is the part that
+// exceeds your habit, so that is what gets added:
+//
+//     payback = today's logged burn  -  your habitual daily workout burn
+//
+// Train the same amount you always do and it adds little, because your target already carried
+// it. Go long, or train on a day you normally rest, and the whole difference lands. The only
+// two limits are physical, not editorial: it never goes negative, and it is capped per day so
+// a mistyped entry cannot blow up the target.
+// On workout days this SUPERSEDES the flat Calorie Shifting training-day boost (never both);
+// the rest-day reduction still applies on no-workout days.
+const BURN_HABIT_DAYS=14;    // trailing window used to read your habitual daily training burn
+const BURN_PAYBACK_CAP=1200; // cal/day ceiling — a typo guard, NOT a discount
 // Default ON: a burn you can't see is a burn the app may as well not have logged. Only an
 // explicit `false`/"off" (the Settings toggle writes one) turns it back into a display-only number.
 function paybackOn(){return !(profile.burnPayback===false||profile.burnPayback==="off")}
+// Today's burn, exactly as logged. No weighting by how the number was arrived at.
 function dayWorkoutBurn(date){return workouts.filter(w=>w.date===date)
-  .reduce((s,w)=>s+(w.aiEstimated?Math.round(w.totalCaloriesBurned*0.85):w.totalCaloriesBurned),0)}
+  .reduce((s,w)=>s+(+w.totalCaloriesBurned||0),0)}
+// The training your expenditure estimate has already absorbed: mean daily workout burn over the
+// trailing window, today excluded. Sparse loggers get a small number and so keep most of a session.
+function habitualDailyBurn(date){
+  const a=date.split("-").map(Number),end=new Date(a[0],a[1]-1,a[2]),start=new Date(end);
+  start.setDate(start.getDate()-BURN_HABIT_DAYS);
+  const s0=localDateStr(start),e0=localDateStr(end);
+  const tot=workouts.filter(w=>w.date>=s0&&w.date<e0).reduce((x,w)=>x+(+w.totalCaloriesBurned||0),0);
+  return tot/BURN_HABIT_DAYS;
+}
 function burnPayback(date){
   if(!paybackOn())return 0;
-  const rate=BURN_PAYBACK_RATE[profile.goal]||0.5;
-  return Math.min(BURN_PAYBACK_CAP,Math.round(dayWorkoutBurn(date)*rate));
+  const today=dayWorkoutBurn(date);
+  if(!(today>0))return 0;
+  return Math.max(0,Math.min(BURN_PAYBACK_CAP,Math.round(today-habitualDailyBurn(date))));
+}
+// What logging a further `kcal` today would add — used to preview a session before it is saved.
+function paybackIfAdded(date,kcal){
+  if(!paybackOn())return 0;
+  const now=burnPayback(date),after=Math.max(0,Math.min(BURN_PAYBACK_CAP,
+    Math.round(dayWorkoutBurn(date)+kcal-habitualDailyBurn(date))));
+  return Math.max(0,after-now);
 }
 function remainingFor(dayTargets, totals) {          // Index.tsx:87-92 — clamped at 0
   return {
@@ -2047,26 +2075,20 @@ function getWeeklyVolume(workouts) {
     }, 0);
 }
 
-// ----- src/pages/Workout.tsx:158,183 — workout calorie estimate -----
-// FLAT 6 kcal/min regardless of category; duration = max(1, round(elapsedSec/60)).
-function workoutCalories(elapsedSeconds) {
-  const durationMin = Math.max(1, Math.round(elapsedSeconds / 60));
-  return Math.round(durationMin * 6);
-}
+// (src/pages/Workout.tsx:158,183 used a flat 6 kcal/min for every session. That helper is gone;
+//  estimateSessionBurn models the session instead. Nothing in this file calls a flat rate.)
 
 // ----- src/hooks/useCoaching.ts:101-106 — avg workout cal/day over 30 days -----
 // Fixed divisor 30 (not days-with-data). 0 when no workout days at all.
-// Extension: quick-log estimates the user has NOT verified count at 85% here (the
-// grain-of-salt discount) — machine consoles and MET math are routinely ±100+ cal.
-// Once the user confirms/edits a value it counts in full. Displays elsewhere show
-// the full stored number; the discount applies only where burns feed the coach.
+// Every entry counts at the number stored on it, whether the app modelled it or you typed it.
+// (There used to be a 15% haircut on un-corrected estimates here. It was a hedge, not a finding,
+// so it is gone: a burn is either estimated as well as the research allows or corrected by you.)
 function workoutCalsBurnedPerDay(workouts) {
   const start=new Date();start.setDate(start.getDate()-30);
   const startStr=localDateStr(start);
   const daily={};
   workouts.filter(w=>w.date>=startStr).forEach(w=>{
-    const c=w.aiEstimated?Math.round(w.totalCaloriesBurned*0.85):w.totalCaloriesBurned;
-    daily[w.date]=(daily[w.date]||0)+c;
+    daily[w.date]=(daily[w.date]||0)+(+w.totalCaloriesBurned||0);
   });
   const vals = Object.values(daily);
   if (vals.length === 0) return 0;
@@ -2368,7 +2390,7 @@ function calorieProgress(current,target,opts){
       </div>
     </div>
     ${bar}
-    <p style="font-size:11px;margin:6px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("You earned extra calories from today's workouts, but only a discounted share is added back — machine burn readouts run high, and eating back every burned calorie usually stalls the plan. The discount depends on your goal (stricter on a cut).")}`:wo>0?` · ${wo} cal burned today, not added${tipI("Adding workout burn to your daily target is switched off in Settings → Activity, so today's session shows as a number but does not widen what you can eat.")}`:""}</p>
+    <p style="font-size:11px;margin:6px 0 0;font-weight:500;letter-spacing:-.025em" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("Calories you earned from today's workouts. Nothing is padded or shaved: the figure added is what today burned beyond your habitual daily training, because your break-even already includes that habit and adding it a second time would inflate the target.")}`:wo>0?` · ${wo} cal burned today, not added${tipI("Adding workout burn to your daily target is switched off in Settings → Activity, so today's session shows as a number but does not widen what you can eat.")}`:""}</p>
     ${lee?`<p style="font-size:11px;margin:4px 0 0;font-weight:500;letter-spacing:-.025em" class="${leeCls}">${lee}</p>`:""}
   </div>`;
 }
@@ -7719,6 +7741,25 @@ function parseWorkoutLocal(notes,elapsedSeconds){
 // One set of named, documented constants drives BOTH estimators (quick log and tracked session).
 // Units: kcal, kg, minutes, metres, joules, seconds. A MET is kcal per kg of body mass per hour.
 // Tune these numbers — never bury a new one in the logic below.
+//
+// GROUND RULE for this whole section: every term below is a published physiological quantity, and
+// every one of them can move a burn in EITHER direction. There is no safety margin, no hedge, no
+// "machines read high so we shave a bit" constant, and nothing that adds a flat number to an entry.
+// If a figure here is wrong, it is wrong because the research is coarse or the inputs are — not
+// because the app decided to be careful with your calories. A number you type in yourself is never
+// adjusted at all: it is stored exactly as entered.
+//
+// Sources, in the order they are used below:
+//   Ainsworth et al., Compendium of Physical Activities (2011 update) — the MET values in BURN_ACTS
+//   Byrne et al. (2005), Obes Res — measured RMR is close to but not exactly 1 MET; 1.0 is the
+//     Compendium's own reference, and it is what the tables are gross OF, so it is what comes back off
+//   Tanaka, Monahan & Seals (2001), JACC — HRmax = 208 - 0.7 x age
+//   Swain & Leutholtz (1997); ACSM's Guidelines for Exercise Testing and Prescription — %HRR ~ %VO2R
+//   ACSM metabolic equations — VO2 in ml/kg/min, 1 MET = 3.5 ml/kg/min
+//   LaForgia, Withers & Gore (2006), J Sports Sci — EPOC magnitudes after resistance and endurance work
+//   Hunter, Byrne et al. (2003); Greer et al. (2015) — resistance-session EPOC in the 5-10% band
+//   Winter & Fowler (2009), Ergonomics; Hansen et al. — gross mechanical efficiency of lifting ~0.20-0.25
+//   Elmer, Marshall et al. — eccentric work costs roughly a third of concentric per unit force
 const BURN_CFG={
   MET_REST:1.0,          // quiet sitting. Compendium METs are GROSS, so this is subtracted: you only
                          // earn the energy spent ABOVE doing nothing, which is what "extra to eat" means.
@@ -7734,10 +7775,19 @@ const BURN_CFG={
   DENSITY_MAX:1.5,       // no one performs working sets faster than this — above it the CLOCK is wrong,
                          // so the duration is floored at sets/DENSITY_MAX rather than the burn collapsing
   WORK_MET_CAP:3.0,      // ceiling on the external-work surcharge, in METs
-  EPOC:{lift:0.07,hiit:0.10,steady:0.03}, // afterburn, as a fraction of the session's net cost
-  LEAN_REF_BF:20,        // MET tables are calibrated on roughly 20% body fat
+  // Afterburn (EPOC), as a fraction of the session's net cost. These are the only terms in the model
+  // that ADD, so they sit at the conservative end of the measured ranges: LaForgia et al. put
+  // resistance-session EPOC at 6-15% and moderate steady-state work at 2-7% of the exercise cost.
+  // The Energy card and the quick-log line both name the percentage they applied — it is never silent.
+  EPOC:{lift:0.07,hiit:0.10,steady:0.03},
+  // Body composition. Fat mass costs about 4.5 kcal/kg/day at rest against roughly 13 for lean mass,
+  // so two people of the same weight do not share a resting baseline — and a MET is defined per kg of
+  // WHOLE body mass. This corrects the denominator, both ways: leaner than the reference raises the
+  // burn, fatter lowers it. Bounded hard, because the effect on exercise cost is real but modest and
+  // for weight-bearing work total mass dominates. Ignored entirely when body fat is unknown.
+  LEAN_REF_BF:20,        // the body fat the Compendium's reference subject is near
   LEAN_CLAMP:[0.90,1.10],
-  META_CLAMP:[0.85,1.15],// personal metabolism multiplier = adaptive TDEE / formula TDEE
+  META_CLAMP:[0.85,1.15],// YOUR measured metabolism: adaptive TDEE / formula TDEE. Also moves both ways.
   CAL_CLAMP:[0.50,1.60], // learned per-activity calibration
   HR_MIN:80,HR_MAX:210,  // plausible average-HR window for the heart-rate override
   HR_REST:65,            // resting heart rate assumed when the user has not measured one, bpm
@@ -7922,7 +7972,8 @@ function workoutPage(){
       <div class="anim" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;animation-delay:.2s">
         ${stat(a.totalSets,"total sets")}${stat(a.exercises.length,"exercises")}${stat(a.totalVolume>1000?(a.totalVolume/1000).toFixed(1)+"k":a.totalVolume,"volume (lbs)")}</div>
       ${(()=>{ // what the session cost, and why — the same estimate the save writes, shown before you commit it
-        const mins=Math.max(1,Math.round(woElapsed/60)),e=estimateSessionBurn(a,mins,(s?s.notes:"")||""),pbv=paybackOn()?Math.min(BURN_PAYBACK_CAP,Math.round(e.kcal*0.85*(BURN_PAYBACK_RATE[profile.goal]||0.5))):0;
+        const mins=Math.max(1,Math.round(woElapsed/60)),e=estimateSessionBurn(a,mins,(s?s.notes:"")||"");
+        const pbv=paybackIfAdded(localDateStr(),e.kcal),hab=Math.round(habitualDailyBurn(localDateStr()));
         const why=e.src==="session"
           ?`${e.density} sets/min tempo${e.workMET>0?` + ${e.workMET} MET of bar work`:""} · MET ${e.met} · net of resting burn · +${Math.round(BURN_CFG.EPOC.lift*100)}% afterburn`
           :`MET ${e.met} from your description · net of resting burn`;
@@ -7931,7 +7982,8 @@ function workoutPage(){
             <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_FLAME,2,16,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Energy</p></div>
             <p style="font-size:20px;font-weight:700;margin:0;line-height:28px" class="text-warning">${e.kcal} cal</p></div>
           <p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">${why}</p>
-          ${pbv>0?`<p style="font-size:10px;font-weight:600;margin:4px 0 0;line-height:14px" class="text-primary">+${pbv} cal added to today's target</p>`:""}</div>`})()}
+          ${pbv>0?`<p style="font-size:10px;font-weight:600;margin:4px 0 0;line-height:14px" class="text-primary">+${pbv} cal added to today's target${hab>0?` — the rest of it (${hab}/day) is already in your break-even`:""}</p>`
+            :paybackOn()&&hab>0?`<p style="font-size:10px;margin:4px 0 0;line-height:14px" class="text-muted-foreground">Nothing added: this is your usual ${hab} cal/day of training, which your break-even already carries.</p>`:""}</div>`})()}
       <div class="anim" style="margin-bottom:24px;animation-delay:.25s">
         <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;line-height:16px" class="text-muted-foreground">Exercises</p>
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -8023,12 +8075,12 @@ function workoutPage(){
       <p style="font-size:12px;margin:0;line-height:16px" class="text-muted-foreground">Daily burn counted as resting-level today.${shiftOn?` Target: <span style="font-weight:600" class="text-foreground">${restCals} cal</span>`:""}</p></div>`:""}
     ${qlogPending?`<div class="anim apple-card" style="padding:12px;margin-top:16px;animation-delay:.03s">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${LUCIDE_C(P_FLAME,2,14,'text-warning')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">${esc(qlogPending.name)}</p></div>
-      <p style="font-size:11px;margin:0 0 10px;line-height:15px" class="text-muted-foreground">${(m=>m<3?"light":m<6?"moderate":m<9?"vigorous":"all-out")(qlogPending.est.met)} effort (MET ${qlogPending.est.met})${tipI("MET is a standard effort scale: 1 is sitting still, 3–4 a brisk walk, 8–9 hard cycling. Your burn = effort × your body weight × time.")} • at your ${profile.weightUnit==='kg'?`${qlogPending.est.kg} kg`:`${Math.round(qlogPending.est.kg*2.20462)} lb`}${qlogPending.est.metaF!==1?` • ${qlogPending.est.metaF>1?"+":"−"}${Math.abs(Math.round((qlogPending.est.metaF-1)*100))}% for your metabolism`:""}${qlogPending.est.calF!==1?` • ${qlogPending.est.calF>1?"+":"−"}${Math.abs(Math.round((qlogPending.est.calF-1)*100))}% from your past corrections`:""}</p>
+      <p style="font-size:11px;margin:0 0 10px;line-height:15px" class="text-muted-foreground">${(m=>m<3?"light":m<6?"moderate":m<9?"vigorous":"all-out")(qlogPending.est.met)} effort (MET ${qlogPending.est.met})${tipI("MET is a standard effort scale: 1 is sitting still, 3–4 a brisk walk, 8–9 hard cycling. Your burn = effort × your body weight × time.")} • at your ${profile.weightUnit==='kg'?`${qlogPending.est.kg} kg`:`${Math.round(qlogPending.est.kg*2.20462)} lb`}${qlogPending.est.metaF!==1?` • ${qlogPending.est.metaF>1?"+":"−"}${Math.abs(Math.round((qlogPending.est.metaF-1)*100))}% for your metabolism`:""}${qlogPending.est.calF!==1?` • ${qlogPending.est.calF>1?"+":"−"}${Math.abs(Math.round((qlogPending.est.calF-1)*100))}% from your past corrections`:""} • net of resting burn • +${Math.round((qlogPending.est.epoc||0)*100)}% afterburn${qlogPending.est.src==="hr"?" • from your average heart rate":qlogPending.est.src==="pace"?" • from your measured pace":""}</p>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <span style="font-size:13px" class="text-muted-foreground">Estimated burn</span>
         <input id="qlogCal" type="number" inputmode="numeric" value="${qlogPending.est.kcal}" style="width:88px;background:hsl(var(--secondary));border:0;border-radius:10px;padding:8px 10px;font-size:16px;font-weight:700;color:hsl(var(--foreground));outline:none;text-align:center">
         <span style="font-size:13px" class="text-muted-foreground">cal</span></div>
-      <p style="font-size:10px;margin:0 0 10px;line-height:14px" class="text-muted-foreground">Machine readouts are often off by 100+ cal. Edit this if you know better — your corrections teach the app your real burn for next time.</p>
+      <p style="font-size:10px;margin:0 0 10px;line-height:14px" class="text-muted-foreground">Modelled from published exercise-physiology data at your body mass — never padded up or shaved down. If you have a truer number (a chest strap, a lab test), type it: it is stored exactly as entered and teaches the app your real burn for this activity.</p>
       <div style="display:flex;gap:8px">
         <button class="wo-primarybtn haptic" data-act="qlogsave" style="flex:1;padding:10px 0;font-size:14px;line-height:20px;justify-content:center">Save workout</button>
         <button class="haptic bg-muted" data-act="qlogcancel" style="padding:10px 16px;border-radius:12px;border:0;font-size:14px;line-height:20px;color:hsl(var(--muted-foreground))">Cancel</button></div>
@@ -9641,7 +9693,7 @@ function setsHealth(){
   </div>
   <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between">
     <div style="min-width:0;padding-right:12px"><p class="text-foreground" style="font-size:12px;font-weight:600;margin:0;line-height:16px">Add workout burn to daily target</p>
-      <p class="text-muted-foreground" style="font-size:10px;margin:0;line-height:14px">On — the flame slice on your calorie bar. Safely discounted by goal: ${Math.round((BURN_PAYBACK_RATE[profile.goal]||0.5)*100)}% of logged burn on a ${profile.goal||"cut"}, capped at +${BURN_PAYBACK_CAP}/day. Unconfirmed estimates count at 85%. Turn it off to keep burn as a number only.</p></div>
+      <p class="text-muted-foreground" style="font-size:10px;margin:0;line-height:14px">On — the flame slice on your calorie bar. No discount rate: a session adds what it burned <em>beyond your habitual ${Math.round(habitualDailyBurn(localDateStr()))} cal/day of training</em>, because your break-even already contains that habit and counting it twice would inflate the target. Capped at +${BURN_PAYBACK_CAP}/day as a typo guard. Turn it off to keep burn as a number only.</p></div>
     <button class="haptic" data-act="ptoggle" data-k="burnPayback" style="width:51px;height:31px;border-radius:9999px;border:0;position:relative;flex-shrink:0;transition:background .2s ease;background:${paybackOn()?"#34C759":"rgba(120,120,128,.32)"}">
       <span style="position:absolute;top:2px;left:0;width:27px;height:27px;border-radius:9999px;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .2s cubic-bezier(.3,.9,.4,1.1);transform:translateX(${paybackOn()?22:2}px)"></span>
     </button>
