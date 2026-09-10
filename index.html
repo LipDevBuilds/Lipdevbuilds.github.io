@@ -502,6 +502,40 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .coach-act.pri{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
 .coach-act.ghost{background:none;border-color:transparent;color:hsl(var(--primary));margin-left:auto}
 .coach-state{font-size:11px;font-weight:600;color:hsl(var(--muted-foreground));padding:7px 0}
+/* ---- coach topic controls: one row per thing the coach can bring up ---- */
+.co-topic{display:flex;align-items:center;gap:12px;padding:12px 2px;position:relative}
+.co-topic+.co-topic::before{content:"";position:absolute;left:0;right:0;top:0;height:.5px;background:hsl(var(--border)/.7)}
+.co-topic-l{font-size:15px;font-weight:400;margin:0;line-height:20px;color:hsl(var(--foreground))}
+.co-topic-d{font-size:12px;margin:2px 0 0;line-height:16px;color:hsl(var(--muted-foreground))}
+.co-tag{font-size:10px;font-weight:590;margin-left:6px;padding:1px 6px;border-radius:9999px;background:hsl(var(--secondary));color:hsl(var(--label-3));vertical-align:1px;letter-spacing:0}
+.lvl{display:flex;gap:2px;padding:2px;border-radius:var(--r-sm);background:hsl(var(--secondary));flex:0 0 auto}
+.lvl-btn{border:0;background:transparent;color:hsl(var(--muted-foreground));font-size:12px;font-weight:510;
+  padding:6px 9px;border-radius:calc(var(--r-sm) - 2px);line-height:15px;
+  transition:background .22s cubic-bezier(.2,.8,.28,1),color .22s,transform .26s cubic-bezier(.2,.8,.28,1)}
+.lvl-btn:active{transition-duration:.045s;transform:scale(.94)}
+.lvl-btn.on{color:#fff;font-weight:590;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.lvl-btn.on.on{background:hsl(var(--primary))}        /* speaking up is the accent — it is the live state */
+.lvl-btn.on.digest{background:hsl(240 2% 39%)}        /* filed, not delivered: neutral */
+.lvl-btn.on.off{background:hsl(240 2% 30%);color:hsl(var(--muted-foreground))}
+/* ---- collapsible sections: everything is still here, it just is not all shouting at once ---- */
+.co-sec{margin-bottom:12px}
+.co-sec-h{width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;background:none;border:0;color:inherit;text-align:left}
+.co-sec-t{font-size:16px;font-weight:590;margin:0;line-height:21px;color:hsl(var(--foreground))}
+.co-sec-s{font-size:13px;margin:2px 0 0;line-height:17px;color:hsl(var(--muted-foreground));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.co-sec-c{color:hsl(var(--label-3));transition:transform .28s cubic-bezier(.2,.8,.28,1);display:flex;flex-shrink:0}
+.co-sec.open .co-sec-c{transform:rotate(90deg)}
+.co-sec-b{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s cubic-bezier(.25,.1,.25,1)}
+.co-sec.open .co-sec-b{grid-template-rows:1fr}
+.co-sec-i{overflow:hidden;min-height:0}
+.co-sec-p{padding:0 16px 16px}
+/* A section IS the card, so the modules inside it stop being cards — otherwise every group reads as
+   a box of boxes, which is the wall this was meant to take down. Only direct children flatten, so
+   grids of tiles and the settings groups inside keep their own surfaces. */
+.co-sec-p>.apple-card{background:transparent !important;border-radius:0 !important;padding:14px 0 !important;margin:0 !important;animation:none}
+.co-sec-p>.apple-card+.apple-card,.co-sec-p>div+.apple-card,.co-sec-p>.apple-card+div{border-top:.5px solid hsl(var(--border)/.7)}
+.co-sec-p>div+.apple-card,.co-sec-p>.apple-card+div{padding-top:14px;margin-top:0}
+.co-sec-p>div[style*="grid-template-columns"]{margin-bottom:0 !important;padding:12px 0 !important}
+.co-sec-p>div[style*="grid-template-columns"]>.apple-card{background:hsl(var(--secondary))}
 .coach-hero{background:linear-gradient(180deg,hsl(var(--primary)/.13),hsl(var(--card)) 72%);border:0;border-radius:var(--r-card);padding:18px;margin-bottom:16px}
 .coach-live{display:inline-block;width:6px;height:6px;border-radius:3px;background:hsl(var(--success));margin-right:6px;vertical-align:1px;animation:coachBreathe 2s ease-in-out infinite}
 .coach-say{margin-top:14px;background:hsl(var(--secondary));border:0;border-radius:var(--r-card);padding:13px 15px}
@@ -1301,7 +1335,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-10.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-10.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -8925,7 +8959,7 @@ function coachPage(){
       ${latest?`<div style="text-align:right"><p style="font-size:14px;font-weight:700;margin:0;line-height:20px" class="text-foreground">${latest.weight} ${ep.weightUnit}</p>
         <div style="display:flex;align-items:center;gap:4px;font-size:12px;justify-content:flex-end;line-height:16px">${trendIcon}<span class="${weeklyChange>0?'text-warning':weeklyChange<0?'text-success':'text-muted-foreground'}">${weeklyChange>0?'+':''}${weeklyChange}/wk</span></div></div>`:''}</div>
     ${chips}${eta}</div>`;
-  let lower='';
+  let planLower='',goingLower='',histCard='';
   if(coaching){
     const coachSays=`<div class="bg-card enter-up" style="animation-delay:.2s;border-radius:12px;border:1px solid hsl(var(--primary)/.2);padding:16px;margin-bottom:16px">
       <div style="display:flex;align-items:flex-start;gap:12px">
@@ -8995,7 +9029,7 @@ function coachPage(){
         <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:700;margin:0" class="macro-protein">${wa.protein}g</p><p style="margin:0" class="text-muted-foreground">protein</p></div>
         <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:700;margin:0" class="macro-carbs">${wa.carbs}g</p><p style="margin:0" class="text-muted-foreground">carbs</p></div>
         <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:700;margin:0" class="macro-fat">${wa.fat}g</p><p style="margin:0" class="text-muted-foreground">fat</p></div></div></div>`:'';
-    const histCard=checkIns.length>0?`<div class="apple-card enter-up" style="animation-delay:.55s;padding:16px">
+    histCard=checkIns.length>0?`<div class="apple-card enter-up" style="animation-delay:.55s;padding:16px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${LUCIDE_C(P_CAL,2,14,'text-primary')}<p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">Check-In History</p></div>
       <div style="display:flex;flex-direction:column;gap:8px;max-height:192px;overflow-y:auto">
         ${[...checkIns].reverse().slice(0,8).map((ci,i)=>`<div class="bg-muted" style="display:flex;align-items:center;justify-content:space-between;border-radius:8px;padding:10px">
@@ -9003,9 +9037,9 @@ function coachPage(){
           <p style="font-size:10px;margin:0" class="text-muted-foreground">Burn ${ci.expenditureEstimate} · target ${ci.suggestedCalories} cal</p></div>
           ${ci.applied?`<span style="font-size:10px;display:flex;align-items:center;gap:2px" class="text-primary">${LUCIDE(P_CHECK,2,10)} Applied</span>`
             :`<button data-act="applycirow" data-i="${checkIns.length-1-i}" class="haptic text-primary" style="font-size:10px;font-weight:600;background:none;border:0;padding:0">Apply</button>`}</div>`).join('')}</div></div>`:'';
-    lower=exGrid+ebCard+targetsCard+adhCard+insightsCard+avgCard+histCard;
+    planLower=exGrid+ebCard+targetsCard;goingLower=adhCard+insightsCard+avgCard;
   }else{
-    lower=`<div class="apple-card enter-up" style="animation-delay:.2s;padding:24px;margin-bottom:16px;text-align:center">
+    planLower=`<div class="apple-card enter-up" style="animation-delay:.2s;padding:24px;margin-bottom:16px;text-align:center">
       <div style="display:flex;justify-content:center;margin-bottom:12px">${LUCIDE_C(P_SCALE,2,32,'text-muted-foreground')}</div>
       <p style="font-size:14px;font-weight:600;margin:0 0 4px;line-height:20px" class="text-foreground">Learning your daily burn</p>
       <p style="font-size:12px;margin:0 0 12px;line-height:16px" class="text-muted-foreground">Log your weight and food daily. After about 7–14 days of consistent data, the app will have a solid read on how much you burn.</p>
@@ -9013,14 +9047,47 @@ function coachPage(){
         <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:600;margin:0" class="text-foreground">${tr.length}</p><p style="margin:0" class="text-muted-foreground">weigh-ins</p></div>
         <div class="bg-muted" style="border-radius:8px;padding:8px"><p style="font-weight:600;margin:0" class="text-foreground">${st.f}</p><p style="margin:0" class="text-muted-foreground">day streak</p></div></div></div>`;
   }
+  // The page used to be twelve cards of equal weight, 2300px tall, repeating the same burn figure
+  // four times. Nothing has been taken away — it is grouped now, and a group you are not reading is
+  // one line instead of a screenful. What the coach SAYS stays on top, because that is the point of it.
+  const sec=(k,title,summary,body,defOpen)=>{
+    if(!body||!body.trim())return "";
+    const open=coachSecOpen(k,defOpen);
+    return `<div class="co-sec apple-card${open?" open":""}">
+      <button class="co-sec-h haptic" data-act="coach:sec" data-k="${k}">
+        <div style="flex:1;min-width:0"><p class="co-sec-t">${title}</p><p class="co-sec-s">${summary}</p></div>
+        <span class="co-sec-c">${LUCIDE(P_CHEVRIGHT,2,18)}</span></button>
+      <div class="co-sec-b"><div class="co-sec-i"><div class="co-sec-p">${body}</div></div></div></div>`;
+  };
+  // coachingData() is null until there is enough to read a burn from — the summaries have to survive that
+  const planSum=coaching
+    ?`${coaching.currentTDEE} cal burn · ${ep.targetCalories} cal target${coaching.suggestedCalories&&coaching.suggestedCalories!==ep.targetCalories?` · ${coaching.suggestedCalories} suggested`:""}`
+    :`${ep.targetCalories} cal target · still learning your burn`;
+  const goingSum=coaching
+    ?`${coaching.adherenceScore}% adherence · ${wa.calories>0?`${wa.calories} cal/day average`:"not enough logged yet"}`
+    :`${wa.calories>0?`${wa.calories} cal/day average so far`:"log a few days and this fills in"}`;
+  const todaySum=`${st.f}-day food streak · ${st.w}-day weigh-in · ${st.wo}-day training`;
+  const talkSum=`${coachTopicCount("on")} on · ${coachTopicCount("digest")} digest · ${coachTopicCount("off")} off`;
   return `<div class="page">
   <div class="enter-down">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h1 class="apple-title text-foreground" style="margin:0">Coach</h1></div>
-    <p style="font-size:13px;font-weight:500;margin:0 0 20px" class="text-muted-foreground">${sub}</p></div>
+    <div class="pg-head"><h1 class="apple-title text-foreground" style="margin:0;flex:1;min-width:0">Coach</h1>
+      <button data-act="coach:settings" class="icon-btn haptic" aria-label="Coach settings">${LUCIDE(NAV_PATHS.settings,2,17)}</button></div>
+    <p class="pg-sub">${sub}</p></div>
   ${coachHeroHTML()}
-  ${ciPanel}${streaksRow}${goalCardHtml}
-  <div class="enter-up" style="animation-delay:.17s;margin-bottom:16px">${weightPlanSection()}</div>
-  ${lower}</div>`;
+  ${ciPanel}
+  ${sec("today","Today",todaySum,streaksRow+goalCardHtml,true)}
+  ${sec("plan","Your plan",planSum,`<div style="margin-bottom:16px">${weightPlanSection()}</div>`+planLower,false)}
+  ${sec("going","How it's going",goingSum,goingLower,false)}
+  ${sec("hist","Check-in history",checkIns.length?`${checkIns.length} check-in${checkIns.length!==1?"s":""} on record`:"",histCard,false)}
+  ${sec("talk","What the coach brings up",talkSum,coachSettingsHTML(),false)}
+  </div>`;
+}
+// Which coach sections you left open. Remembered, because a section you always open should not need
+// opening every time — and one you never open should stay shut.
+function coachSecOpen(k,def){const m=profile.coachSec||{};return m[k]===undefined?!!def:!!m[k]}
+function coachSecToggle(k,def){
+  const m=Object.assign({},profile.coachSec||{});m[k]=!coachSecOpen(k,def);
+  profile.coachSec=m;save("profile",profile);
 }
 
 // ===== COACH AGENT — a resident coach that lives across the app =====
@@ -9036,8 +9103,61 @@ let coachMem=load("coach_mem",{inbox:[],seen:{},snooze:{},out:{},daily:[],last:{
 const coachSave=()=>save("coach_mem",coachMem);
 const coachUI={open:false,flash:null,flashT:null,card:null};
 const COACH_NAME="Coach";
-const COACH_NUDGE_KINDS=new Set(["weigh","meal","water","over"]);
+const COACH_NUDGE_KINDS=new Set(["weigh","meal","water","over","macrolow"]);
 const coachPref=(k,d)=>profile[k]===undefined?d:profile[k];
+// ===== what the coach is allowed to bring up, topic by topic =====
+// Every rule the coach can fire carries a KIND, and a kind is a topic you can turn down on its own.
+// That is the whole point: the coach stays hands-on about the things you want it hands-on about and
+// goes quiet about the rest, instead of you having to switch the whole thing off to stop one nag.
+// Three levels, because on/off is too blunt:
+//   on      — it speaks up, and a nudge-class topic can interrupt (subject to the daily budget)
+//   digest  — it still forms the note and files it in the inbox, already read: nothing pops, nothing
+//             rings, no budget spent. It is there when you go looking, and never before.
+//   off     — the rule does not fire at all.
+const COACH_LEVELS=["on","digest","off"];
+const COACH_TOPICS=[
+  {k:"checkin", g:"Coaching",  l:"Weekly check-in",   d:"When a new check-in is ready to run."},
+  {k:"macro",   g:"Coaching",  l:"Target changes",    d:"When your burn has moved enough that I'd change your calories or protein."},
+  {k:"pace",    g:"Coaching",  l:"Weekly pace read",  d:"How the week actually went against the plan."},
+  {k:"daily",   g:"Coaching",  l:"Morning brief",     d:"One line each morning on yesterday and today."},
+  {k:"macrolow",g:"Nutrition", l:"Protein & fat",     d:"Protein running under target for the week, or fat sitting under the healthy floor."},
+  {k:"water",   g:"Nutrition", l:"Water",             d:"When the day's water is running behind."},
+  {k:"over",    g:"Nutrition", l:"Past break-even",   d:"When the day has gone past what you burn."},
+  {k:"meal",    g:"Logging",   l:"Unlogged meals",    d:"A reminder when lunch or dinner has not been logged."},
+  {k:"weigh",   g:"Logging",   l:"Morning weigh-in",  d:"A reminder to weigh in while the conditions still match."},
+  {k:"streak",  g:"Momentum",  l:"Streak milestones", d:"3, 7, 14, 30 days and up."},
+  {k:"praise",  g:"Momentum",  l:"After a session",   d:"A word once a workout is saved."},
+];
+// Presets are a starting point, not a cage — change any row afterwards and the preset reads Custom.
+const COACH_PRESETS={
+  handson:{},
+  balanced:{water:"digest",over:"digest",streak:"digest",praise:"digest"},
+  minimal:{daily:"digest",pace:"digest",macrolow:"digest",water:"off",over:"off",meal:"off",weigh:"off",streak:"off",praise:"off"},
+};
+const COACH_PRESET_LABEL={handson:"Hands-on",balanced:"Balanced",minimal:"Minimal",custom:"Custom"};
+function coachTopicLevel(kind){
+  if(kind==="welcome")return "on";                       // the introduction is not a topic
+  const t=(profile.coachTopics||{})[kind];
+  return COACH_LEVELS.indexOf(t)>=0?t:"on";              // every topic is ON until you say otherwise
+}
+function coachTopicSet(kind,level){
+  const m=Object.assign({},profile.coachTopics||{});
+  if(level==="on")delete m[kind];else m[kind]=level;      // "on" is the absence of an override
+  profile.coachTopics=m;save("profile",profile);
+}
+function coachPresetApply(name){
+  profile.coachTopics=Object.assign({},COACH_PRESETS[name]||{});save("profile",profile);
+}
+function coachPresetName(){
+  const cur=profile.coachTopics||{};
+  for(const n in COACH_PRESETS){
+    const pr=COACH_PRESETS[n],keys={};
+    Object.keys(pr).forEach(k=>keys[k]=1);Object.keys(cur).forEach(k=>keys[k]=1);
+    if(Object.keys(keys).every(k=>(pr[k]||"on")===(cur[k]||"on")))return n;
+  }
+  return "custom";
+}
+const coachTopicCount=lv=>COACH_TOPICS.filter(t=>coachTopicLevel(t.k)===lv).length;
 const coachQuiet=h=>h>=22||h<6;
 const coachUnread=()=>coachMem.inbox.filter(m=>m.state==="new").length;
 const coachIsoWeek=d=>{const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return t.getUTCFullYear()+"-W"+String(Math.ceil(((t-y0)/864e5+1)/7)).padStart(2,"0")};
@@ -9073,7 +9193,16 @@ function coachCandidates(now){
     add("pace-"+coachIsoWeek(now),"pace","This week's read",co.message,[{a:"coach:go",t:"coach",l:"See the numbers"}],3,"coach");
     // protein trend
     const wa=co.weeklyAvg;if(wa&&wa.protein>0&&ep.targetProtein&&wa.protein<ep.targetProtein*0.8&&st.f>=4)
-      add("protein-"+coachIsoWeek(now),"protein","Protein is running low",`You're averaging ${Math.round(wa.protein)}g against a ${ep.targetProtein}g target. Front-load it: ${Math.round(ep.targetProtein*0.3)}g at breakfast makes the rest of the day easy.`,[{a:"coach:addfood",m:"breakfast",l:"Plan breakfast"}],2);
+      add("protein-"+coachIsoWeek(now),"macrolow","Protein is running low",`You're averaging ${Math.round(wa.protein)}g against a ${ep.targetProtein}g target. Front-load it: ${Math.round(ep.targetProtein*0.3)}g at breakfast makes the rest of the day easy.`,[{a:"coach:addfood",m:"breakfast",l:"Plan breakfast"}],2);
+    // fat under the healthy floor. Not a target miss — a floor: dietary fat below roughly 0.3 g per
+    // pound of body weight is where hormone production and fat-soluble vitamin uptake start to suffer,
+    // which is the same floor the target engine already refuses to go under when it builds your macros.
+    if(wa&&wa.fat>0&&st.f>=4){
+      const lb=ep.weightUnit==="kg"?(+ep.startWeight||0)*2.20462:(+ep.startWeight||0);
+      const floor=Math.round(lb*0.3);
+      if(floor>0&&wa.fat<floor*0.85)
+        add("fatfloor-"+coachIsoWeek(now),"macrolow","Fat is under the floor",`You're averaging ${Math.round(wa.fat)}g of fat against a ${floor}g floor for your weight. Fat that low is where hormones and vitamin absorption start to complain — whole eggs, olive oil or nuts close it quickly without much volume.`,[],2);
+    }
   }
   // nudges — respect quiet hours and the nudge switch
   if(nudgesOn&&!quiet){
@@ -9100,15 +9229,17 @@ function coachSchedule(reason){clearTimeout(coachTickT);coachTickT=setTimeout(()
 function coachTick(reason){
   if(tab==="auth"||tab==="notfound")return;
   const now=new Date();let added=0;
-  const cands=coachCandidates(now).filter(c=>!coachMem.seen[c.id]&&!coachMuted(c.kind,now)&&!(coachMem.snooze[c.id]>now.getTime()));
+  const cands=coachCandidates(now).filter(c=>coachTopicLevel(c.kind)!=="off"&&!coachMem.seen[c.id]&&!coachMuted(c.kind,now)&&!(coachMem.snooze[c.id]>now.getTime()));
   const today=localDateStr(now);const nudgesToday=coachMem.inbox.filter(m=>COACH_NUDGE_KINDS.has(m.kind)&&m.day===today).length+((coachMem.rm||{})[today]||0); // removed nudges still spend the day's budget
-  let budget=Math.max(0,3-nudgesToday);
+  let budget=Math.max(0,(+coachPref("coachNudgeCap",3)||3)-nudgesToday);
   cands.sort((a,b)=>a.prio-b.prio).forEach(c=>{
-    if(COACH_NUDGE_KINDS.has(c.kind)){if(budget<=0)return;budget--}
+    const lvl=coachTopicLevel(c.kind),quiet2=lvl==="digest";
+    // a digest topic spends no budget and never arrives unread — it is filed, not delivered
+    if(!quiet2&&COACH_NUDGE_KINDS.has(c.kind)){if(budget<=0)return;budget--}
     coachMem.seen[c.id]=now.getTime();
     if(c.kind==="daily")coachMem.last.daily=today;if(c.kind==="welcome")coachMem.last.welcome=now.getTime();
-    coachMem.inbox.unshift({id:c.id,kind:c.kind,title:c.title,body:c.body,actions:c.actions,tab:c.tab,ts:now.getTime(),day:today,state:"new"});added++;
-    coachVoice(c);
+    coachMem.inbox.unshift({id:c.id,kind:c.kind,title:c.title,body:c.body,actions:c.actions,tab:c.tab,ts:now.getTime(),day:today,state:quiet2?"read":"new"});
+    if(!quiet2){added++;coachVoice(c)}
   });
   if(coachMem.inbox.length>60)coachMem.inbox.length=60;
   // prune the seen map so it never grows unbounded (ids older than 60 days)
@@ -9119,8 +9250,9 @@ function coachTick(reason){
 }
 // ---- reactions: the coach notices what you just did and says so, briefly (a whisper, not an inbox note)
 let coachWhisperT=null,coachLastWhisper=0;
-function coachWhisper(text){ // quiet: the app's normal toast, with the coach's mark, and never over another toast
+function coachWhisper(text,topic){ // quiet: the app's normal toast, with the coach's mark, and never over another toast
   if(tab==="auth"||tab==="notfound"||!coachPref("coachWhispers",true))return;
+  if(topic&&coachTopicLevel(topic)!=="on")return; // turning a topic down turns its reply down with it
   if(Date.now()-coachLastWhisper<3000||document.querySelector(".toast"))return;coachLastWhisper=Date.now();
   const t=document.createElement("div");t.className="toast coach";t.innerHTML=`${coachAvatar(20,false)}<span></span>`;t.lastElementChild.textContent=text;
   document.body.appendChild(t);clearTimeout(coachWhisperT);coachWhisperT=setTimeout(()=>t.remove(),2600);
@@ -9133,8 +9265,8 @@ function coachReact(reason,today){
     coachWhisper((left>=0?`Logged — ${left} cal left today${tgt.p-tod.protein>0?`, ${Math.round(tgt.p-tod.protein)}g protein to go`:""}.`:`Logged — ${-left} cal over target. Tomorrow resets.`)+wtxt)}
   else if(reason==="weights"){const tr=trended(),w=weights.find(x=>x.date===today);if(!w)return;const wc=getWeightChangeRate(tr,14);
     coachWhisper(`${w.weight} ${profile.weightUnit} saved${tr.length>=3?` — trend ${wc>0?"+":""}${wc} ${profile.weightUnit}/wk`:""}.`)}
-  else if(reason==="workouts"){const c=workouts.filter(w=>w.date===today).reduce((a,w)=>a+(w.totalCaloriesBurned||0),0);if(c>0)coachWhisper(`Session in — ${c} cal earned and folded into today.`)}
-  else if(reason==="water"){const g=waterGoal(),ml=waterOn(today);if(g>0)coachWhisper(`Water ${Math.min(100,Math.round(ml/g*100))}% of today's goal.`)}
+  else if(reason==="workouts"){const c=workouts.filter(w=>w.date===today).reduce((a,w)=>a+(w.totalCaloriesBurned||0),0);if(c>0)coachWhisper(`Session in — ${c} cal earned and folded into today.`,"praise")}
+  else if(reason==="water"){const g=waterGoal(),ml=waterOn(today);if(g>0)coachWhisper(`Water ${Math.min(100,Math.round(ml/g*100))}% of today's goal.`,"water")}
   else if(reason==="checkins")coachWhisper("Check-in saved. I'll re-read your burn from here.");
 }
 // ---- optional AI voice (backend coach-voice function; fail-soft, cached per message)
@@ -9175,7 +9307,18 @@ function coachAct(act,el){
       document.querySelectorAll(`[data-act="coach:ciset"][data-q="${q}"]`).forEach(b=>b.classList.toggle("on",b.dataset.v===v));
       const done=document.querySelector('[data-act="coach:cidone"]');if(done)done.disabled=!(coachUI.ci.sleep&&coachUI.ci.energy&&coachUI.ci.hunger);return}
     case"coach:cidone":coachFinishCheckin();return;
-    case"coach:pref":{const k=el.dataset.k,v=el.dataset.v;profile[k]=v==="true"?true:v==="false"?false:v;save("profile",profile);
+    case"coach:sec":{const k=el.dataset.k;coachSecToggle(k,k==="today");
+      const box=el.closest(".co-sec");if(box)box.classList.toggle("open");else render();return}
+    case"coach:settings":{openSheet(`<div style="padding:8px 20px 24px">
+      <div style="display:flex;align-items:center;gap:12px;margin:8px 0 18px">${coachAvatar(40)}
+        <div style="min-width:0"><p style="font-size:17px;font-weight:600;margin:0;line-height:22px" class="text-foreground">What the coach brings up</p>
+        <p style="font-size:13px;margin:1px 0 0;line-height:17px" class="text-muted-foreground">Turn any single topic down without losing the rest</p></div></div>
+      <div id="coachSetBody">${coachSettingsHTML()}</div></div>`);return}
+    case"coach:topic":{coachTopicSet(el.dataset.k,el.dataset.v);
+      coachSchedule("topic");rerenderCoachSettings();return}
+    case"coach:preset":{coachPresetApply(el.dataset.v);
+      coachSchedule("topic");rerenderCoachSettings();return}
+    case"coach:pref":{const k=el.dataset.k,v=el.dataset.v;profile[k]=v==="true"?true:v==="false"?false:/^\d+$/.test(v)?+v:v;save("profile",profile);
       if(k==="coachVoice"&&v==="ai")coachMem.voice={};render();return}
     case"coach:reset":uiConfirm("Reset coach memory?","The coach forgets what it has said and what you answered. Your log, weights and targets are untouched.",{ok:"Reset",danger:true}).then(ok=>{if(!ok)return;coachMem={inbox:[],seen:{},snooze:{},out:{},daily:[],last:{},voice:{}};coachSave();toast("Coach memory cleared");render();coachTick("reset")});return;
     case"coach:clear":coachMem.inbox=coachMem.inbox.filter(x=>x.state==="new");coachSave();closeSheet();render();return;
@@ -9252,15 +9395,56 @@ function coachTypewriter(){const el=document.querySelector("#coachHero .coach-ty
   const tok=coachUI.typeTok=(coachUI.typeTok||0)+1; // a newer typewriter or a thinking pause cancels this one
   el.textContent="";let i=0;const step=()=>{if(!el.isConnected||coachUI.typeTok!==tok)return;i+=Math.max(1,Math.round(full.length/60));el.textContent=full.slice(0,i);if(i<full.length)setTimeout(step,22)};step()}
 // settings block
+// Topic-by-topic, because "the coach is too much" is almost never true of the WHOLE coach — it is
+// true of two or three things it keeps bringing up. Turning those down should not cost you the rest.
+// The coach panel appears in two places; repaint whichever one is on screen without a full render.
+function rerenderCoachSettings(){
+  const sheet=document.getElementById("coachSetBody");
+  if(sheet){sheet.innerHTML=coachSettingsHTML();return}
+  if(typeof rerenderSettings==="function"&&tab==="settings"){rerenderSettings();return}
+  render();
+}
+function coachTopicRow(t){
+  const lv=coachTopicLevel(t.k);
+  const btn=(v,l)=>`<button class="lvl-btn haptic${lv===v?" on "+v:""}" data-act="coach:topic" data-k="${t.k}" data-v="${v}">${l}</button>`;
+  return `<div class="co-topic">
+    <div style="min-width:0;flex:1">
+      <p class="co-topic-l">${t.l}${COACH_NUDGE_KINDS.has(t.k)?`<span class="co-tag">can interrupt</span>`:""}</p>
+      <p class="co-topic-d">${t.d}</p>
+    </div>
+    <div class="lvl">${btn("on","On")}${btn("digest","Digest")}${btn("off","Off")}</div>
+  </div>`;
+}
+function coachTopicsHTML(){
+  const groups=[];
+  COACH_TOPICS.forEach(t=>{const g=groups.find(x=>x.g===t.g);(g?g.items:(groups.push({g:t.g,items:[]}),groups[groups.length-1].items)).push(t)});
+  const preset=coachPresetName();
+  const pb=n=>`<button class="seg-btn haptic${preset===n?" on":""}" data-act="coach:preset" data-v="${n}">${COACH_PRESET_LABEL[n]}</button>`;
+  return `<div>
+    <p class="set-label" style="margin:0 0 6px">How much it speaks up</p>
+    <div style="display:flex;gap:6px">${pb("handson")}${pb("balanced")}${pb("minimal")}${preset==="custom"?`<button class="seg-btn on" disabled>Custom</button>`:""}</div>
+    <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">A starting point — change any single topic below and this reads Custom. <b style="font-weight:590;color:hsl(var(--foreground))">Digest</b> keeps a topic working and files what it finds in the inbox, already read: it never pops, never rings, never spends the day's interruption budget.</p>
+    ${groups.map(g=>`<p class="apple-section" style="margin:18px 0 6px">${g.g}</p>
+      <div class="apple-card" style="padding:2px 14px">${g.items.map(coachTopicRow).join("")}</div>`).join("")}
+    <p style="font-size:11px;margin:10px 0 0;line-height:15px" class="text-muted-foreground">${coachTopicCount("on")} on · ${coachTopicCount("digest")} in digest · ${coachTopicCount("off")} off. Topics marked <b style="font-weight:590;color:hsl(var(--foreground))">can interrupt</b> share one daily budget, stay quiet 10pm–6am, and pause themselves for a week if you wave the same one away three times.</p>
+  </div>`;
+}
 function coachSettingsHTML(){
-  const voice=coachPref("coachVoice","standard"),nud=coachPref("coachNudges",true),dock=coachPref("coachDock",true);
+  const voice=coachPref("coachVoice","standard"),nud=coachPref("coachNudges",true);
   const seg=(k,v,cur,l)=>`<button class="seg-btn haptic${String(cur)===String(v)?" on":""}" data-act="coach:pref" data-k="${k}" data-v="${v}">${l}</button>`;
-  return `<div style="display:flex;flex-direction:column;gap:14px">
+  const cap=+coachPref("coachNudgeCap",3);
+  const capSeg=v=>`<button class="seg-btn haptic${cap===v?" on":""}" data-act="coach:pref" data-k="coachNudgeCap" data-v="${v}">${v}</button>`;
+  return `<div style="display:flex;flex-direction:column;gap:16px">
+    ${coachTopicsHTML()}
+    <div><p class="set-label" style="margin:0 0 6px">Interruptions a day</p><div style="display:flex;gap:6px">${capSeg(1)}${capSeg(2)}${capSeg(3)}${capSeg(5)}</div>
+      <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">The ceiling shared by every topic marked <i>can interrupt</i>. Digest topics do not count against it.</p></div>
+    <div><p class="set-label" style="margin:0 0 6px">Master switch for interruptions</p><div style="display:flex;gap:6px">${seg("coachNudges",true,nud,"On")}${seg("coachNudges",false,nud,"Off")}</div>
+      <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">Off silences every interrupting topic at once without changing what you set above — the check-in, the brief and the reads still arrive.</p></div>
+    <div><p class="set-label" style="margin:0 0 6px">Quiet replies when you log</p><div style="display:flex;gap:6px">${seg("coachWhispers",true,coachPref("coachWhispers",true),"On")}${seg("coachWhispers",false,coachPref("coachWhispers",true),"Off")}</div>
+      <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">The one-line reply after a meal, weigh-in, water or session. A topic you set to Digest or Off loses its reply too.</p></div>
     <div><p class="set-label" style="margin:0 0 6px">Voice</p><div style="display:flex;gap:6px">${seg("coachVoice","standard",voice,"Built-in")}${seg("coachVoice","ai",voice,"AI (Claude)")}</div>
-      <p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">Built-in is free and works offline. AI rephrases the same facts through the backend's coach-voice function; if it's unreachable the built-in voice speaks.</p></div>
-    <div><p class="set-label" style="margin:0 0 6px">Nudges (weigh-in, meals, water)</p><div style="display:flex;gap:6px">${seg("coachNudges",true,nud,"On")}${seg("coachNudges",false,nud,"Off")}</div><p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">Quiet 10pm–6am, at most three a day, and a nudge you wave away three times pauses for a week.</p></div>
-    <div><p class="set-label" style="margin:0 0 6px">Quiet replies when you log</p><div style="display:flex;gap:6px">${seg("coachWhispers",true,coachPref("coachWhispers",true),"On")}${seg("coachWhispers",false,coachPref("coachWhispers",true),"Off")}</div><p style="font-size:10px;margin:6px 0 0;line-height:14px" class="text-muted-foreground">A one-line reply at the bottom of the screen after a meal, weigh-in, water or session — the same place the app's other confirmations appear.</p></div>
-    <button class="haptic" data-act="coach:reset" style="background:none;border:.5px solid hsl(var(--border));border-radius:10px;padding:10px;font-size:12px;color:hsl(var(--destructive))">Reset coach memory</button>
+      <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">Built-in is free and works offline. AI rephrases the same facts through the backend's coach-voice function; if it's unreachable the built-in voice speaks.</p></div>
+    <button class="haptic" data-act="coach:reset" style="background:hsl(var(--destructive)/.14);border:0;border-radius:var(--r-ctl);padding:12px;font-size:15px;font-weight:510;color:hsl(var(--destructive))">Reset coach memory</button>
   </div>`;
 }
 
