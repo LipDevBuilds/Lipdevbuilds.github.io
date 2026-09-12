@@ -844,6 +844,11 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .rb-modname{font-size:15px;margin:0;line-height:20px;color:hsl(var(--foreground));overflow:hidden;text-overflow:ellipsis;display:block}
 .rb-modsub{font-size:12px;margin:1px 0 0;line-height:16px;color:hsl(var(--muted-foreground));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rb-modval{font-size:14px;flex:0 0 auto;color:hsl(var(--muted-foreground));font-variant-numeric:tabular-nums}
+/* a counted row: the label area taps, the stepper counts */
+.rb-modhit{display:flex;align-items:center;gap:12px;flex:1;min-width:0;background:none;border:0;padding:0;text-align:left;color:inherit}
+.rb-cnt{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.rb-cnt .rb-count{min-width:14px;text-align:center;font-size:15px;font-weight:590;font-variant-numeric:tabular-nums}
+.rb-cnt .rb-step[disabled]{opacity:.3}
 .rb-modrow.on .rb-modval{color:hsl(var(--primary))}
 .rb-step{width:28px;height:28px;border-radius:9999px;border:0;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .rb-step.m{background:hsl(var(--muted));color:hsl(var(--foreground))}
@@ -1355,7 +1360,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-10.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-12.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -5616,14 +5621,62 @@ function rbModRows(){ // every section this item can be changed in, in app order
   if(RB_TREAT_RX.test(it.name)&&!secs.Toppings)push("Toppings",RB_TREAT_TOP);
   return Object.keys(secs).length?secs:null;
 }
-const RB_AMT={Light:.5,Extra:2};
+const RB_AMT={Light:.5,Extra:2,Double:2,Half:.5};
+// ===== how each chain actually sells "more of that" =====
+// This is the thing that kept being wrong. Every chain has its own answer and they are NOT
+// interchangeable: Chipotle asks light / regular / double, McDonald's asks no / light / regular /
+// extra, Subway asks by amount — and Candy Cloud does not ask at all. It sells you a scoop, and a
+// second scoop is a second scoop. So "Light Boba" there was not a styling difference, it was a
+// control for an option the chain does not have. One control everywhere is exactly what stops our
+// screen from being that chain's screen.
+//
+// The `a` flag on an option row no longer means "Light/Extra". It means "this one comes in more than
+// one measure" — and the CHAIN decides what that measure looks like.
+const RB_CTRL_STEPS={
+  amount:["Regular","Extra","Light"],   // words against a standard serving
+  portion:["Regular","Double","Light"], // a scoop of it, more of it, less of it
+  count:null,                           // 1, 2, 3 of the same thing — a stepper, not words
+  toggle:null,                          // on or off; the chain offers no more than one
+};
+const RB_CTRL_MAXN=4;                   // ceiling on a counted option, so a typo cannot run away
+// def = the chain's usual control · sec = sections that differ · max = the chain's own stated caps
+// label = the chain's own heading where it differs from the section key
+// `v` records HOW a chain's entry got here, because guessing is what caused the problem this fixes:
+//   "screen"  — read off a recording of the chain's own ordering page
+//   "menu"    — taken from the chain's published portion options already in this file
+//   "default" — nobody has checked yet; it inherits "*" and should be corrected on evidence, not hunch.
+// A chain with no entry is on "*" and is NOT a claim about that chain.
+const RB_OPT_MODEL={
+  candycloud:{v:"screen",def:"toggle",sec:{Add:"count",Toppings:"count"},max:{Add:4,Purees:2},
+    label:{Add:"ReVibe add-ins",Sauces:"Syrups",Purees:"Fruit purees",Base:"ReVibe base"}},
+  // Chipotle and Qdoba state light / regular / double as their own portionOptions in this file
+  chipotle:{v:"menu",def:"portion"},
+  qdoba:{v:"menu",def:"portion"},
+  // Everything else: no / light / regular / extra, the burger-counter vocabulary. This is the
+  // DEFAULT, not a finding. Where a chain counts instead (pumps, shots, scoops) its entry belongs
+  // above with v:"screen" once someone has actually looked.
+  "*":{v:"default",def:"amount"},
+};
+const rbOptModel=rid=>RB_OPT_MODEL[rid||(RB.restaurant&&RB.restaurant.id)]||RB_OPT_MODEL["*"];
+function rbCtrlFor(sec,rid){const m=rbOptModel(rid);return (m.sec&&m.sec[sec])||m.def||"amount"}
+function rbSecMax(sec,rid){const m=rbOptModel(rid);return (m.max&&m.max[sec])||(typeof RB_SEC_MAX!=="undefined"&&RB_SEC_MAX[sec])||0}
+function rbSecLabel(sec,rid){const m=rbOptModel(rid);return (m.label&&m.label[sec])||(typeof RB_SEC_LABEL!=="undefined"&&RB_SEC_LABEL[sec])||sec}
 function rbCustMk(row,sec){ // one option row → the object the sheet and the total speak
   const [name,cal,p,c,f,flags]=row;
+  const more=/a/.test(flags||"");
   // "?" = the chain's ordering menu offers this, but publishes no nutrition for it. It is shown so the
   // menu is complete, it says so, and it moves no totals — a made-up number would be worse than none.
-  return{name,sec,macros:{calories:cal,protein:p,carbs:c,fat:f},amt:/a/.test(flags||""),one:/1/.test(flags||""),
+  return{name,sec,macros:{calories:cal,protein:p,carbs:c,fat:f},amt:more,one:/1/.test(flags||""),
+    ctrl:more?rbCtrlFor(sec):"toggle",
     dflt:/d/.test(flags||""),noFig:/\?/.test(flags||"")};
 }
+// A counted option: two scoops IS two scoops, so the macros are simply multiplied and the name says so.
+function rbCustCount(o,n){
+  const M=m=>({calories:Math.round(m.calories),protein:Math.round(m.protein*10)/10,carbs:Math.round(m.carbs*10)/10,fat:Math.round(m.fat*10)/10});
+  return{...o,name:n>1?`${n}\u00d7 ${o.name}`:o.name,base:o.name,count:n,
+    macros:M({calories:o.macros.calories*n,protein:o.macros.protein*n,carbs:o.macros.carbs*n,fat:o.macros.fat*n})};
+}
+const rbSecCount=sec=>RB.custom.filter(x=>x.sec===sec).length;
 function rbCustAmt(o,amt){ // Light / Extra / None of an option, against how the item already comes
   if(!amt)return o;
   const M=m=>({calories:Math.round(m.calories),protein:Math.round(m.protein*10)/10,carbs:Math.round(m.carbs*10)/10,fat:Math.round(m.fat*10)/10});
@@ -7450,18 +7503,30 @@ function rbCustBlockHTML(flowChain){
       const isDflt=!cur&&c.dflt&&!anyOneIn(c.sec||"Customize");
       // the figure goes on the right where a price would be, and only when there IS one
       const val=c.noFig||m.calories===0?"":c.ing&&!amt?"":`${neg?"":"+"}${m.calories} cal`;
-      const sub=c.ing&&!amt?"as it comes":(c.amt&&!amt&&cur)?"tap again for Extra":"";
+      const nextWord=(RB_CTRL_STEPS[c.ctrl||"amount"]||[])[1];
+      const sub=c.ing&&!amt?"as it comes":(c.amt&&!amt&&cur&&nextWord)?`tap again for ${nextWord}`:"";
+      const n=cur&&cur.count;
+      const face=`<span class="rb-mark${c.one?" one":""}">${IC_CHECK16}</span>
+        <span style="flex:1;min-width:0"><span class="rb-modname">${amt?`<span class="rb-amt${amt==="No"?" off":""}">${amt==="No"?"None":amt}</span> `:""}${esc(c.name)}</span>${sub?`<span class="rb-modsub" style="display:block">${sub}</span>`:""}</span>`;
+      // A counted option keeps its own stepper. A <button> cannot hold a <button>, so a counted row is
+      // a container: the label area is the tap target, the stepper sits beside it.
+      if(n)return `<div class="rb-modrow on">
+        <button class="rb-modhit haptic" data-act="rbcbcust" data-n="${esc(c.name)}">${face}</button>
+        <span class="rb-cnt">
+          <button class="rb-step m haptic" data-act="rbcbcnt" data-n="${esc(c.name)}" data-d="-1" aria-label="One fewer">${IC_MINUS14}</button>
+          <span class="rb-count">${n}</span>
+          <button class="rb-step p haptic" data-act="rbcbcnt" data-n="${esc(c.name)}" data-d="1" aria-label="One more"${n>=RB_CTRL_MAXN?" disabled":""}>${IC_PLUS14}</button></span></div>`;
+      const tail=val?`<span class="rb-modval">${val}</span>`:isDflt?`<span class="rb-modval" style="font-size:12px">default</span>`:"";
       return `<button class="rb-modrow${cur?" on":isDflt?" dflt":""} haptic" data-act="rbcbcust" data-n="${esc(c.name)}">
-        <span class="rb-mark${c.one?" one":""}">${IC_CHECK16}</span>
-        <span style="flex:1;min-width:0"><span class="rb-modname">${amt?`<span class="rb-amt${amt==="No"?" off":""}">${amt==="No"?"None":amt}</span> `:""}${esc(c.name)}</span>${sub?`<span class="rb-modsub" style="display:block">${sub}</span>`:""}</span>
-        ${val?`<span class="rb-modval">${val}</span>`:isDflt?`<span class="rb-modval" style="font-size:12px">default</span>`:""}</button>`};
+        ${face}${tail}</button>`};
     const noFigSecs=order.filter(sec=>secs[sec].every(c=>c.noFig));
     custBlock+=`<div style="margin-bottom:16px">${single?`<h4 class="rb-seclabel">${flowChain?"Sweeteners":order[0]==="Customize"?(sauceOnly?"Sauces":"Customize"):order[0]==="Add"&&sauceOnly?"Sauces":esc(order[0])}</h4>`:""}
       ${order.map(sec=>{const one=secs[sec].length>1&&secs[sec].every(c=>c.one);
         const all0=secs[sec].every(c=>c.noFig);
-        const lbl=(typeof RB_SEC_LABEL!=="undefined"&&RB_SEC_LABEL[sec])||sec;
-        const cap=(typeof RB_SEC_MAX!=="undefined"&&RB_SEC_MAX[sec])||0;
-        const hint=one?"pick one":cap?`up to ${cap}`:"";
+        const lbl=rbSecLabel(sec);
+        const cap=rbSecMax(sec);
+        const used=cap?rbSecCount(sec):0;
+        const hint=one?"pick one":cap?`${used}/${cap}`:"";
         return `${single?"":`<h4 class="rb-seclabel">${esc(lbl)}${hint?`<span style="font-size:10px;text-transform:none;font-weight:400;margin-left:6px" class="text-muted-foreground">${hint}</span>`:""}</h4>`}
         <div class="rb-modgrp">${secs[sec].map(row).join("")}</div>
         ${all0?`<p class="rb-estnote" style="margin:-8px 0 14px">${esc(sec)} carry no published figures at this chain — they are listed so the order is right, and counted as 0.</p>`:""}`}).join("")}
@@ -7781,12 +7846,29 @@ function rbAction(act,el){
       rbRender(true);return}
     case"rbcbcust":{const opts=rbCustFor()||[];const base=opts.find(x=>x.name===el.dataset.n);if(!base)return;
       const at=RB.custom.findIndex(x=>(x.base||x.name)===base.name);
-      const cur=at>=0?(RB.custom[at].amount||"Regular"):null;
+      const on=at>=0;
+      // a counted option is a stepper, so a tap only turns it on or off; +/- does the counting
+      if(!base.ing&&base.ctrl==="count"){
+        if(on)RB.custom.splice(at,1);
+        else{const mx=rbSecMax(base.sec);if(mx&&rbSecCount(base.sec)>=mx){toast(`${rbSecLabel(base.sec)}: up to ${mx}`);return}
+          RB.custom.push(rbCustCount(base,1))}
+        rbRender(true);return}
+      const steps=RB_CTRL_STEPS[base.ctrl||"amount"];
+      const cur=on?(RB.custom[at].amount||"Regular"):null;
       const next=base.ing?(!cur?(base.add?"Extra":"Light"):cur==="Extra"?"Light":cur==="Light"?"No":null)  // as it comes → Extra → Light → None
-        :!cur?"Regular":base.amt?(cur==="Regular"?"Extra":cur==="Extra"?"Light":null):null; // off → Regular → Extra → Light
-      if(at>=0)RB.custom.splice(at,1);
+        :!cur?"Regular"
+        :steps?(()=>{const i=steps.indexOf(cur);return i>=0&&i+1<steps.length?steps[i+1]:null})() // the chain's own ladder
+        :null;                                                                                   // toggle: on → off
+      if(on)RB.custom.splice(at,1);
       if(base.one)RB.custom=RB.custom.filter(x=>x.sec!==base.sec); // one ice level, one sugar level, one doneness
-      if(next)RB.custom.push(next==="Regular"?base:rbCustAmt(base,next));
+      if(next){const mx=!on&&rbSecMax(base.sec);
+        if(mx&&rbSecCount(base.sec)>=mx){toast(`${rbSecLabel(base.sec)}: up to ${mx}`);rbRender(true);return}
+        RB.custom.push(next==="Regular"?base:rbCustAmt(base,next))}
+      rbRender(true);return}
+    case"rbcbcnt":{const opts=rbCustFor()||[];const base=opts.find(x=>x.name===el.dataset.n);if(!base)return;
+      const at=RB.custom.findIndex(x=>(x.base||x.name)===base.name);if(at<0)return;
+      const n=Math.max(0,Math.min(RB_CTRL_MAXN,(RB.custom[at].count||1)+(+el.dataset.d)));
+      if(n<1)RB.custom.splice(at,1);else RB.custom[at]=rbCustCount(base,n);
       rbRender(true);return}
     case"rbcbextra":{const i=RB.extras.findIndex(e=>e.id===el.dataset.c);if(i>=0)RB.extras.splice(i,1);else{const c=R.components.find(x=>x.id===el.dataset.c);if(c)RB.extras.push(c)}rbRender(true);return}
     case"rbqtym":RB.qty=Math.max(1,RB.qty-1);rbRender(true);return;
