@@ -151,6 +151,14 @@ button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inh
 #view.quiet .bar-anim,#view.quiet .bar-anim-08,#view.quiet .bar-anim-06,
 #view.quiet .swipe-pane.from-right,#view.quiet .swipe-pane.from-left{animation:none !important}
 
+/* iOS shows a decimal keypad with no minus key, so a negative figure cannot be TYPED on a phone.
+   Every field that accepts one gets this instead: tap it and the sign flips. */
+.sgn{flex:0 0 auto;width:34px;height:34px;border-radius:9999px;border:0;background:hsl(var(--secondary));
+  color:hsl(var(--muted-foreground));font-size:15px;font-weight:590;line-height:34px;text-align:center;padding:0;
+  transition:background .18s ease,color .18s ease,transform .26s cubic-bezier(.2,.8,.28,1)}
+.sgn:active{transition-duration:.045s;transform:scale(.9)}
+.sgn.on{background:hsl(var(--over)/.18);color:hsl(var(--over))}
+.sgn-note{font-size:12px;line-height:16px;color:hsl(var(--over));margin:6px 0 0}
 /* skip a day: it still shows what you logged, it just stops being marked against the plan */
 .skiprow{display:flex;align-items:center;gap:10px;margin:0 0 14px;min-height:36px}
 .skipbtn{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:9999px;border:0;
@@ -1373,7 +1381,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-13.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-13.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2100,7 +2108,9 @@ function getAvailableUnits(food) {
 // ----- src/hooks/useNutrition.ts:226-237 — macro rounding at log time -----
 // amount<=0 or non-finite is rejected. fiber/sodium stay undefined when absent.
 function logFoodMacros(food, amount, unit) {
-  if (amount <= 0 || !isFinite(amount)) return null;
+  // A negative amount is a correction — half a serving logged back OFF the day. Only zero and
+  // nonsense are rejected now; the sign is the user's to choose.
+  if (amount === 0 || !isFinite(amount)) return null;
   const servings = getServingMultiplier(food, amount, unit);
   return {
     servings,
@@ -4120,10 +4130,12 @@ function fsDetailView(){
       </div></div>
       <div class="fs-selrow"><span class="lbl">Portion</span>
         <div style="display:flex;align-items:center;gap:8px">
-          <input class="fs-amt tnum" id="fsAmt" type="number" inputmode="decimal" min="0.25" step="0.25" value="${esc(FS.amount)}">
+          <button class="sgn haptic${parseFloat(FS.amount)<0?" on":""}" data-act="sgnflip" data-f="fsAmt" aria-label="Make it negative">±</button>
+          <input class="fs-amt tnum" id="fsAmt" type="number" inputmode="decimal" step="0.1" value="${esc(FS.amount)}">
           <select class="fs-unit" id="fsUnit">${units.map(u=>`<option value="${esc(u.unit)}"${u.unit===FS.unit?" selected":""}>${esc(u.label)}</option>`).join("")}</select>
         </div></div>
     </div>
+    ${parseFloat(FS.amount)<0?`<p class="sgn-note">Negative portion — this comes OFF the day, for correcting something logged twice.</p>`:""}
     <div style="display:flex;gap:6px;margin:8px 0 0">${["0.5","1","1.5","2"].map(v=>`<button class="rb-chip haptic${String(FS.amount)===v?" on":""}" data-act="fsamt" data-v="${v}" style="padding:6px 14px;font-size:12px">${v==="0.5"?"½":v==="1.5"?"1½":v}×</button>`).join("")}</div>
     <div class="fs-chips">
       <div class="fs-chip"><p class="l">Protein</p><p class="v tnum" id="mcP" style="color:hsl(var(--protein))">${m.protein}g</p></div>
@@ -4231,16 +4243,16 @@ function openQuickAdd(meal,editEntry){
     <input class="qa-in" id="qL" placeholder="Label (optional)" value="${editEntry?esc(editEntry.name):""}" style="font-size:16px;line-height:24px">
     <button class="qa-smart haptic" id="qaSmartBtn" data-act="qasmart">${IC_ZAP14}<span>Smart Calories</span><span class="qa-hint" id="qaHint">OFF — enter manually</span></button>
     <div class="qa-grid">
-      <div><label>Calories</label><input class="qa-in tnum" id="qK" type="number" placeholder="0" value="${em.calories!=null?em.calories:""}" style="font-size:16px;line-height:24px">
+      <div><label>Calories<button class="sgn haptic${em.calories<0||em.protein<0?" on":""}" data-act="sgnflip" data-f="qK,qP,qC,qF,qFib,qNa" aria-label="Make this a subtraction" style="width:26px;height:26px;line-height:26px;font-size:13px;margin-left:8px;vertical-align:-7px">±</button></label><input class="qa-in tnum" id="qK" type="number" inputmode="decimal" step="0.1" placeholder="0" value="${em.calories!=null?em.calories:""}" style="font-size:16px;line-height:24px">
         <p class="qa-formula" id="qaFormula" hidden>P×4 + C×4 + F×9 − Fiber×2</p></div>
-      <div><label>Protein (g)</label><input class="qa-in tnum" id="qP" type="number" value="${em.protein!=null?em.protein:""}" style="font-size:16px;line-height:24px"></div>
-      <div><label>Carbs (g)</label><input class="qa-in tnum" id="qC" type="number" value="${em.carbs!=null?em.carbs:""}" style="font-size:16px;line-height:24px"></div>
-      <div><label>Fat (g)</label><input class="qa-in tnum" id="qF" type="number" value="${em.fat!=null?em.fat:""}" style="font-size:16px;line-height:24px"></div>
+      <div><label>Protein (g)</label><input class="qa-in tnum" id="qP" type="number" inputmode="decimal" step="0.1" value="${em.protein!=null?em.protein:""}" style="font-size:16px;line-height:24px"></div>
+      <div><label>Carbs (g)</label><input class="qa-in tnum" id="qC" type="number" inputmode="decimal" step="0.1" value="${em.carbs!=null?em.carbs:""}" style="font-size:16px;line-height:24px"></div>
+      <div><label>Fat (g)</label><input class="qa-in tnum" id="qF" type="number" inputmode="decimal" step="0.1" value="${em.fat!=null?em.fat:""}" style="font-size:16px;line-height:24px"></div>
     </div>
     <button class="qa-extras haptic" id="qaExtrasBtn" data-act="qaextras">+ Show Fiber &amp; Sodium</button>
     <div class="qa-grid" id="qaExtrasGrid" hidden>
-      <div><label>Fiber (g)</label><input class="qa-in tnum" id="qFib" type="number" placeholder="optional" value="${em.fiber!=null?em.fiber:""}" style="font-size:16px;line-height:24px"></div>
-      <div><label>Sodium (mg)</label><input class="qa-in tnum" id="qNa" type="number" placeholder="optional" value="${em.sodium!=null?em.sodium:""}" style="font-size:16px;line-height:24px"></div>
+      <div><label>Fiber (g)</label><input class="qa-in tnum" id="qFib" type="number" inputmode="decimal" step="0.1" placeholder="optional" value="${em.fiber!=null?em.fiber:""}" style="font-size:16px;line-height:24px"></div>
+      <div><label>Sodium (mg)</label><input class="qa-in tnum" id="qNa" type="number" inputmode="decimal" step="0.1" placeholder="optional" value="${em.sodium!=null?em.sodium:""}" style="font-size:16px;line-height:24px"></div>
     </div>
     <button class="qa-submit glow-primary haptic" data-act="quickok">${editEntry?"Save Changes":"Add Entry"}</button></div>`);
   // Smart auto-calc on P/C/F/Fiber input while smart is ON (QuickAdd.tsx:30-40)
@@ -7773,10 +7785,10 @@ function rbxFormHTML(){
       <div><label style="${lbl}">Item name (size &amp; options help the AI)</label><input id="rbxName" value="${esc(it.name||"")}" placeholder="e.g. Pecan Crunch Oatmilk Latte, Grande" autocapitalize="words" style="${inp}"></div>
       <div><label style="${lbl}">Category</label><select id="rbxCat" class="rb-select" style="margin:0">${RB.restaurant.categories.map(c=>`<option value="${esc(c)}"${(it.category||RB.cat)===c?" selected":""}>${esc(c)}</option>`).join("")}</select></div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-        <div><label style="${lbl}">Cal</label><input id="rbxCal" type="number" inputmode="numeric" min="0" value="${m.calories!=null?m.calories:""}" style="${inp};padding:10px 8px"></div>
-        <div><label style="${lbl}">P (g)</label><input id="rbxP" type="number" inputmode="decimal" step="any" min="0" value="${m.protein!=null?m.protein:""}" style="${inp};padding:10px 8px"></div>
-        <div><label style="${lbl}">C (g)</label><input id="rbxC" type="number" inputmode="decimal" step="any" min="0" value="${m.carbs!=null?m.carbs:""}" style="${inp};padding:10px 8px"></div>
-        <div><label style="${lbl}">F (g)</label><input id="rbxF" type="number" inputmode="decimal" step="any" min="0" value="${m.fat!=null?m.fat:""}" style="${inp};padding:10px 8px"></div>
+        <div><label style="${lbl}">Cal<button class="sgn haptic${m.calories<0?" on":""}" data-act="sgnflip" data-f="rbxCal,rbxP,rbxC,rbxF" aria-label="Make these negative" style="width:22px;height:22px;line-height:22px;font-size:12px;margin-left:6px;vertical-align:-6px">±</button></label><input id="rbxCal" type="number" inputmode="decimal" step="0.1" value="${m.calories!=null?m.calories:""}" style="${inp};padding:10px 8px"></div>
+        <div><label style="${lbl}">P (g)</label><input id="rbxP" type="number" inputmode="decimal" step="0.1" value="${m.protein!=null?m.protein:""}" style="${inp};padding:10px 8px"></div>
+        <div><label style="${lbl}">C (g)</label><input id="rbxC" type="number" inputmode="decimal" step="0.1" value="${m.carbs!=null?m.carbs:""}" style="${inp};padding:10px 8px"></div>
+        <div><label style="${lbl}">F (g)</label><input id="rbxF" type="number" inputmode="decimal" step="0.1" value="${m.fat!=null?m.fat:""}" style="${inp};padding:10px 8px"></div>
       </div>
       <button class="haptic" data-act="rbxai" style="width:100%;padding:11px 0;border-radius:12px;border:1px solid hsl(var(--primary)/.3);background:hsl(var(--primary)/.08);color:hsl(var(--primary));font-size:13px;font-weight:600;line-height:18px">Ask AI for the macros</button>
       <p id="rbxNote" style="font-size:10px;margin:0;line-height:14px;color:hsl(var(--muted-foreground))">Best accuracy: type the values posted in-store or on the chain's site. AI fills them when you can't.</p>
@@ -7840,10 +7852,10 @@ function rbAction(act,el){
     case"rbxsave":{
       const g=id=>{const n=rbEl.querySelector(id);return n?n.value.trim():""};
       const name=g("#rbxName");if(!name){toast("Item needs a name");return}
-      const num=id=>{const v=parseFloat(g(id));return isFinite(v)&&v>=0?v:0};
+      const num=id=>{const v=parseFloat(g(id));return isFinite(v)?v:0}; // the sign is the user's to choose
       const editing=RB.xform&&RB.xform.edit;
       const item={id:editing?editing.id:"rbx-"+Date.now().toString(36),name,category:g("#rbxCat")||RB.cat,
-        macros:{calories:Math.round(num("#rbxCal")),protein:+num("#rbxP").toFixed(1),carbs:+num("#rbxC").toFixed(1),fat:+num("#rbxF").toFixed(1)},
+        macros:{calories:+num("#rbxCal").toFixed(1),protein:+num("#rbxP").toFixed(1),carbs:+num("#rbxC").toFixed(1),fat:+num("#rbxF").toFixed(1)},
         ai:RB.xformAI===true||!!(editing&&editing.ai&&!RB.xformAI)};
       // categories that drill into subcategories need one on the item, or it would never be listed
       if(editing&&editing.subcategory&&item.category===editing.category)item.subcategory=editing.subcategory;
@@ -10437,6 +10449,17 @@ document.addEventListener("click",e=>{
     selDate=localDateStr(d);render();
   }
   else if(act==="dstoday"){selDate=localDateStr();render()}
+  else if(act==="sgnflip"){ // flip the sign of every field this button owns, and let the sheet recompute
+    const root=el.closest(".sheet,.rb-panel,.fs-sheet")||document;
+    const ids=(el.dataset.f||"").split(",").filter(Boolean);
+    let neg=false;
+    ids.forEach(id=>{const n=root.querySelector("#"+id)||document.getElementById(id);
+      if(!n)return;const v=parseFloat(n.value);
+      if(isFinite(v)&&v!==0){n.value=String(+( -v ).toFixed(4))}
+      if(parseFloat(n.value)<0)neg=true;
+      n.dispatchEvent(new Event("input",{bubbles:true}));});
+    el.classList.toggle("on",neg);
+    return}
   else if(act==="skipday"){const d=el.dataset.d;const was=skipHas(d);skipToggle(d);
     toast(was?"Day counts again":"Day skipped — it won't count toward your plan");render();
     if(typeof coachSchedule==="function")coachSchedule("skip")}
@@ -10688,7 +10711,7 @@ document.addEventListener("click",e=>{
   }
   else if(act==="quickok"){ // QuickAdd.tsx:41-54 + useNutrition.ts:254-269
     logFrom=el.getBoundingClientRect();
-    const kcal=parseInt($("#qK").value)||0,p=parseFloat($("#qP").value)||0,
+    const kcal=Math.round((parseFloat($("#qK").value)||0)*10)/10,p=parseFloat($("#qP").value)||0,
           c=parseFloat($("#qC").value)||0,f=parseFloat($("#qF").value)||0,
           fib=parseFloat($("#qFib")?.value)||undefined,sod=parseFloat($("#qNa")?.value)||undefined;
     if(kcal===0&&p===0&&c===0&&f===0)return; // all-zero guard (QuickAdd.tsx:51)
