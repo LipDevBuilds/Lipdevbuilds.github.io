@@ -151,6 +151,15 @@ button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inh
 #view.quiet .bar-anim,#view.quiet .bar-anim-08,#view.quiet .bar-anim-06,
 #view.quiet .swipe-pane.from-right,#view.quiet .swipe-pane.from-left{animation:none !important}
 
+/* skip a day: it still shows what you logged, it just stops being marked against the plan */
+.skiprow{display:flex;align-items:center;gap:10px;margin:0 0 14px;min-height:36px}
+.skipbtn{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:9999px;border:0;
+  background:hsl(var(--secondary));color:hsl(var(--muted-foreground));font-size:13px;font-weight:510;line-height:18px;
+  transition:background .2s ease,color .2s ease,transform .26s cubic-bezier(.2,.8,.28,1)}
+.skipbtn:active{transition-duration:.045s;transform:scale(.96)}
+.skiprow.on .skipbtn{background:hsl(var(--warning)/.18);color:hsl(var(--warning))}
+.skipn{font-size:12px;line-height:16px;color:hsl(var(--label-3))}
+.skipn.over{color:hsl(var(--over))}
 /* day strip (DayStrip.tsx) */
 .daystrip{margin-bottom:18px}
 .ds-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
@@ -172,6 +181,9 @@ button{font-family:inherit;font-size:100%;line-height:inherit;letter-spacing:inh
 .ds-cell.today:not(.sel) .ds-num{color:hsl(var(--primary));font-weight:600}
 .ds-dots{display:flex;gap:3px;height:5px;align-items:center}
 .ds-dots i{width:4px;height:4px;border-radius:9999px;display:block}
+.ds-cell.skipped .ds-num{opacity:.45}
+.ds-cell.skipped.sel .ds-num{opacity:1;background:hsl(var(--warning));color:#000}
+.ds-cell.skipped:not(.sel) .ds-num{box-shadow:inset 0 0 0 1.5px hsl(var(--warning)/.55)}
 
 /* bars (Food/Progress pages) */
 .track{height:6px;border-radius:3px;background:hsl(var(--secondary));overflow:hidden}
@@ -1162,6 +1174,7 @@ let foodLog=load("food_log",[]);   // flat LoggedFood[]: {id,foodId,name,sv,serv
 const saveLog=()=>save("food_log",foodLog);
 const entriesFor=d=>foodLog.filter(e=>e.date===d);
 const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+let skipDays=load("skip_days",[]);  // YYYY-MM-DD strings: days you told the app not to score you on
 let weights=load("weights",[]);    // WeightEntry[]: {date,weight} — RAW in the user's display unit, one per day, date-sorted
 const saveWeights=()=>save("weights",weights);
 const weightOn=d=>{const e=weights.find(x=>x.date===d);return e?e.weight:null};
@@ -1213,7 +1226,7 @@ const SB_BLOCKED_MSG=()=>sbInViewer()
   ?"Network blocked here — sync runs when the app is opened outside the claude.ai viewer"
   :"Can't reach the sync server — check your connection; if it persists, the backend may be paused (supabase.com/dashboard)";
 let syncState={state:sbSess?"idle":"signedout",msg:"",at:load("last_sync",0)};
-const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","manual_steps","manual_active_calories","burn_cal","rb_extra","portion_memory","entry_src","coach_mem"];
+const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","skip_days","manual_steps","manual_active_calories","burn_cal","rb_extra","portion_memory","entry_src","coach_mem"];
 function sbSetSync(state,msg){const was=syncState.state;syncState.state=state;syncState.msg=msg||"";
   if(state==="ok"){syncState.at=Date.now();save0("last_sync",syncState.at)}
   if(state==="error"&&was!=="error"&&typeof toast==="function")toast("Sync problem — see Settings"); // silent sync failure = silent data loss
@@ -1316,7 +1329,7 @@ async function sbSync(reason){
         profile=Object.assign({},PROFILE_DEFAULTS,load("profile",{}));
         water=load("water",{});checkIns=load("checkins",[]);favorites=load("favorites",[]);
         custom=(load("custom",[])||[]).filter(Boolean).map(f=>f.isCustom?f:{...f,isCustom:true});
-        restDays=load("rest_days",[]);burnCal=load("burn_cal",{});rbExtra=load("rb_extra",{});portionMem=load("portion_memory",{});
+        restDays=load("rest_days",[]);skipDays=load("skip_days",[]);burnCal=load("burn_cal",{});rbExtra=load("rb_extra",{});portionMem=load("portion_memory",{});
         manualSteps=load("manual_steps",{});manualActiveCals=load("manual_active_calories",{});
         entrySrc=load("entry_src",{});
         if(typeof coachMem!=="undefined"){coachMem=load("coach_mem",coachMem);["inbox","seen","snooze","out","daily","last","voice"].forEach(k=>{if(!coachMem[k])coachMem[k]=k==="inbox"||k==="daily"?[]:{}})}
@@ -1360,7 +1373,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-12.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-13.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1574,6 +1587,26 @@ function getWeightChangeRate(trendedEntries, windowDays = 14) {
 //            trendedWeight, weeklyWeightChange, dataQuality }
 // NOTE dataQuality inconsistency is REAL: the low-completeness and totalWeight===0
 // branches return the raw 0..1 fraction; the success branch returns a 0..100 percent.
+// ===== skipped days =====
+// A day you mark skipped is a day you are telling the app not to SCORE you on. It comes out of your
+// averages, your adherence, your streaks and the coach's mouth.
+//
+// What it cannot do is come out of the physics. The calories you ate on a skipped day still landed on
+// the scale, so a skipped day does not vanish from the burn estimate — it POISONS the window it sits
+// in, because the estimate works by comparing what you ate against what the scale did over the same
+// stretch of days, and a skipped day breaks that pairing. So a window carrying skipped days is
+// trusted less in proportion to how many, and past a point it is not used at all.
+// This is the honest version. Quietly dropping the intake but keeping the weight change would make
+// your burn read LOWER than it really is, and set your target too low off the back of it.
+const SKIP_WINDOW_FLOOR=0.7;   // a window needs 70% of its days unskipped to count toward the burn fit
+const SKIP_WEEK_SAFE=1;        // skips per 7 days the estimate shrugs off
+const SKIP_WEEK_MAX=2;         // past this, the burn estimate is not worth reading
+function skipHas(d){return skipDays.indexOf(d)>=0}
+function skipToggle(d){const i=skipDays.indexOf(d);
+  if(i>=0)skipDays.splice(i,1);else skipDays.push(d);
+  save("skip_days",skipDays);}
+// how many of the last 7 days you have skipped — the number the burn estimate actually cares about
+function skipLast7(){let n=0;for(let i=0;i<7;i++){const d=new Date();d.setDate(d.getDate()-i);if(skipHas(localDateStr(d)))n++}return n}
 function calculateExpenditure(foodLog, weightEntries, profile, formulaTDEE) {
   const trended = computeWeightTrend(weightEntries);
   // Unit-dependent energy density: entries are in the user's unit.
@@ -1594,7 +1627,11 @@ function calculateExpenditure(foodLog, weightEntries, profile, formulaTDEE) {
   // Data completeness: unique logged days across the WHOLE food log, over the span
   // between the FIRST and LAST weight entries (uncapped, min 1).
   const uniqueLogDays = new Set(foodLog.map(e => e.date)).size;
-  const daysSinceStart = Math.max(1, daysBetween(trended[0].date, trended[trended.length - 1].date));
+  const spanStart = trended[0].date, spanEnd = trended[trended.length - 1].date;
+  // a declared skip is not a missed log: it leaves both sides, so skipping never reads as sloppiness.
+  // (It still costs you in the fit above — that is where the honesty lives.)
+  const skippedInSpan = typeof skipDays === 'undefined' ? 0 : skipDays.filter(d => d >= spanStart && d <= spanEnd).length;
+  const daysSinceStart = Math.max(1, daysBetween(spanStart, spanEnd) - skippedInSpan);
   const dataCompleteness = Math.min(1, uniqueLogDays / daysSinceStart);
 
   // Need at least ~40% data completeness for V3-style tolerance
@@ -1626,8 +1663,15 @@ function calculateExpenditure(foodLog, weightEntries, profile, formulaTDEE) {
     if (windowEntries.length < 2 || windowWeights.length < 2) continue;
 
     const dailyCals = aggregateDailyCalories(windowEntries);
+    // a day you skipped is not evidence about your eating, so it leaves the intake mean
+    if (typeof skipDays !== 'undefined') for (const d of skipDays) delete dailyCals[d];
     const daysWithData = Object.keys(dailyCals).length;
     if (daysWithData < 2) continue;                    // needs >=2 distinct logged days
+
+    // ...but its calories still moved the scale, so the WINDOW is what loses trust, not the number.
+    const skipped = typeof skipDays === 'undefined' ? 0 : skipDays.filter(d => d >= startDate && d <= now).length;
+    const intact = (w.days - skipped) / w.days;
+    if (intact < SKIP_WINDOW_FLOOR) continue;          // too much of this stretch is unaccounted for
 
     const avgIntake = Object.values(dailyCals).reduce((a, b) => a + b, 0) / daysWithData;
 
@@ -1649,8 +1693,8 @@ function calculateExpenditure(foodLog, weightEntries, profile, formulaTDEE) {
       dampening = 0.6;
     }
 
-    blendedTDEE += windowTDEE * w.weight * dampening;
-    totalWeight += w.weight * dampening;
+    blendedTDEE += windowTDEE * w.weight * dampening * intact;
+    totalWeight += w.weight * dampening * intact;
   }
 
   if (totalWeight === 0) {
@@ -1793,6 +1837,8 @@ function getLoggingStreak(foodLog) {
 
   while (true) {
     const dateStr = localDateStr(d);
+    // a day you took off is not a day you dropped: the count steps over it without counting it
+    if (typeof skipDays !== 'undefined' && skipDays.indexOf(dateStr) >= 0) { d.setDate(d.getDate() - 1); continue; }
     if (dates.has(dateStr)) {
       streak++;
       d.setDate(d.getDate() - 1);
@@ -2095,7 +2141,8 @@ function getWeeklyAverage(foodLog) {
     const d = new Date(); d.setDate(d.getDate() - i);
     dates.push(localDateStr(d));
   }
-  const logs = dates.map(date => getDailyTotals(foodLog, date));
+  const kept = typeof skipDays === 'undefined' ? dates : dates.filter(d => skipDays.indexOf(d) < 0);
+  const logs = kept.map(date => getDailyTotals(foodLog, date));
   const daysWithData = logs.filter(l => l.entries.length > 0);
   if (daysWithData.length === 0) return { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sodium: 0 };
   const sum = daysWithData.reduce(
@@ -2447,12 +2494,13 @@ function dayStrip(opts){
   const week=weekDatesOf(selDate);
   const cells=week.map((date,i)=>{
     const ds=localDateStr(date);
-    const cls=(ds===selDate?' sel':'')+(ds===today?' today':'');
+    let cls=(ds===selDate?' sel':'')+(ds===today?' today':'');
     const dots=
       (hasFoodLog&&hasFoodLog(ds)?'<i style="background:hsl(var(--success))"></i>':'')+
       (hasWeighIn&&hasWeighIn(ds)?'<i style="background:hsl(var(--primary))"></i>':'')+
       (hasWorkout&&hasWorkout(ds)?'<i style="background:hsl(var(--carbs))"></i>':'')+
       (hasEvent&&hasEvent(ds)?'<i style="background:hsl(var(--protein))"></i>':'');
+    if(typeof skipHas==="function"&&skipHas(ds))cls+=" skipped";
     return `<button class="ds-cell${cls}" data-act="selday" data-d="${ds}">
       <span class="ds-wd">${WEEKDAYS[i]}</span>
       <span class="ds-num">${date.getDate()}</span>
@@ -2471,6 +2519,30 @@ function dayStrip(opts){
   </div>`;
 }
 
+// The skip control and what a skipped day looks like. A skipped day is not a hidden day: it still
+// shows what you logged, it just stops being marked against the plan.
+function skipRowHTML(d){
+  const on=skipHas(d),n=skipLast7();
+  const over=n>SKIP_WEEK_MAX;
+  return `<div class="skiprow${on?" on":""}">
+    <button class="skipbtn haptic" data-act="skipday" data-d="${d}">
+      ${LUCIDE_C(on?P_CHECK:P_CAL,2,15,on?"text-warning":"text-muted-foreground")}
+      <span>${on?"Day skipped":"Skip this day"}</span></button>
+    ${n>0?`<span class="skipn${over?" over":""}">${n} of last 7${over?` · over the limit`:""}</span>`:""}
+  </div>`;
+}
+function skipCardHTML(totals){
+  const n=skipLast7(),over=n>SKIP_WEEK_MAX,warn=n>SKIP_WEEK_SAFE;
+  return `<div class="apple-card" style="padding:20px">
+    <p style="font-size:13px;font-weight:510;margin:0 0 2px;line-height:18px" class="text-muted-foreground">Skipped</p>
+    <p class="sfr text-muted-foreground" style="font-size:52px;font-weight:700;letter-spacing:-1.4px;line-height:56px;margin:0;font-variant-numeric:tabular-nums">—</p>
+    <p style="font-size:14px;margin:2px 0 0;line-height:19px" class="text-muted-foreground tnum">${Math.round(totals.calories)} cal logged · not counted toward your plan</p>
+    <p style="font-size:12px;margin:10px 0 0;line-height:16px" class="${over?"text-over":warn?"text-warning":"text-muted-foreground"}">
+      ${over?`${n} skipped days in the last 7 — that is past what the burn estimate can absorb, so it has fallen back to the formula. Log a few days to bring it back.`
+        :warn?`${n} skipped days in the last 7. One a week the estimate shrugs off; two is the ceiling.`
+        :`Nothing today counts toward your weekly average, your adherence or your burn estimate.`}</p>
+  </div>`;
+}
 // ===== HOME (Index.tsx + CalorieProgress/DeficitVisual/MacroRing/WaterTracker, exact) =====
 // CalorieProgress.tsx — flat card, NO ring
 // Calories card: one bar tells the whole day. Fill = eaten (blue to target, amber past it,
@@ -2908,6 +2980,7 @@ function homePage(){
   </div>
   <div class="anim" style="animation-delay:.05s">${dayStrip({hasFoodLog:d=>entriesFor(d).length>0,hasWeighIn:d=>weightOn(d)!=null,
     hasWorkout:d=>workouts.some(w=>w.date===d),hasEvent:d=>eventsOn(d).length>0})}</div>
+  ${skipRowHTML(selDate)}
   ${dayEvents.length?`<div class="anim" style="animation-delay:.08s">${dayEvents.map(ev=>{
       const c=ev.color||'hsl(var(--primary))';
       return `<div style="margin-bottom:12px;border-radius:16px;border:1px solid ${c};background:${ev.color?ev.color+'15':'hsl(var(--primary)/.08)'};padding:12px;display:flex;align-items:flex-start;gap:12px">
@@ -2928,9 +3001,9 @@ function homePage(){
       <p class="apple-section" style="margin:0">Nutrition</p>
       <button data-act="viewmode" class="haptic" style="font-size:13px;font-weight:510;padding:4px 8px;margin:-4px;background:none;border:0;line-height:18px;color:hsl(var(--muted-foreground))">Show ${viewMode==='consumed'?'remaining':'eaten'}</button>
     </div>
-    ${calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday,wo:dayWorkoutBurn(selDate)})}
+    ${skipHas(selDate)?skipCardHTML(totals):calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday,wo:dayWorkoutBurn(selDate)})}
     ${shiftOn&&targets.calories!==baseCals&&!pbToday?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
-    ${deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
+    ${skipHas(selDate)?"":deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
   </div>
   <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),true,true,dayWaterAuto,dayWaterManual)}</div>
@@ -9329,7 +9402,7 @@ function coachCandidates(now){
   const add=(id,kind,title,body,actions,prio,tab)=>out.push({id,kind,title,body,actions:actions||[],prio:prio||3,tab:tab||null});
   if(!coachMem.last.welcome)add("welcome","welcome","Hey, I'm your coach.","I watch your log, your weigh-ins and your training, and I'll speak up when something is worth a look — your weekly check-in, a target I'd change, the odd nudge. Tap me on any page to see what's new.",[{a:"coach:checkin",l:"Check in today"},{a:"coach:go",t:"coach",l:"Meet the coach"}],1);
   // morning brief — once a day, mornings only
-  if(H>=6&&H<12&&coachMem.last.daily!==today&&(foodLog.length>0||hasWeights)){
+  if(H>=6&&H<12&&coachMem.last.daily!==today&&!skipHas(today)&&(foodLog.length>0||hasWeights)){
     const y=new Date(now);y.setDate(y.getDate()-1);const yd=localDateStr(y),yt=coachDayTotals(yd),ytg=targetsFor(yd);
     const parts=[`Today: ${tgt.kcal} cal, ${tgt.p}g protein.`];
     if(entriesFor(yd).length){const d=yt.calories-ytg.kcal;parts.push(`Yesterday you finished ${Math.abs(Math.round(d))} ${d>0?"over":"under"} target${Math.abs(d)<=100?" — right on it.":"."}`)}
@@ -9362,8 +9435,8 @@ function coachCandidates(now){
         add("fatfloor-"+coachIsoWeek(now),"macrolow","Fat is under the floor",`You're averaging ${Math.round(wa.fat)}g of fat against a ${floor}g floor for your weight. Fat that low is where hormones and vitamin absorption start to complain — whole eggs, olive oil or nuts close it quickly without much volume.`,[],2);
     }
   }
-  // nudges — respect quiet hours and the nudge switch
-  if(nudgesOn&&!quiet){
+  // nudges — respect quiet hours, the nudge switch, and a day you told the app to ignore
+  if(nudgesOn&&!quiet&&!skipHas(today)){
     if(H>=6&&H<11&&!weighedToday&&hasWeights)add("weigh-"+today,"weigh","Morning scale?","Same time, same conditions each day is what keeps the trend honest. Thirty seconds now.",[{a:"coach:weigh",l:"Log weight"},{a:"coach:dismiss",l:"Not today"}],3);
     const noMeal=m=>!entries.some(e=>e.meal===m);
     if(H>=13&&H<16&&noMeal("lunch")&&(entries.length||st.f>0))add("meal-lunch-"+today,"meal","Lunch isn't logged yet","Want me to open the log? Logging it while it's fresh is the whole game.",[{a:"coach:addfood",m:"lunch",l:"Log lunch"},{a:"coach:dismiss",l:"Skipped it"}],3);
@@ -10364,6 +10437,9 @@ document.addEventListener("click",e=>{
     selDate=localDateStr(d);render();
   }
   else if(act==="dstoday"){selDate=localDateStr();render()}
+  else if(act==="skipday"){const d=el.dataset.d;const was=skipHas(d);skipToggle(d);
+    toast(was?"Day counts again":"Day skipped — it won't count toward your plan");render();
+    if(typeof coachSchedule==="function")coachSchedule("skip")}
   else if(act==="progspan"){progWin.span=+el.dataset.v;progWin.off=0;progWin.dir=0;render()}
   else if(act==="prognav"){const tr=trended(),span=progWin.span||tr.length,step=Math.max(1,Math.round(span*0.8));const dir=+el.dataset.dir;
     progWin.off=dir<0?Math.min(Math.max(0,tr.length-span),progWin.off+step):Math.max(0,progWin.off-step);progWin.dir=dir;render();progWin.dir=0}
