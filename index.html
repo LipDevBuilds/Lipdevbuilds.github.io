@@ -667,7 +667,7 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .fs-librow .l svg{color:hsl(var(--muted-foreground))}
 .fs-librow .r{display:flex;align-items:center;gap:8px;font-size:14px;color:hsl(var(--muted-foreground));line-height:20px}
 .fs-custom{display:flex;align-items:center;justify-content:center;gap:8px;width:calc(100% - 32px);margin:0 16px 24px;padding:14px 0;border-radius:12px;border:.5px solid hsl(var(--border));background:none;font-size:14px;font-weight:500;color:hsl(var(--foreground));line-height:20px}
-.fs-bar{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:.5px solid hsl(var(--border));padding-bottom:calc(env(safe-area-inset-bottom,0px) + 12px)}
+.fs-bar{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:8px 16px 12px;border-bottom:.5px solid hsl(var(--border))}
 .fs-searchpill{flex:1;display:flex;align-items:center;gap:8px;background:hsl(var(--muted));border-radius:9999px;padding:10px 16px;font-size:14px;color:hsl(var(--muted-foreground));border:0;line-height:20px}
 .fs-round{padding:10px;border-radius:9999px;border:.5px solid hsl(var(--border));background:none;color:hsl(var(--muted-foreground));display:flex}
 .fs-shd{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:16px;padding-top:calc(env(safe-area-inset-top,0px) + 16px);border-bottom:.5px solid hsl(var(--border))}
@@ -1381,7 +1381,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-13.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-13.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3942,6 +3942,10 @@ function fsMainView(){
   <div class="fs-pick" id="fsPick"><div>
     ${MEALS.map(m=>`<button class="fs-pickbtn haptic${m===FS.meal?" on":""}" data-act="fssetmeal" data-m="${m}">${FS_MEAL_LABELS[m]}</button>`).join("")}
   </div></div>
+  <div class="fs-bar">
+    <div class="fs-searchpill" style="display:flex;align-items:center;gap:8px">${IC_SEARCH16}<input id="fsQ0" placeholder="Search foods, brands, barcodes..." autocomplete="off" style="background:none;border:0;outline:none;flex:1;min-width:0;font:inherit;font-size:15px;color:hsl(var(--foreground))"></div>
+    <button class="fs-round haptic" data-act="fsscan">${IC_SCAN18}</button>
+  </div>
   <div class="fs-scroll">
     <div id="fsShelves">
     ${ym?`<button class="fs-custom haptic" data-act="fsrepeaty" style="margin:12px 0 4px">${IC_COPY14} Repeat yesterday's ${FS_MEAL_LABELS[FS.meal].toLowerCase()} · ${ym.n} item${ym.n>1?"s":""} · ${ym.cal} cal</button>`:""}
@@ -3953,20 +3957,16 @@ function fsMainView(){
     ${(rc.length||favCount)?`<div class="fs-libcard">
       ${rc.length?`<button class="fs-librow haptic" data-act="fssearchview"><span class="l">${IC_CLOCK14} Recents</span><span class="r"><span class="tnum">${rc.length}</span>${IC_CHEVR14}</span></button>`:""}
       ${favCount?`<button class="fs-librow haptic" data-act="fssearchview"><span class="l">${fsStar(14,false)} Saved Items</span><span class="r"><span class="tnum">${favCount}</span>${IC_CHEVR14}</span></button>`:""}
-    </div>`:`<div class="fs-libcard" style="padding:14px 16px"><p style="font-size:12px;margin:0;line-height:17px" class="text-muted-foreground">Foods you log and save land here for one-tap re-adding. Search below to log your first.</p></div>`}
+    </div>`:`<div class="fs-libcard" style="padding:14px 16px"><p style="font-size:12px;margin:0;line-height:17px" class="text-muted-foreground">Foods you log and save land here for one-tap re-adding. Search above to log your first.</p></div>`}
     <div style="display:flex;gap:8px">
       <button class="fs-custom haptic" data-act="fsquickadd" style="flex:1">${IC_PLUS16} Quick entry</button>
       <button class="fs-custom haptic" data-act="fenew" style="flex:1">${IC_PLUS16} New food</button>
     </div>
     </div>
     <div id="fsResults" style="display:none"></div>
-    <div style="height:80px"></div>
+    <div style="height:24px"></div>
   </div>
-  <div class="fs-bar">
-    <div class="fs-searchpill" style="display:flex;align-items:center;gap:8px">${IC_SEARCH16}<input id="fsQ0" placeholder="Search foods, brands, barcodes..." autocomplete="off" style="background:none;border:0;outline:none;flex:1;min-width:0;font:inherit;font-size:15px;color:hsl(var(--foreground))"></div>
-    <button class="fs-round haptic" data-act="fsscan">${IC_SCAN18}</button>
-    <button class="fs-round haptic" data-act="fsclose">${IC_X18}</button>
-  </div>`;
+`;
 }
 // SEARCH view (FoodSearch.tsx:489-620)
 function fsSearchView(){
