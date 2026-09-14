@@ -625,6 +625,34 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .pmenu .pm-sub-w.open{grid-template-rows:1fr}
 .pmenu .pm-sub{border-top:.5px solid hsl(var(--border)/.3);overflow:hidden;min-height:0}
 .pmenu .pm-sub button{padding:10px 16px 10px 32px;font-size:13px;color:hsl(var(--muted-foreground));min-height:0;line-height:19.5px}
+/* Move-to day stepper: a drum you nudge. Stepping back pushes the current day out to the RIGHT
+   while the day before rolls in behind it from the left, so the motion matches the direction of
+   travel through the calendar rather than the direction of the arrow. */
+.pmenu .pm-day{display:flex;align-items:center;gap:6px;padding:8px 16px 2px 32px}
+.pmenu .pm-day button.pm-dayarr{width:30px;height:30px;min-height:30px;padding:0;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;border-radius:9999px;
+  background:hsl(var(--secondary));color:hsl(var(--foreground))}
+.pmenu .pm-day button.pm-dayarr:active{background:hsl(var(--border))}
+.pmenu .pm-day button.pm-dayarr[disabled]{opacity:.35}
+.pm-daywin{position:relative;flex:1;min-width:0;height:30px;overflow:hidden;perspective:320px}
+.pm-daynum{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:18px;font-weight:650;letter-spacing:-.4px;font-variant-numeric:tabular-nums;
+  color:hsl(var(--foreground));will-change:transform,opacity}
+.pm-daynum.out-r{animation:dayOutR .36s cubic-bezier(.32,.72,.35,1) forwards}
+.pm-daynum.out-l{animation:dayOutL .36s cubic-bezier(.32,.72,.35,1) forwards}
+.pm-daynum.in-l{animation:dayInL .36s cubic-bezier(.32,.72,.35,1) forwards}
+.pm-daynum.in-r{animation:dayInR .36s cubic-bezier(.32,.72,.35,1) forwards}
+@keyframes dayOutR{to{transform:translateX(105%) rotateY(-42deg) scale(.82);opacity:0}}
+@keyframes dayOutL{to{transform:translateX(-105%) rotateY(42deg) scale(.82);opacity:0}}
+@keyframes dayInL{from{transform:translateX(-105%) rotateY(42deg) scale(.82);opacity:0}
+  to{transform:none;opacity:1}}
+@keyframes dayInR{from{transform:translateX(105%) rotateY(-42deg) scale(.82);opacity:0}
+  to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .pm-daynum.out-r,.pm-daynum.out-l,.pm-daynum.in-l,.pm-daynum.in-r{animation-duration:.01ms}}
+.pm-daylab{margin:0 0 4px;padding:0 16px 0 32px;font-size:11px;line-height:16px;
+  color:hsl(var(--label-3));font-weight:500}
+.pm-daylab.moved{color:hsl(var(--primary))}
 /* skeleton loaders */
 .skel{height:52px;border-radius:12px;margin:6px 0;background:linear-gradient(90deg,hsl(var(--secondary)) 25%,hsl(var(--muted)) 50%,hsl(var(--secondary)) 75%);background-size:200% 100%;animation:shimmer 1.1s infinite linear}
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
@@ -1381,7 +1409,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-14.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-14.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3388,13 +3416,39 @@ function portalMenuHTML(anchor,build){
 // ContextMenuPortal (MealSection.tsx:62-136): Move to (inline indented submenu of the other meals),
 // Duplicate, Re-log, Delete — hairline-separated, lucide icons at 15px.
 let emenuMoveOpen=false;
+let emenuDay=null;            // the day the Move-to stepper is currently showing
+// step a yyyy-mm-dd by whole days, through the local calendar so month ends and DST behave
+function dayShift(ds,n){const d=new Date(String(ds).slice(0,10)+"T12:00:00");
+  if(isNaN(d))return ds; d.setDate(d.getDate()+n); return localDateStr(d)}
+function dayNumOf(ds){const d=new Date(String(ds).slice(0,10)+"T12:00:00");
+  return isNaN(d)?String(ds).slice(-2):String(d.getDate())}
+// "Today" / "Yesterday" / "Tomorrow" read faster than a date, so use them where they apply
+function dayLabelOf(ds){const t=localDateStr();
+  if(ds===t)return "Today";
+  if(ds===dayShift(t,-1))return "Yesterday";
+  if(ds===dayShift(t,1))return "Tomorrow";
+  const d=new Date(String(ds).slice(0,10)+"T12:00:00");
+  return isNaN(d)?fmtDate(ds):d.toLocaleDateString("en-US",{weekday:"short"})+", "+fmtDate(ds)}
 function openEntryMenu(anchor,id){
   emenuMoveOpen=false;
+  const e0=foodLog.find(x=>x.id===id);
+  emenuDay=e0?e0.date:localDateStr();   // the stepper starts on the day the entry is already on
   portalMenuHTML(anchor,()=>{
     const cur=foodLog.find(e=>e.id===id);if(!cur)return "";
+    // once the stepper has been moved off the entry's own day, every meal is a valid destination —
+    // "same meal, different day" is the whole point of the stepper
+    const moved=emenuDay!==cur.date;
+    const meals=moved?MEALS:MEALS.filter(m=>m!==cur.meal);
     return `<div>
       <button data-act="emovetoggle" data-id="${id}">${IC_ARRLR15} Move to <span class="pm-chev">${IC_CHEVR13}</span></button>
-      <div class="pm-sub-w${emenuMoveOpen?" open":""}"><div class="pm-sub">${MEALS.filter(m=>m!==cur.meal).map(m=>
+      <div class="pm-sub-w${emenuMoveOpen?" open":""}"><div class="pm-sub">
+        <div class="pm-day">
+          <button class="pm-dayarr haptic" data-act="emoveday" data-id="${id}" data-d="-1" aria-label="Previous day">${IC_CHEVL14}</button>
+          <span class="pm-daywin"><span class="pm-daynum" data-day="${emenuDay}">${dayNumOf(emenuDay)}</span></span>
+          <button class="pm-dayarr haptic" data-act="emoveday" data-id="${id}" data-d="1" aria-label="Next day">${IC_CHEVR14}</button>
+        </div>
+        <p class="pm-daylab${moved?" moved":""}">${esc(dayLabelOf(emenuDay))}</p>
+        ${meals.map(m=>
         `<button data-act="emoveto" data-id="${id}" data-m="${m}">${MEAL_LABELS[m]}</button>`).join("")}</div></div>
     </div>
     <button class="pm-sep" data-act="eedit" data-id="${id}">${IC_ROT15} Re-log</button>
@@ -10927,6 +10981,41 @@ document.addEventListener("click",e=>{
     emenuMoveOpen=!emenuMoveOpen; // animate in place — the menu keeps its anchor while the submenu grows
     const sw=pmenuEl&&pmenuEl.querySelector(".pm-sub-w");if(sw)sw.classList.toggle("open",emenuMoveOpen);
   }
+  else if(act==="emoveday"){
+    // Re-rendering the menu here would restart the submenu's grow animation and lose the anchor, so
+    // the day is swapped in place: the outgoing number is pushed out of frame and the incoming one
+    // rolls in behind it from the opposite side. Step back and today's 14 leaves to the RIGHT,
+    // nudged out by the 13 arriving from the left.
+    const dir=Number(el.dataset.d)||0;
+    const win=pmenuEl&&pmenuEl.querySelector(".pm-daywin");if(!win||!dir)return;
+    if(win.dataset.busy==="1")return;                 // one step per animation, or they stack
+    const oldN=win.querySelector(".pm-daynum:not(.out-r):not(.out-l)");if(!oldN)return;
+    const next=dayShift(emenuDay,dir);
+    emenuDay=next;
+    const lab=pmenuEl.querySelector(".pm-daylab");
+    const cur=foodLog.find(e=>e.id===el.dataset.id);
+    if(lab){lab.textContent=dayLabelOf(next);lab.classList.toggle("moved",!!cur&&next!==cur.date)}
+    const mk=document.createElement("span");
+    mk.className="pm-daynum "+(dir<0?"in-l":"in-r");
+    mk.dataset.day=next;mk.textContent=dayNumOf(next);
+    win.dataset.busy="1";
+    oldN.classList.add(dir<0?"out-r":"out-l");
+    win.appendChild(mk);
+    const done=()=>{oldN.remove();mk.classList.remove("in-l","in-r");win.dataset.busy=""};
+    if(lfReduced())done(); else setTimeout(done,370);
+    // moving off the entry's own day makes every meal a destination, so the list has to catch up
+    if(cur){
+      const sub=pmenuEl.querySelector(".pm-sub");
+      const moved=next!==cur.date;
+      const want=moved?MEALS:MEALS.filter(m=>m!==cur.meal);
+      const have=[...sub.querySelectorAll('button[data-act="emoveto"]')];
+      if(have.length!==want.length){
+        have.forEach(b=>b.remove());
+        sub.insertAdjacentHTML("beforeend",want.map(m=>
+          `<button data-act="emoveto" data-id="${cur.id}" data-m="${m}">${MEAL_LABELS[m]}</button>`).join(""));
+      }
+    }
+  }
   else if(act==="edel"){closePMenu();const did=el.dataset.id; // no toast (real has none) — the row folds away instead
     const fin=()=>{sbTomb("food_log",did);foodLog=foodLog.filter(e=>e.id!==did);setEntrySrc(did,null);saveLog();render()};
     const row=document.querySelector(`.mrow[data-id="${did}"]`);
@@ -10960,7 +11049,15 @@ document.addEventListener("click",e=>{
   }
   else if(act==="emoveto"){ // FoodLog.tsx:66-71 — toast uses the lowercase meal key
     closePMenu();const src=foodLog.find(e=>e.id===el.dataset.id);
-    if(src){src.meal=el.dataset.m;saveLog();toast("Moved to "+el.dataset.m)}
+    if(src){
+      const toDay=emenuDay||src.date, fromDay=src.date, meal=el.dataset.m;
+      src.meal=meal;
+      if(toDay!==fromDay)src.date=toDay;   // a day move has to survive the sync, so it goes through saveLog
+      saveLog();
+      // the day is the surprising half of the move, so name it whenever it changed
+      toast(toDay!==fromDay?`Moved to ${meal} · ${dayLabelOf(toDay)}`:"Moved to "+meal);
+    }
+    emenuDay=null;
     render();
   }
   else if(act==="wostart"){ // Workout.tsx:97-106 startWorkout — fresh session, autofocus ~100ms
