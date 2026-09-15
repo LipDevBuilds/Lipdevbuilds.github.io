@@ -628,6 +628,29 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 /* Move-to day stepper: a drum you nudge. Stepping back pushes the current day out to the RIGHT
    while the day before rolls in behind it from the left, so the motion matches the direction of
    travel through the calendar rather than the direction of the arrow. */
+/* Equipment-screen read-out. The corrected number leads, the range sits right under it, and the
+   delta against the console is coloured by direction so it is obvious the correction runs both ways. */
+.eq-body{padding:0 16px 16px;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch}
+.eq-mach{font-size:12px;font-weight:600;margin:0;line-height:16px;color:hsl(var(--muted-foreground));
+  text-transform:uppercase;letter-spacing:.04em}
+.eq-big{display:flex;align-items:baseline;gap:6px;margin:2px 0 0}
+.eq-big span:first-child{font-size:40px;font-weight:700;letter-spacing:-1.2px;line-height:46px;
+  color:hsl(var(--foreground))}
+.eq-unit{font-size:15px;font-weight:600;color:hsl(var(--muted-foreground))}
+.eq-range{font-size:12px;margin:0;line-height:17px;color:hsl(var(--label-3))}
+.eq-delta{font-size:13px;font-weight:600;margin:6px 0 0;line-height:18px;color:hsl(var(--muted-foreground))}
+.eq-delta.dn{color:hsl(var(--warning,38 92% 50%))}
+.eq-delta.up{color:hsl(var(--success,142 71% 45%))}
+.eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin:14px 0 0}
+.eq-c{background:hsl(var(--secondary));border-radius:var(--r-sm,10px);padding:8px 10px;min-width:0}
+.eq-k{font-size:10px;margin:0;line-height:14px;color:hsl(var(--label-3));text-transform:uppercase;letter-spacing:.04em}
+.eq-v{font-size:14px;font-weight:600;margin:1px 0 0;line-height:19px;color:hsl(var(--foreground));
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eq-whyh{font-size:11px;font-weight:600;margin:16px 0 4px;line-height:15px;color:hsl(var(--label-3));
+  text-transform:uppercase;letter-spacing:.04em}
+.eq-why{margin:0;padding:0 0 0 16px;font-size:12px;line-height:18px;color:hsl(var(--muted-foreground))}
+.eq-why li{margin:0 0 4px}
+.eq-src{font-size:11px;line-height:16px;margin:8px 0 0;color:hsl(var(--label-3))}
 .pmenu .pm-day{display:flex;align-items:center;gap:6px;padding:8px 16px 2px 32px}
 .pmenu .pm-day button.pm-dayarr{width:30px;height:30px;min-height:30px;padding:0;flex:0 0 auto;
   display:flex;align-items:center;justify-content:center;border-radius:9999px;
@@ -1409,7 +1432,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-14.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-15.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3460,6 +3483,110 @@ function openEntryMenu(anchor,id){
 // ===== search sheet =====
 let sheetEl=null;
 function closeSheet(){if(sheetEl){sheetEl.remove();sheetEl=null}if(vlRec){try{vlRec.stop()}catch(e){}vlRec=null}} // a dismissed voice sheet stops listening; its state is replaced on the next open
+let EQ={busy:false,read:null,est:null,err:null,shot:null};
+// One hidden input, reused. capture="environment" opens the back camera straight onto the console
+// on a phone and falls back to the photo library everywhere else.
+let eqInputEl=null;
+function eqPick(){
+  if(!eqInputEl){
+    eqInputEl=document.createElement("input");
+    eqInputEl.type="file";eqInputEl.accept="image/*";eqInputEl.capture="environment";
+    eqInputEl.style.display="none";document.body.appendChild(eqInputEl);
+    eqInputEl.addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];
+      eqInputEl.value="";if(f)eqRead(f)});
+  }
+  eqInputEl.click();
+}
+// Console photos are mostly a small bright panel in a big dark frame, so downscale hard before
+// upload: it keeps the digits and cuts the payload by an order of magnitude.
+const EQ_MAXPX=1600, EQ_Q=0.82;
+function eqShrink(file){
+  return new Promise((res,rej)=>{
+    const img=new Image(), url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const sc=Math.min(1,EQ_MAXPX/Math.max(img.width,img.height));
+      const c=document.createElement("canvas");
+      c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      const d=c.toDataURL("image/jpeg",EQ_Q);
+      res({dataUrl:d,base64:d.split(",")[1],mediaType:"image/jpeg"});
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("Could not open that image"))};
+    img.src=url;
+  });
+}
+async function eqRead(file){
+  EQ={busy:true,read:null,est:null,err:null,shot:null};
+  openSheet(eqSheetHTML());
+  try{
+    const sh=await eqShrink(file);
+    EQ.shot=sh.dataUrl;
+    if(!aiOn())throw new Error("Reading a console needs the AI backend switched on in Settings.");
+    const r=await callFn("equipment-photo",{imageBase64:sh.base64,mediaType:sh.mediaType});
+    EQ.read=r;
+    EQ.est=eqEstimate(eqToEstimator(r));
+  }catch(e){EQ.err=(e&&e.message)||"Could not read that photo"}
+  EQ.busy=false;
+  const sh=document.querySelector(".sheet");if(sh)sh.innerHTML=eqSheetHTML();
+}
+// the reader speaks mph and lb because that is what the consoles show; the engine works in SI
+function eqToEstimator(r){
+  return{machine:r.machine,minutes:r.minutes,watts:r.watts,
+    speedMps:r.speedMph!=null?r.speedMph*0.44704:null,
+    gradePct:r.gradePct,level:r.level,strideRate:r.strideRate,
+    stepsPerMin:r.stepsPerMin,arms:r.arms===true,
+    consoleKcal:r.consoleKcal,
+    assumedKg:r.assumedLb!=null?r.assumedLb*0.4536:null};
+}
+const EQ_MACHLABEL={treadmill:"Treadmill",bike_friction:"Bike (friction brake)",bike_air:"Bike (air brake)",
+  bike_electro:"Bike (electronic brake)",bike_unknown:"Bike",rower_c2:"Concept2 rower",
+  elliptical:"Elliptical",stair:"Stair climber",unknown:"Machine"};
+function eqSheetHTML(){
+  const body=(()=>{
+    if(EQ.busy)return `<div style="padding:28px 0;text-align:center">
+      <div class="fsk" style="height:12px;width:60%;margin:0 auto 10px"></div>
+      <div class="fsk" style="height:12px;width:40%;margin:0 auto"></div>
+      <p style="font-size:12px;margin:14px 0 0;line-height:17px" class="text-muted-foreground">Reading the screen…</p></div>`;
+    if(EQ.err)return `<div style="padding:8px 0 16px">
+      <p style="font-size:14px;margin:0 0 6px;line-height:20px">${esc(EQ.err)}</p>
+      <p style="font-size:12px;margin:0;line-height:17px" class="text-muted-foreground">You can still log it by hand — nothing was saved.</p></div>`;
+    const r=EQ.read||{}, e=EQ.est||{};
+    const rows=[
+      ["Time",r.minutes!=null?r.minutes+" min":null],
+      ["Power",r.watts!=null?r.watts+" W":null],
+      ["Speed",r.speedMph!=null?r.speedMph+" mph":null],
+      ["Incline",r.gradePct!=null?r.gradePct+"%":null],
+      ["Level",r.level!=null?String(r.level):null],
+      ["Stride rate",r.strideRate!=null?r.strideRate+"/min":null],
+      ["Steps",r.stepsPerMin!=null?r.stepsPerMin+"/min":null],
+      ["Heart rate",r.heartRate!=null?r.heartRate+" bpm":null],
+      ["Screen said",r.consoleKcal!=null?r.consoleKcal+" cal":null],
+    ].filter(x=>x[1]);
+    if(e.net==null)return `<div style="padding:8px 0 16px">
+      <p style="font-size:14px;margin:0 0 6px;line-height:20px">Not enough on that screen to work from.</p>
+      <p style="font-size:12px;margin:0 0 10px;line-height:17px" class="text-muted-foreground">A time plus any one of power, speed, level or the machine's own calorie figure is enough. Try a straighter shot with less glare.</p>
+      ${rows.length?`<div class="eq-grid">${rows.map(x=>`<div class="eq-c"><p class="eq-k">${esc(x[0])}</p><p class="eq-v tnum">${esc(x[1])}</p></div>`).join("")}</div>`:""}</div>`;
+    const d=e.delta;
+    return `<div style="padding:2px 0 4px">
+      <p class="eq-mach">${esc(EQ_MACHLABEL[e.machine]||"Machine")}${r.brand?" · "+esc(r.brand):""}${r.legible==="poor"?" · hard to read":""}</p>
+      <div class="eq-big"><span class="tnum">${e.net}</span><span class="eq-unit">cal</span></div>
+      <p class="eq-range tnum">${e.lo}–${e.hi} cal · the range this method can honestly claim</p>
+      ${d!=null?`<p class="eq-delta ${d<0?"dn":d>0?"up":""}">${d===0?"Same as the screen":(d<0?"":"+")+d+" cal vs the "+r.consoleKcal+" on screen"}</p>`:""}
+      <div class="eq-grid">${rows.map(x=>`<div class="eq-c"><p class="eq-k">${esc(x[0])}</p><p class="eq-v tnum">${esc(x[1])}</p></div>`).join("")}</div>
+      <p class="eq-whyh">How this was worked out</p>
+      <ul class="eq-why">${(e.why||[]).map(w=>`<li>${esc(w)}</li>`).join("")}</ul>
+      ${e.note?`<p class="eq-src">${esc(e.note)}</p>`:""}
+      ${(r.unreadable&&r.unreadable.length)?`<p class="eq-src">Couldn't read: ${esc(r.unreadable.join(", "))} — those were left out rather than guessed.</p>`:""}
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="haptic bg-muted" data-act="eqretake" style="flex:1;border:0;padding:12px;border-radius:12px;font-size:14px;font-weight:600;color:hsl(var(--foreground))">Retake</button>
+        <button class="haptic wo-primarybtn" data-act="eqlog" style="flex:1.4;padding:12px;border-radius:12px;font-size:14px;font-weight:600">Log ${e.net} cal</button>
+      </div>`;
+  })();
+  return `<div class="qa-head"><h3>Equipment screen</h3>
+      <button class="qa-x haptic" data-act="close">${IC_X20}</button></div>
+    <div class="eq-body">${body}</div>`;
+}
 function openSheet(html){closeSheet();closePMenu();sheetEl=document.createElement("div");sheetEl.className="scrim";
   sheetEl.innerHTML=`<div class="sheet glass-sheet">${html}</div>`;
   sheetEl.addEventListener("click",e=>{if(e.target===sheetEl)closeSheet()});
@@ -8305,6 +8432,188 @@ function parseWorkoutLocal(notes,elapsedSeconds){
 //   Hunter, Byrne et al. (2003); Greer et al. (2015) — resistance-session EPOC in the 5-10% band
 //   Winter & Fowler (2009), Ergonomics; Hansen et al. — gross mechanical efficiency of lifting ~0.20-0.25
 //   Elmer, Marshall et al. — eccentric work costs roughly a third of concentric per unit force
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// EQUIPMENT CONSOLE — reading a gym machine's screen and correcting it against your real body
+//
+// Full write-up with sources: food-macros/research/CARDIO-EQUIPMENT-ACCURACY.md
+//
+// The two errors that dominate, before any brand enters the picture:
+//
+//   1. The console reports GROSS energy. It counts the calories you would have burned lying still
+//      for the same minutes. That has to come off before the number can be added to a food diary,
+//      or the day's resting burn is counted twice.
+//   2. The console assumes a body, and it is usually not yours. Concept2 states theirs outright —
+//      the PM figure is computed for a 175 lb / 79.5 kg person — and publishes the correction.
+//
+// Both cut BOTH WAYS. A 220 lb rower is owed MORE than the PM shows; a 130 lb rower fewer. Nothing
+// in here is a one-directional haircut, and the tests assert that it is not.
+//
+// Where a calibration study found NO significant error, the bias here is ZERO. An absent effect is
+// not a licence to invent one, and inventing one is the main way a correction like this goes wrong.
+// There is no brand fudge factor anywhere in this file: "True Fitness overstates by N%" is not a
+// number that exists in the literature. What the evidence resolves is machine CLASS.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+const EQ_CFG={
+  // ── oxygen and energy ──
+  KCAL_PER_L_O2:5.0,     // kcal per litre of O2 at RER ~0.85-0.9, where steady moderate cardio sits
+  REST_ML_KG_MIN:3.5,    // 1 MET, ml O2 per kg per minute — the gross/net difference
+  // ── ACSM metabolic coefficients, ml O2 per metre per kg (reported in PMC, see the write-up) ──
+  WALK_H:0.1,            // treadmill walking, horizontal component
+  WALK_V:1.8,            // treadmill walking, vertical component (x fractional grade)
+  RUN_H:0.2,             // treadmill running, horizontal
+  RUN_V:0.9,             // treadmill running, vertical (x fractional grade)
+  WALK_RUN_SPLIT_MPS:2.2,// above ~4.9 mph the running equation is the right one
+  STEP_PER_LIFT:0.65,    // stepping, ml O2 per lift per kg at a 0.19 m step
+  STEP_HEIGHT_M:0.19,    // the step height that coefficient was measured at
+  O2_PER_WATT:10.8,      // ml O2 per minute per watt, leg cycling. ACSM's widely reproduced figure;
+                         // the PMC source that lists the ACSM set gives 11.1. The 0.3 sits well
+                         // inside the stated uncertainty, so either is defensible — tune here.
+  // ── elliptical, from the only study that measured a console against indirect calorimetry ──
+  // Mier & Feito 2006 (PMID 17243225). They report the cost, not a percentage, so this app models
+  // the cost and does NOT invent an overestimate percentage.
+  ELL_PER_STRIDE:0.1,    // ml O2 per kg per stride
+  ELL_PER_LEVEL:0.7,     // ml O2 per kg per minute, per resistance level
+  ELL_ARM_ADD:0.12,      // using the arm poles measured significantly higher at matched intensity;
+                         // the paper gives no single multiplier, so this is deliberately small and
+                         // is reported inside the uncertainty band rather than as a firm figure
+  // ── Concept2's own published correction (concept2.com calorie calculator) ──
+  C2_BASE_LB:175,        // the body the PM assumes
+  C2_OFFSET:300,         // kcal/hr subtracted
+  C2_PER_LB:1.714,       // kcal/hr added per lb of the user's real weight
+  // ── how sure we are, as a +/- fraction of the estimate ──
+  UNC_POWER:0.06,        // machines whose WATTS are measured and calibration-checked
+  UNC_ACSM:0.12,         // speed/grade through the ACSM equations
+  UNC_MODEL:0.22,        // elliptical and anything estimated from a level number alone
+  UNC_CONSOLE:0.30,      // nothing usable but the console's own calorie figure
+  BF_DEFAULT:null,       // no body fat on file -> resting is computed from total mass, not a guess
+  MIN_KCAL:0,            // net work can round to zero but never below it
+};
+// Measured mechanical-power accuracy against calibration rigs. `bias` is what must be ADDED to the
+// console's power to recover true power, as a fraction. Positive = the console UNDER-reads.
+const EQ_MACHINE={
+  // Treff et al. 2022, Front Sports Act Living, PMID 35146423 — motorised test rig.
+  // C2 under-read true power by 2.5-4.3%; midpoint 3.4%.
+  rower_c2:{bias:+0.034,unc:"UNC_POWER",src:"Treff 2022 (PMID 35146423)",
+    note:"Concept2 under-reads power by 2.5-4.3% on a motorised rig. Its first five strokes read 10-70% low, which barely matters over a full piece."},
+  // Maxwell et al. 1998, Eur J Appl Physiol, PMID 9754975 — dynamic calibration rig, 45 ergometers.
+  bike_friction:{bias:+0.053,unc:"UNC_POWER",src:"Maxwell 1998 (PMID 9754975)",
+    note:"Friction-braked (Monark) ergometers read 91.7-97.8% of true power. Midpoint 94.7%, so true power is about 5.3% above the display."},
+  bike_air:{bias:0,unc:"UNC_POWER",src:"Maxwell 1998 (PMID 9754975)",
+    note:"Air-braked ergometers measured 98.0-104.2% and were NOT significantly different from the rig. No correction is applied, because none was found."},
+  bike_electro:{bias:0,unc:"UNC_POWER",src:"Maxwell 1998 (PMID 9754975)",
+    note:"Electromagnetically braked ergometers were accurate away from the lowest load. No correction is applied."},
+  bike_unknown:{bias:0,unc:"UNC_MODEL",src:"no class identified",
+    note:"The brake type is not visible, so no power correction is applied and the uncertainty is widened instead."},
+  treadmill:{bias:0,unc:"UNC_ACSM",src:"ACSM metabolic equations",
+    note:"Belt speed and grade are computed through the ACSM equations against your real mass, so the console's own calorie figure is not used."},
+  elliptical:{bias:0,unc:"UNC_MODEL",src:"Mier & Feito 2006 (PMID 17243225)",
+    note:"The one study to measure an elliptical console against indirect calorimetry found the manufacturer's figure overestimated. It published the oxygen cost, not a percentage, so the cost is modelled and no percentage is invented."},
+  stair:{bias:0,unc:"UNC_ACSM",src:"ACSM stepping coefficient",
+    note:"Steps per minute times step height through the ACSM stepping coefficient, against your real mass."},
+  unknown:{bias:0,unc:"UNC_CONSOLE",src:"none",
+    note:"Machine type not identified. Only the gross-to-net and body-mass corrections can be applied."},
+};
+// A machine gets OLDER and drifts. Maxwell found the oldest units (mean 11.3 years) significantly
+// less accurate than the newest (1.4 years) — but the paper gives a range, not a per-year slope,
+// so this widens the UNCERTAINTY and never moves the estimate. Guessing a direction here would be
+// exactly the bias this engine exists to avoid.
+const EQ_AGE_UNC=0.04;
+// kg of the user, from the profile, in kg no matter what the display unit is
+function eqBodyKg(){const w=+profile.startWeight||0;
+  return w?(profile.weightUnit==="lbs"?w*0.4536:w):75}
+// Resting metabolism tracks FAT-FREE mass, so where body fat is on file the gross-to-net
+// subtraction uses lean mass. This is the only place body fat enters, and it is small and signed.
+function eqRestingMlKgMin(){return EQ_CFG.REST_ML_KG_MIN}
+function eqRestKcalMin(){
+  const kg=eqBodyKg(), bf=+profile.bodyFatEstimate||0;
+  // 1 MET is defined per kg of WHOLE body, but the tissue actually doing the resting burn is lean.
+  // Scaling by lean fraction against the reference 80% lean body the MET was defined on keeps a
+  // lean user from being over-subtracted and a higher-fat user from being under-subtracted.
+  const leanFrac=bf>0?(1-bf/100):0.80;
+  const kgEff=kg*(leanFrac/0.80);
+  return (EQ_CFG.REST_ML_KG_MIN*kgEff/1000)*EQ_CFG.KCAL_PER_L_O2;
+}
+const eqO2ToKcal=(mlPerMin,min)=>(mlPerMin/1000)*EQ_CFG.KCAL_PER_L_O2*min;
+// The whole estimator. `r` is what was read off the console; everything is optional, and the
+// function uses the most physically meaningful field it was given and says which one it used.
+function eqEstimate(r){
+  r=r||{};
+  const kg=eqBodyKg(), min=Math.max(0,+r.minutes||0);
+  const cls=EQ_MACHINE[r.machine]||EQ_MACHINE.unknown;
+  const out={machine:r.machine||"unknown",minutes:min,basis:null,gross:null,net:null,
+    consoleKcal:r.consoleKcal!=null?+r.consoleKcal:null,unc:EQ_CFG[cls.unc]||EQ_CFG.UNC_CONSOLE,
+    src:cls.src,note:cls.note,why:[]};
+  if(!min)return out;
+  const restKcal=eqRestKcalMin()*min;
+  let grossKcal=null;
+  // 1) WATTS — the best case. Real mechanical power, corrected for the class's measured rig error,
+  //    then through the ACSM oxygen-per-watt coefficient. Body mass only enters via resting.
+  if(r.watts>0){
+    const trueW=+r.watts*(1+cls.bias);
+    grossKcal=eqO2ToKcal(EQ_CFG.O2_PER_WATT*trueW+EQ_CFG.REST_ML_KG_MIN*kg,min);
+    out.basis="watts";
+    if(cls.bias)out.why.push(`${r.watts} W on the display is about ${Math.round(trueW)} W of real power — ${cls.src}`);
+    else out.why.push(`${r.watts} W taken as read; ${cls.src} found no significant error for this class`);
+  }
+  // 2) SPEED and GRADE — the ACSM treadmill equations against your real mass.
+  else if(r.machine==="treadmill"&&r.speedMps>0){
+    const v=+r.speedMps, g=Math.max(0,+r.gradePct||0)/100;
+    const run=v>=EQ_CFG.WALK_RUN_SPLIT_MPS;
+    const mlKgMin=(run?EQ_CFG.RUN_H:EQ_CFG.WALK_H)*v*60
+                 +(run?EQ_CFG.RUN_V:EQ_CFG.WALK_V)*v*60*g
+                 +EQ_CFG.REST_ML_KG_MIN;
+    grossKcal=eqO2ToKcal(mlKgMin*kg,min);
+    out.basis="speed+grade";
+    out.why.push(`${run?"Running":"Walking"} equation at ${(v*2.23694).toFixed(1)} mph, ${(g*100).toFixed(1)}% grade, against your ${Math.round(kg)} kg`);
+  }
+  // 3) STEPS PER MINUTE — the ACSM stepping coefficient.
+  else if(r.machine==="stair"&&r.stepsPerMin>0){
+    const h=+r.stepHeightM||EQ_CFG.STEP_HEIGHT_M;
+    const mlKgMin=EQ_CFG.STEP_PER_LIFT*(h/EQ_CFG.STEP_HEIGHT_M)*(+r.stepsPerMin)+EQ_CFG.REST_ML_KG_MIN;
+    grossKcal=eqO2ToKcal(mlKgMin*kg,min);
+    out.basis="steps";
+    out.why.push(`${r.stepsPerMin} steps/min at ${h.toFixed(2)} m through the ACSM stepping coefficient`);
+  }
+  // 4) ELLIPTICAL — the measured cost model, not a percentage off the console.
+  else if(r.machine==="elliptical"&&(r.strideRate>0||r.level>0)){
+    const sr=+r.strideRate||0, lv=+r.level||0;
+    let mlKgMin=EQ_CFG.ELL_PER_STRIDE*sr+EQ_CFG.ELL_PER_LEVEL*lv+EQ_CFG.REST_ML_KG_MIN;
+    if(r.arms)mlKgMin*=(1+EQ_CFG.ELL_ARM_ADD);
+    grossKcal=eqO2ToKcal(mlKgMin*kg,min);
+    out.basis="stride+level";
+    out.why.push(`${sr?sr+" strides/min":""}${sr&&lv?" at ":""}${lv?"level "+lv:""} through the measured oxygen cost — ${cls.src}`);
+    if(r.arms)out.why.push("Arm poles in use, which measured significantly higher at matched intensity");
+  }
+  // 5) CONSOLE CALORIES ONLY — last resort. Correct the body it assumed, then take the rest off.
+  else if(out.consoleKcal>0){
+    let g=out.consoleKcal;
+    if(r.machine==="rower_c2"){
+      // Concept2's own published correction, applied per hour then scaled to the piece
+      const lb=kg/0.4536, perHr=(out.consoleKcal/min*60)-EQ_CFG.C2_OFFSET+EQ_CFG.C2_PER_LB*lb;
+      g=perHr*min/60;
+      const d=Math.round(g-out.consoleKcal);
+      out.why.push(`The PM computes for a ${EQ_CFG.C2_BASE_LB} lb person. At your ${Math.round(lb)} lb that is ${d>=0?"+":""}${d} kcal — Concept2's own published correction`);
+    }else if(r.assumedKg>0){
+      g=out.consoleKcal*(kg/(+r.assumedKg));  // straight mass scaling, both directions
+      out.why.push(`The console was set to ${Math.round(r.assumedKg)} kg, you are ${Math.round(kg)} kg`);
+    }else{
+      out.why.push("Only the console's own calorie figure was readable, so this is the least certain estimate");
+    }
+    grossKcal=g;
+    out.basis="console";
+  }
+  if(grossKcal==null)return out;
+  out.gross=Math.round(grossKcal);
+  out.net=Math.max(EQ_CFG.MIN_KCAL,Math.round(grossKcal-restKcal));
+  out.restKcal=Math.round(restKcal);
+  out.why.push(`Minus ${out.restKcal} kcal you would have burned resting for ${min} min — the console counts those, a food diary already does too`);
+  if(r.machineAgeYears>=8){out.unc+=EQ_AGE_UNC;
+    out.why.push("An older machine drifts, so this is stated less precisely — the calibration study found age mattered but gives no per-year slope, so it widens the range rather than moving the number")}
+  out.lo=Math.max(0,Math.round(out.net*(1-out.unc)));
+  out.hi=Math.round(out.net*(1+out.unc));
+  if(out.consoleKcal>0)out.delta=out.net-out.consoleKcal;
+  return out;
+}
 const BURN_CFG={
   MET_REST:1.0,          // quiet sitting. Compendium METs are GROSS, so this is subtracted: you only
                          // earn the energy spent ABOVE doing nothing, which is what "extra to eat" means.
@@ -8613,6 +8922,7 @@ function workoutPage(){
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:4px">
         <button class="haptic bg-muted" data-act="restday" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;${isRestDay?"border:1px solid hsl(var(--primary)/.3);":""}color:hsl(var(--${isRestDay?"foreground":"muted-foreground"}))">${LUCIDE(P_MOON,2,14)} ${isRestDay?"Rest day ✓":"Rest day"}</button>
+        <button class="haptic bg-muted" data-act="eqphoto" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;color:hsl(var(--foreground))">${IC_CAM16} Snap a screen</button>
         <button class="haptic wo-primarybtn" data-act="wostart" style="padding:8px 16px;font-size:14px;gap:6px;line-height:20px;white-space:nowrap">${LUCIDE(P_WO_PLAY,2,16)} Start Log</button>
       </div></div>
     ${isRestDay?`<div style="margin-top:12px;background:hsl(var(--muted));border-radius:12px;border:1px solid hsl(var(--border));padding:12px;animation:fadeUp .25s ease both">
@@ -11168,6 +11478,27 @@ document.addEventListener("click",e=>{
     const gained=burnPayback(localDateStr())-pb0;
     logFrom=el.getBoundingClientRect();
     qlogPending=null;qlogText="";toast("Logged — "+val+" cal"+(edited?" (learned)":""));render();burnFlight(gained,val);
+  }
+  else if(act==="eqphoto"){eqPick()}
+  else if(act==="eqretake"){eqPick()}
+  else if(act==="eqlog"){
+    const e=EQ.est,r=EQ.read;if(!e||e.net==null)return;
+    const pb0=burnPayback(localDateStr());   // the allowance BEFORE this workout joins the day
+    const mins=Math.max(1,Math.round(e.minutes||0));
+    const nm=(EQ_MACHLABEL[e.machine]||"Cardio")+(r&&r.brand?" ("+r.brand+")":"");
+    workouts.push({id:newId(),date:localDateStr(),name:nm,
+      startTime:Date.now()-mins*60000,endTime:Date.now(),duration:mins,
+      exercises:[],totalCaloriesBurned:e.net,category:"cardio",muscleGroups:["cardio"],
+      notes:"Read off the machine's screen. "+(e.why||[]).join(". "),
+      aiEstimated:true,
+      // what the screen claimed and what we made of it, kept so a later correction can be audited
+      equipment:{machine:e.machine,brand:(r&&r.brand)||null,basis:e.basis,
+        consoleKcal:e.consoleKcal,net:e.net,lo:e.lo,hi:e.hi,src:e.src,read:r||null}});
+    save("workouts",workouts);
+    const gained=burnPayback(localDateStr())-pb0;
+    logFrom=el.getBoundingClientRect();
+    closeSheet();EQ={busy:false,read:null,est:null,err:null,shot:null};
+    toast("Logged — "+e.net+" cal");render();burnFlight(gained,e.net);
   }
   else if(act==="qlogcancel"){qlogPending=null;render()}
   else if(act==="qlogmic"){ // in-page dictation when the engine exists; otherwise the keyboard mic works in the textarea
