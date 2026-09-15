@@ -628,6 +628,21 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 /* Move-to day stepper: a drum you nudge. Stepping back pushes the current day out to the RIGHT
    while the day before rolls in behind it from the left, so the motion matches the direction of
    travel through the calendar rather than the direction of the arrow. */
+/* The Workout tab's day. Same drum as the Move-to stepper — one visual language for "which day" —
+   with the label beside it rather than under it, because this row sits above a dense dashboard. */
+.wo-day{display:flex;align-items:center;gap:6px;margin:0 0 10px}
+.wo-day .pm-daywin{flex:0 0 34px;height:28px}
+.wo-day .pm-daynum{font-size:17px}
+.wo-day .pm-dayarr.off{opacity:.3}
+.wo-daylab{font-size:13px;font-weight:600;line-height:18px;color:hsl(var(--muted-foreground));
+  margin-left:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wo-daylab.moved{color:hsl(var(--primary))}
+.wo-daytoday{margin-left:auto;flex:0 0 auto;padding:5px 11px;border-radius:9999px;border:0;
+  background:hsl(var(--secondary));color:hsl(var(--foreground));font-size:12px;font-weight:600;line-height:16px}
+.wo-rowarr{width:28px;height:28px;padding:0;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  border-radius:9999px;border:0;background:none;color:hsl(var(--muted-foreground))}
+.wo-rowarr:active{background:hsl(var(--secondary))}
+.wo-rowarr.off{opacity:.3}
 /* Equipment-screen read-out. The corrected number leads, the range sits right under it, and the
    delta against the console is coloured by direction so it is obvious the correction runs both ways. */
 .eq-body{padding:0 16px 16px;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch}
@@ -1432,7 +1447,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-15.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-15.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1483,6 +1498,7 @@ function addDietBreak(startDate,durationDays,tdee){
     },
   });
 }
+let woDate=localDateStr();   // the day the Workout tab is logging to; today unless you step it
 let tab="home", selDate=localDateStr(), woView="dashboard", pendingWorkout=null, woElapsed=0, woError=null, woShowHistory=false; // routing is URL-driven only (App.tsx) — no persisted last-tab
 let qlogPending=null, qlogText="", qlogRec=null; // AI quick-log: draft text, preview object, live speech-recognition handle
 // Dashboard page state (Index.tsx:40-42 + WaterTracker unit) — resets when Home remounts
@@ -8811,8 +8827,17 @@ const P_MIC='<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="
 function session(){return sload("active_workout_session")}
 const saveSession=x=>localStorage.setItem("active_workout_session",JSON.stringify(x));
 const WO_MONO='ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace';
+// The day the Workout tab is logging to. Clamped forward to today: a workout you have not done yet
+// is not a workout, and letting it sit in the future would quietly poison the streak and the
+// weekly-frequency windows, which both count forward from a start date.
+function woDay(){const t=localDateStr();return (!woDate||woDate>t)?t:woDate}
+const woIsToday=()=>woDay()===localDateStr();
+const woDaySuffix=()=>woIsToday()?"":" · "+dayLabelOf(woDay());
 function workoutPage(){
-  const s=session(),st=streaks(),t=localDateStr();
+  // `t` is the day this tab is working on. It is today unless the day stepper has been moved, which
+  // is what makes it possible to log a session you did on Saturday without pretending it was today.
+  const s=session(),st=streaks(),t=woDate||localDateStr();
+  const tIsToday=t===localDateStr();
 
   // ─── SUMMARY (Workout.tsx:499-595) — fullscreen overlay, staggered entrance ───
   if(woView==="summary"&&pendingWorkout){
@@ -8926,6 +8951,13 @@ function workoutPage(){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:8px">${LUCIDE_C(NAV_PATHS.workout,2,22,'text-primary')}<h1 class="apple-title text-foreground" style="margin:0">Workout</h1></div>
       </div>
+      <div class="wo-day">
+        <button class="pm-dayarr haptic" data-act="woday" data-d="-1" aria-label="Previous day">${IC_CHEVL14}</button>
+        <span class="pm-daywin"><span class="pm-daynum" data-day="${t}">${dayNumOf(t)}</span></span>
+        <button class="pm-dayarr haptic${tIsToday?" off":""}" data-act="woday" data-d="1" aria-label="Next day"${tIsToday?" disabled":""}>${IC_CHEVR14}</button>
+        <span class="wo-daylab${tIsToday?"":" moved"}">${esc(dayLabelOf(t))}</span>
+        ${tIsToday?"":`<button class="wo-daytoday haptic" data-act="wodaytoday">Today</button>`}
+      </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:4px">
         <button class="haptic bg-muted" data-act="restday" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;${isRestDay?"border:1px solid hsl(var(--primary)/.3);":""}color:hsl(var(--${isRestDay?"foreground":"muted-foreground"}))">${LUCIDE(P_MOON,2,14)} ${isRestDay?"Rest day ✓":"Rest day"}</button>
         <button class="haptic bg-muted" data-act="eqphoto" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;color:hsl(var(--foreground))">${IC_CAM16} Machine screen</button>
@@ -8954,18 +8986,22 @@ function workoutPage(){
       <button class="wo-primarybtn haptic" data-act="qlog" style="width:100%;margin-top:8px;padding:10px 0;font-size:14px;line-height:20px;justify-content:center">Estimate &amp; log</button>
     </div>`}
     <div class="anim" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:16px;animation-delay:.05s">
-      <div class="apple-card" style="padding:12px;text-align:center">${LUCIDE_C(P_FLAME,2,16,'text-warning','display:block;margin:0 auto 4px')}<p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;line-height:28px" class="text-foreground">${todayKcal}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">cal burned today</p></div>
+      <div class="apple-card" style="padding:12px;text-align:center">${LUCIDE_C(P_FLAME,2,16,'text-warning','display:block;margin:0 auto 4px')}<p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;line-height:28px" class="text-foreground">${todayKcal}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">cal burned ${tIsToday?"today":esc(dayLabelOf(t).toLowerCase())}</p></div>
       <div class="apple-card" style="padding:12px;text-align:center">${LUCIDE_C(P_WO_ZAP,2,16,'text-primary','display:block;margin:0 auto 4px')}<p style="font-size:20px;font-weight:700;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;line-height:28px" class="text-primary">${st.wo}</p><p style="font-size:10px;margin:0" class="text-muted-foreground">day workout streak</p></div></div>
     <div class="anim" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;animation-delay:.1s">
       <div class="apple-card" style="padding:10px;text-align:center"><p style="font-size:18px;font-weight:700;margin:0;line-height:28px" class="text-foreground">${wkFreq}</p><p style="font-size:9px;margin:0" class="text-muted-foreground">sessions/wk</p></div>
       <div class="apple-card" style="padding:10px;text-align:center"><p style="font-size:18px;font-weight:700;margin:0;line-height:28px" class="text-foreground">${avgKcal}</p><p style="font-size:9px;margin:0" class="text-muted-foreground">avg cal/session</p></div>
       <div class="apple-card" style="padding:10px;text-align:center" data-tip="Weekly training volume: every set's weight × reps, summed over the last week. The classic gauge of how much total work your muscles did — watch it trend up over months, not day to day."><p style="font-size:18px;font-weight:700;margin:0;line-height:28px" class="text-foreground">${Math.round(weekVol/1000)}k</p><p style="font-size:9px;margin:0" class="text-muted-foreground">wk volume (${profile.weightUnit==='kg'?'kg':'lbs'})</p></div></div>
     ${todayWos.length?`<div class="anim" style="margin-top:16px;animation-delay:.15s">
-      <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;line-height:16px" class="text-muted-foreground">Today</p>
+      <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;line-height:16px" class="text-muted-foreground">${esc(dayLabelOf(t))}</p>
       ${todayWos.map(w=>`<div class="apple-card" style="padding:12px;margin-bottom:8px"><div style="display:flex;align-items:center;justify-content:space-between">
         <div><p style="font-size:14px;font-weight:600;margin:0;line-height:20px" class="text-foreground">${esc(w.name)}</p>
         <button class="text-muted-foreground" data-act="woeditcal" data-id="${w.id}" style="background:none;border:0;padding:0;font-size:10px;line-height:14px;text-decoration:underline;text-underline-offset:2px">${w.duration}min • ${(w.exercises||[]).length} exercises • ${w.totalCaloriesBurned} cal${w.aiEstimated?" (est.)":""}</button></div>
-        <button class="text-muted-foreground" data-act="wodel" data-id="${w.id}" style="background:none;border:0;padding:0;display:flex" aria-label="Delete workout">${LUCIDE(P_TRASH2,2,14)}</button></div></div>`).join("")}</div>`:""}
+        <div style="display:flex;align-items:center;gap:2px">
+          <button class="wo-rowarr haptic" data-act="womoveday" data-id="${w.id}" data-d="-1" aria-label="Move to the day before">${IC_CHEVL14}</button>
+          <button class="wo-rowarr haptic${w.date>=localDateStr()?" off":""}" data-act="womoveday" data-id="${w.id}" data-d="1" ${w.date>=localDateStr()?"disabled":""} aria-label="Move to the day after">${IC_CHEVR14}</button>
+          <button class="text-muted-foreground" data-act="wodel" data-id="${w.id}" style="background:none;border:0;padding:0 0 0 6px;display:flex" aria-label="Delete workout">${LUCIDE(P_TRASH2,2,14)}</button>
+        </div></div></div>`).join("")}</div>`:""}
     <div class="anim" style="margin-top:16px;animation-delay:.2s">
       <button class="apple-card haptic" data-act="wohist" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px;color:inherit;font:inherit">
         <span style="display:flex;align-items:center;gap:8px">${LUCIDE_C(P_WO_BARCHART3,2,14,'text-primary')}<span style="font-size:14px;font-weight:600;line-height:20px" class="text-foreground">Workout History</span><span style="font-size:10px" class="text-muted-foreground">${workouts.length}</span></span>
@@ -11421,13 +11457,13 @@ document.addEventListener("click",e=>{
   }
   else if(act==="wosave"){ // Workout.tsx:154-200 saveAndDismiss — real WorkoutSession shape
     const a=pendingWorkout;if(!a)return;
-    const pb0=burnPayback(localDateStr()); // read the allowance BEFORE this workout joins the day
+    const pb0=burnPayback(woDay()); // read the allowance BEFORE this workout joins the day
     const s=session();
     const durationMin=Math.max(1,Math.round(woElapsed/60));
     const mg=a.muscleGroups||[];
     const category=mg.includes("cardio")?"cardio":"strength"; // ANY cardio -> cardio
     const woEst=estimateSessionBurn(a,durationMin,(s?s.notes:"")||"");
-    workouts.push({id:newId(),date:localDateStr(),
+    workouts.push({id:newId(),date:woDay(),
       name:mg.length?mg.map(m=>MUSCLE_LABELS[m]||m).join(" + ")+" Workout":"Workout",
       startTime:s&&s.startTimestamp?s.startTimestamp:Date.now()-woElapsed*1000,endTime:Date.now(),
       duration:durationMin,
@@ -11438,9 +11474,12 @@ document.addEventListener("click",e=>{
       estBase:woEst.raw,aiEstimated:true, // "(est.)" until you correct it; a correction teaches the real burn
       category,muscleGroups:mg.length?mg:["full_body"],notes:(s?s.notes:"").trim()});
     save("workouts",workouts);localStorage.removeItem("active_workout_session");
-    const gained=burnPayback(localDateStr())-pb0,burnt=workouts[workouts.length-1].totalCaloriesBurned;
+    const gained=burnPayback(woDay())-pb0,burnt=workouts[workouts.length-1].totalCaloriesBurned;
     logFrom=el.getBoundingClientRect();
-    pendingWorkout=null;woError=null;woElapsed=0;woView="dashboard";toast("Workout saved!");render();burnFlight(gained,burnt);
+    pendingWorkout=null;woError=null;woElapsed=0;woView="dashboard";
+    toast("Workout saved!"+woDaySuffix());render();
+    // the flight animates calories INTO today's ring, so it only runs when they landed on today
+    if(woIsToday())burnFlight(gained,burnt);
   }
   else if(act==="wodel"){ // useWorkouts.deleteWorkout — per-row delete, no toast
     const i=workouts.findIndex(w=>w.id===el.dataset.id);
@@ -11476,23 +11515,53 @@ document.addEventListener("click",e=>{
     if(!(val>0)){toast("Enter a calorie estimate");return}
     const edited=val!==q.est.kcal;
     if(edited)learnBurn(q.est.key,q.est.raw,val); // correction teaches the real burn for this activity
-    workouts.push({id:newId(),date:localDateStr(),name:q.name,
+    workouts.push({id:newId(),date:woDay(),name:q.name,
       startTime:Date.now()-q.mins*60000,endTime:Date.now(),duration:q.mins,
       exercises:q.exercises,totalCaloriesBurned:val,category:q.category,muscleGroups:q.muscleGroups,
       notes:q.text,aiEstimated:!edited,estBase:q.est.raw});
     save("workouts",workouts);
-    const gained=burnPayback(localDateStr())-pb0;
+    const gained=burnPayback(woDay())-pb0;
     logFrom=el.getBoundingClientRect();
-    qlogPending=null;qlogText="";toast("Logged — "+val+" cal"+(edited?" (learned)":""));render();burnFlight(gained,val);
+    qlogPending=null;qlogText="";
+    toast("Logged — "+val+" cal"+(edited?" (learned)":"")+woDaySuffix());render();
+    if(woIsToday())burnFlight(gained,val);
+  }
+  else if(act==="woday"){
+    // Same revolving drum as the Move-to stepper, for the same reason: stepping back pushes the
+    // current day out to the RIGHT and the day before rolls in behind it from the left.
+    const dir=Number(el.dataset.d)||0;if(!dir)return;
+    const next=dayShift(woDay(),dir);
+    if(next>localDateStr())return;                 // nothing to log in the future
+    const win=el.parentElement&&el.parentElement.querySelector(".pm-daywin");
+    const oldN=win&&win.querySelector(".pm-daynum:not(.out-r):not(.out-l)");
+    woDate=next;
+    if(!win||!oldN||win.dataset.busy==="1"||lfReduced()){render();return}
+    const mk=document.createElement("span");
+    mk.className="pm-daynum "+(dir<0?"in-l":"in-r");
+    mk.dataset.day=next;mk.textContent=dayNumOf(next);
+    win.dataset.busy="1";
+    oldN.classList.add(dir<0?"out-r":"out-l");
+    win.appendChild(mk);
+    // the rest of the page follows once the number has landed, so the drum is not cut off mid-turn
+    setTimeout(()=>{win.dataset.busy="";render()},370);
+  }
+  else if(act==="wodaytoday"){woDate=localDateStr();render()}
+  else if(act==="womoveday"){
+    // move a workout that is already logged onto another day
+    const w=workouts.find(x=>x.id===el.dataset.id);if(!w)return;
+    const next=dayShift(w.date,Number(el.dataset.d)||0);
+    if(next>localDateStr())return;
+    w.date=next;save("workouts",workouts);
+    toast("Moved to "+dayLabelOf(next));render();
   }
   else if(act==="eqphoto"){eqPick()}
   else if(act==="eqretake"){eqPick()}
   else if(act==="eqlog"){
     const e=EQ.est,r=EQ.read;if(!e||e.net==null)return;
-    const pb0=burnPayback(localDateStr());   // the allowance BEFORE this workout joins the day
+    const pb0=burnPayback(woDay());   // the allowance BEFORE this workout joins the day
     const mins=Math.max(1,Math.round(e.minutes||0));
     const nm=(EQ_MACHLABEL[e.machine]||"Cardio")+(r&&r.brand?" ("+r.brand+")":"");
-    workouts.push({id:newId(),date:localDateStr(),name:nm,
+    workouts.push({id:newId(),date:woDay(),name:nm,
       startTime:Date.now()-mins*60000,endTime:Date.now(),duration:mins,
       exercises:[],totalCaloriesBurned:e.net,category:"cardio",muscleGroups:["cardio"],
       notes:"Read off the machine's screen. "+(e.why||[]).join(". "),
@@ -11501,10 +11570,11 @@ document.addEventListener("click",e=>{
       equipment:{machine:e.machine,brand:(r&&r.brand)||null,basis:e.basis,
         consoleKcal:e.consoleKcal,net:e.net,lo:e.lo,hi:e.hi,src:e.src,read:r||null}});
     save("workouts",workouts);
-    const gained=burnPayback(localDateStr())-pb0;
+    const gained=burnPayback(woDay())-pb0;
     logFrom=el.getBoundingClientRect();
     closeSheet();EQ={busy:false,read:null,est:null,err:null,shot:null};
-    toast("Logged — "+e.net+" cal");render();burnFlight(gained,e.net);
+    toast("Logged — "+e.net+" cal"+woDaySuffix());render();
+    if(woIsToday())burnFlight(gained,e.net);
   }
   else if(act==="qlogcancel"){qlogPending=null;render()}
   else if(act==="qlogmic"){ // in-page dictation when the engine exists; otherwise the keyboard mic works in the textarea
