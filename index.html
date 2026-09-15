@@ -1432,7 +1432,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-15.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-15.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3490,7 +3490,12 @@ let eqInputEl=null;
 function eqPick(){
   if(!eqInputEl){
     eqInputEl=document.createElement("input");
-    eqInputEl.type="file";eqInputEl.accept="image/*";eqInputEl.capture="environment";
+    eqInputEl.type="file";
+    // Deliberately NO capture attribute. `capture` forces the camera open and takes the photo
+    // library away, which is wrong for a screen you already photographed and walked away from.
+    // Left off, iOS offers Take Photo / Photo Library / Choose File from this one tap, which is
+    // the native way to put both on one button.
+    eqInputEl.accept="image/*,.heic,.heif";
     eqInputEl.style.display="none";document.body.appendChild(eqInputEl);
     eqInputEl.addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];
       eqInputEl.value="";if(f)eqRead(f)});
@@ -3512,7 +3517,8 @@ function eqShrink(file){
       const d=c.toDataURL("image/jpeg",EQ_Q);
       res({dataUrl:d,base64:d.split(",")[1],mediaType:"image/jpeg"});
     };
-    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("Could not open that image"))};
+    img.onerror=()=>{URL.revokeObjectURL(url);
+      rej(new Error("That file could not be opened as an image. A photo or screenshot works; a HEIC from an older device may need converting first."))};
     img.src=url;
   });
 }
@@ -3579,7 +3585,7 @@ function eqSheetHTML(){
       ${e.note?`<p class="eq-src">${esc(e.note)}</p>`:""}
       ${(r.unreadable&&r.unreadable.length)?`<p class="eq-src">Couldn't read: ${esc(r.unreadable.join(", "))} — those were left out rather than guessed.</p>`:""}
       <div style="display:flex;gap:8px;margin-top:14px">
-        <button class="haptic bg-muted" data-act="eqretake" style="flex:1;border:0;padding:12px;border-radius:12px;font-size:14px;font-weight:600;color:hsl(var(--foreground))">Retake</button>
+        <button class="haptic bg-muted" data-act="eqretake" style="flex:1;border:0;padding:12px;border-radius:12px;font-size:14px;font-weight:600;color:hsl(var(--foreground))">Another photo</button>
         <button class="haptic wo-primarybtn" data-act="eqlog" style="flex:1.4;padding:12px;border-radius:12px;font-size:14px;font-weight:600">Log ${e.net} cal</button>
       </div>`;
   })();
@@ -8922,7 +8928,7 @@ function workoutPage(){
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:4px">
         <button class="haptic bg-muted" data-act="restday" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;${isRestDay?"border:1px solid hsl(var(--primary)/.3);":""}color:hsl(var(--${isRestDay?"foreground":"muted-foreground"}))">${LUCIDE(P_MOON,2,14)} ${isRestDay?"Rest day ✓":"Rest day"}</button>
-        <button class="haptic bg-muted" data-act="eqphoto" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;color:hsl(var(--foreground))">${IC_CAM16} Snap a screen</button>
+        <button class="haptic bg-muted" data-act="eqphoto" style="padding:8px 12px;border-radius:12px;border:0;font-size:12px;line-height:16px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;color:hsl(var(--foreground))">${IC_CAM16} Machine screen</button>
         <button class="haptic wo-primarybtn" data-act="wostart" style="padding:8px 16px;font-size:14px;gap:6px;line-height:20px;white-space:nowrap">${LUCIDE(P_WO_PLAY,2,16)} Start Log</button>
       </div></div>
     ${isRestDay?`<div style="margin-top:12px;background:hsl(var(--muted));border-radius:12px;border:1px solid hsl(var(--border));padding:12px;animation:fadeUp .25s ease both">
