@@ -1056,7 +1056,8 @@ setTimeout(()=>{try{ // once per boot, mirror everything (catches writes that by
 }catch(e){}},2500);
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(LS+k))??d}catch{return d}};
 const save=(k,v)=>{const s=JSON.stringify(v);localStorage.setItem(LS+k,s);vaultPut(LS+k,s);if(typeof sbSchedulePush==="function")sbSchedulePush(k);
-  if(typeof coachSchedule==="function"&&/^(food_log|weights|workouts|water|checkins)$/.test(k))coachSchedule(k)};
+  if(typeof coachSchedule==="function"&&/^(food_log|weights|workouts|water|checkins)$/.test(k))coachSchedule(k);
+  if(typeof pushStateSend==="function"&&/^(food_log|weights|water|checkins|skip_days|profile)$/.test(k))pushStateSend()};
 const save0=(k,v)=>{const s=JSON.stringify(v);localStorage.setItem(LS+k,s);vaultPut(LS+k,s)}; // save without scheduling a cloud push
 function toast(msg,kind){ // sonner-style: status icon + left-aligned text (success check by default, error !)
   document.querySelectorAll(".toast").forEach(t=>t.remove());
@@ -1447,7 +1448,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-15.4"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-16.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -9886,6 +9887,133 @@ const coachUI={open:false,flash:null,flashT:null,card:null};
 const COACH_NAME="Coach";
 const COACH_NUDGE_KINDS=new Set(["weigh","meal","water","over","macrolow"]);
 const coachPref=(k,d)=>profile[k]===undefined?d:profile[k];
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// COACH NOTIFICATIONS — the coach reaching you when the app is CLOSED.
+//
+// iOS gives a Home Screen web app real push notifications (16.4+). The rules that decide when
+// to send live on the server (push-cron) and are the SAME rules, same thresholds, same topic
+// keys as the in-app coach, so the one coach-settings screen governs both. Inside the app there
+// is no notification beyond the small bar that already exists: the service worker hands a push
+// to the page when the app is on screen, and the page files it and shows the bar.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+const PUSH={reg:null,sub:null,status:"idle",msg:"",vapid:null};
+const pushSupported=()=>"serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;
+// On iPhone the OS only offers push to the copy on the Home Screen, never to a Safari tab.
+const pushStandalone=()=>!!(window.navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches));
+async function pushRegisterSW(){
+  if(!("serviceWorker" in navigator)||!/^https:$/.test(location.protocol))return null;
+  try{PUSH.reg=await navigator.serviceWorker.register("sw.js",{scope:"./"});
+    PUSH.sub=await PUSH.reg.pushManager.getSubscription();
+    return PUSH.reg}catch(e){PUSH.msg=String(e&&e.message||e);return null}
+}
+const pushOn=()=>!!PUSH.sub&&Notification.permission==="granted"&&profile.pushOn!==false;
+function b64ToU8(b){const p="=".repeat((4-b.length%4)%4),s2=(b+p).replace(/-/g,"+").replace(/_/g,"/");
+  const raw=atob(s2),a=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);return a}
+async function pushEnable(){
+  if(!pushSupported()){PUSH.msg="This phone or browser can't do notifications.";return false}
+  if(!pushStandalone()){PUSH.msg="Add MacroMind to your Home Screen first — iPhone only allows notifications from there.";return false}
+  if(!sbSess){PUSH.msg="Sign in first so the coach knows which phone is yours.";return false}
+  if(!aiOn()){PUSH.msg="The backend is not switched on in Settings.";return false}
+  try{
+    PUSH.status="working";
+    // the permission prompt must come from this tap; iOS refuses one that arrives on its own
+    const perm=await Notification.requestPermission();
+    if(perm!=="granted"){PUSH.status="idle";PUSH.msg=perm==="denied"?"Notifications are off for MacroMind in iPhone Settings. Turn them on there and try again.":"Not allowed.";return false}
+    const reg=PUSH.reg||await pushRegisterSW();if(!reg)throw new Error("Service worker did not start");
+    const cfg=await fetch(sbUrl().replace(/\/+$/,"")+"/functions/v1/push-subscribe",{headers:{apikey:sbKey(),Authorization:"Bearer "+sbKey()}}).then(r=>r.json());
+    if(!cfg||!cfg.publicKey)throw new Error("The backend has no push keys yet — run the deploy script once more.");
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(cfg.publicKey)});
+    PUSH.sub=sub;
+    const tok=await sbToken();
+    const r=await fetch(sbUrl().replace(/\/+$/,"")+"/functions/v1/push-subscribe",{method:"POST",
+      headers:{"Content-Type":"application/json",apikey:sbKey(),Authorization:"Bearer "+tok},
+      body:JSON.stringify({subscription:sub.toJSON(),ua:navigator.userAgent})});
+    if(!r.ok)throw new Error("Could not save this phone ("+r.status+")");
+    profile.pushOn=true;save("profile",profile);
+    PUSH.status="on";PUSH.msg="";
+    pushStateSend(true);
+    return true;
+  }catch(e){PUSH.status="idle";PUSH.msg=String(e&&e.message||e);return false}
+}
+async function pushDisable(){
+  profile.pushOn=false;save("profile",profile);
+  try{
+    const sub=PUSH.sub||(PUSH.reg&&await PUSH.reg.pushManager.getSubscription());
+    if(sub){
+      if(sbSess){const tok=await sbToken();
+        await fetch(sbUrl().replace(/\/+$/,"")+"/functions/v1/push-subscribe",{method:"POST",
+          headers:{"Content-Type":"application/json",apikey:sbKey(),Authorization:"Bearer "+tok},
+          body:JSON.stringify({remove:true,endpoint:sub.endpoint})}).catch(()=>{})}
+      await sub.unsubscribe().catch(()=>{});
+    }
+  }catch{}
+  PUSH.sub=null;PUSH.status="idle";PUSH.msg="";
+}
+// The phone's own picture of the day, for the server clock to judge. Small on purpose.
+function pushStateBuild(){
+  const today=localDateStr(),ent=entriesFor(today),y=dayShift(today,-1);
+  const topics={};COACH_TOPICS.forEach(t=>{topics[t.k]=coachTopicLevel(t.k)});
+  let tz="UTC";try{tz=Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC"}catch{}
+  const yEnt=entriesFor(y),yK=yEnt.reduce((a,e)=>a+(+e.macros.calories||0),0);
+  const q=coachPref("coachQuiet",{from:22,to:7});
+  return{day:today,tz,ts:Date.now(),
+    meals:[...new Set(ent.map(e=>e.meal))],entries:ent.length,
+    kcal:Math.round(ent.reduce((a,e)=>a+(+e.macros.calories||0),0)),
+    targetKcal:+profile.targetKcal||0,
+    waterMl:Math.round(waterOn(today)),waterGoalMl:Math.round(waterGoal()||0),
+    weighedToday:weights.some(w=>w.date===today),hasWeights:weights.length>0,
+    streak:(typeof streaks==="function"?(streaks().f||0):0),
+    yKcal:yEnt.length?Math.round(yK):null,yTarget:yEnt.length?(+profile.targetKcal||0):null,
+    topics,cap:+coachPref("coachNudgeCap",3)||3,nudgesOn:coachPref("coachNudges",true)!==false,
+    quiet:{from:+q.from,to:+q.to},skipped:typeof skipHas==="function"?skipHas(today):false};
+}
+let pushStateT=null;
+function pushStateSend(now){
+  if(!sbSess||profile.pushOn!==true)return;
+  clearTimeout(pushStateT);
+  const go=async()=>{pushStateT=null;try{const tok=await sbToken();
+    await fetch(sbUrl().replace(/\/+$/,"")+"/functions/v1/push-state",{method:"POST",
+      headers:{"Content-Type":"application/json",apikey:sbKey(),Authorization:"Bearer "+tok},
+      body:JSON.stringify(pushStateBuild())})}catch{}};
+  if(now)go();else pushStateT=setTimeout(go,2500);
+}
+// a push that arrived while the app was on screen: file it, show the bar, no OS notification
+function pushArrivedInApp(m){
+  if(!m||!m.id)return;
+  if(coachMem.inbox.some(x=>x.id===m.id))return;
+  coachMem.inbox.unshift({id:m.id,kind:m.kind||"coach",title:m.title||"Coach",body:m.body||"",actions:[],tab:m.tab||"coach",ts:Date.now(),day:localDateStr(),state:"read"});
+  coachSave();coachBellRefresh();coachInboxRefresh();
+  coachWhisper(m.title||m.body||"Coach");
+}
+function pushSettingsHTML(){
+  const on=pushOn(),sup=pushSupported(),sa=pushStandalone();
+  const q=coachPref("coachQuiet",{from:22,to:7});
+  const hr=h=>{h=((+h%24)+24)%24;return (h%12||12)+(h<12?" am":" pm")};
+  const seg=(k,v,cur,l)=>`<button class="seg-btn haptic${String(cur)===String(v)?" on":""}" data-act="push:quiet" data-k="${k}" data-v="${v}">${l}</button>`;
+  let status="";
+  if(!sup)status="This browser can't do notifications.";
+  else if(!sa)status="Add MacroMind to your Home Screen, then turn this on from there — iPhone only allows notifications for the Home Screen copy.";
+  else if(!sbSess)status="Sign in first, so the coach knows which phone is yours.";
+  else if(PUSH.status==="working")status="Setting up…";
+  else if(on)status="On. The coach can reach this phone when the app is closed.";
+  else if(Notification.permission==="denied")status="Turned off in iPhone Settings → Notifications → MacroMind.";
+  else status="Off. Nothing arrives while the app is closed.";
+  return `<div><p class="set-label" style="margin:0 0 6px">Notifications when the app is closed</p>
+    <div style="display:flex;gap:6px">
+      <button class="seg-btn haptic${on?" on":""}" data-act="push:on"${(!sup||!sa)?" disabled":""}>On</button>
+      <button class="seg-btn haptic${!on?" on":""}" data-act="push:off">Off</button></div>
+    <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground" id="pushStatus">${esc(PUSH.msg||status)}</p>
+    <p style="font-size:11px;margin:6px 0 0;line-height:15px" class="text-muted-foreground">Inside the app nothing pops up beyond the small bar you already get. Closed, the coach sends only what you leave <i>on</i> above — nothing set to Digest or Off ever reaches the Lock Screen.</p>
+  </div>
+  <div><p class="set-label" style="margin:0 0 6px">Quiet hours</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px" class="text-muted-foreground">From</span><div style="display:flex;gap:4px">${[20,21,22,23].map(h=>seg("from",h,q.from,hr(h))).join("")}</div>
+      <span style="font-size:12px" class="text-muted-foreground">to</span><div style="display:flex;gap:4px">${[6,7,8,9].map(h=>seg("to",h,q.to,hr(h))).join("")}</div></div>
+    <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">Nothing is sent between these hours, however important.</p>
+  </div>`;
+}
 // ===== what the coach is allowed to bring up, topic by topic =====
 // Every rule the coach can fire carries a KIND, and a kind is a topic you can turn down on its own.
 // That is the whole point: the coach stays hands-on about the things you want it hands-on about and
@@ -10019,8 +10147,13 @@ function coachTick(reason){
     if(!quiet2&&COACH_NUDGE_KINDS.has(c.kind)){if(budget<=0)return;budget--}
     coachMem.seen[c.id]=now.getTime();
     if(c.kind==="daily")coachMem.last.daily=today;if(c.kind==="welcome")coachMem.last.welcome=now.getTime();
-    coachMem.inbox.unshift({id:c.id,kind:c.kind,title:c.title,body:c.body,actions:c.actions,tab:c.tab,ts:now.getTime(),day:today,state:quiet2?"read":"new"});
-    if(!quiet2){added++;coachVoice(c)}
+    // A nudge (meal, water, weigh-in, past break-even, protein/fat) is a notification when the app
+    // is CLOSED. Inside the app it is only ever the small bar: it is filed already-read so the bell
+    // does not nag about it, and the one line goes through the same bar every log reply uses.
+    const nudge=COACH_NUDGE_KINDS.has(c.kind)&&!quiet2;
+    coachMem.inbox.unshift({id:c.id,kind:c.kind,title:c.title,body:c.body,actions:c.actions,tab:c.tab,ts:now.getTime(),day:today,state:(quiet2||nudge)?"read":"new"});
+    if(nudge){coachWhisper(c.title,c.kind)}
+    else if(!quiet2){added++;coachVoice(c)}
   });
   if(coachMem.inbox.length>60)coachMem.inbox.length=60;
   // prune the seen map so it never grows unbounded (ids older than 60 days)
@@ -10099,6 +10232,9 @@ function coachAct(act,el){
       coachSchedule("topic");rerenderCoachSettings();return}
     case"coach:preset":{coachPresetApply(el.dataset.v);
       coachSchedule("topic");rerenderCoachSettings();return}
+    case"push:on":{pushEnable().then(ok=>{rerenderCoachSettings();if(ok)toast("Notifications on")});rerenderCoachSettings();return}
+    case"push:off":{pushDisable().then(()=>rerenderCoachSettings());return}
+    case"push:quiet":{const q=Object.assign({from:22,to:7},coachPref("coachQuiet",{}));q[el.dataset.k]=+el.dataset.v;profile.coachQuiet=q;save("profile",profile);rerenderCoachSettings();return}
     case"coach:pref":{const k=el.dataset.k,v=el.dataset.v;profile[k]=v==="true"?true:v==="false"?false:/^\d+$/.test(v)?+v:v;save("profile",profile);
       if(k==="coachVoice"&&v==="ai")coachMem.voice={};render();return}
     case"coach:reset":uiConfirm("Reset coach memory?","The coach forgets what it has said and what you answered. Your log, weights and targets are untouched.",{ok:"Reset",danger:true}).then(ok=>{if(!ok)return;coachMem={inbox:[],seen:{},snooze:{},out:{},daily:[],last:{},voice:{}};coachSave();toast("Coach memory cleared");render();coachTick("reset")});return;
@@ -10216,10 +10352,11 @@ function coachSettingsHTML(){
   const cap=+coachPref("coachNudgeCap",3);
   const capSeg=v=>`<button class="seg-btn haptic${cap===v?" on":""}" data-act="coach:pref" data-k="coachNudgeCap" data-v="${v}">${v}</button>`;
   return `<div style="display:flex;flex-direction:column;gap:16px">
+    ${pushSettingsHTML()}
     ${coachTopicsHTML()}
-    <div><p class="set-label" style="margin:0 0 6px">Interruptions a day</p><div style="display:flex;gap:6px">${capSeg(1)}${capSeg(2)}${capSeg(3)}${capSeg(5)}</div>
+    <div><p class="set-label" style="margin:0 0 6px">Notifications a day</p><div style="display:flex;gap:6px">${capSeg(1)}${capSeg(2)}${capSeg(3)}${capSeg(5)}</div>
       <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">The ceiling shared by every topic marked <i>can interrupt</i>. Digest topics do not count against it.</p></div>
-    <div><p class="set-label" style="margin:0 0 6px">Master switch for interruptions</p><div style="display:flex;gap:6px">${seg("coachNudges",true,nud,"On")}${seg("coachNudges",false,nud,"Off")}</div>
+    <div><p class="set-label" style="margin:0 0 6px">Master switch for reminders</p><div style="display:flex;gap:6px">${seg("coachNudges",true,nud,"On")}${seg("coachNudges",false,nud,"Off")}</div>
       <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">Off silences every interrupting topic at once without changing what you set above — the check-in, the brief and the reads still arrive.</p></div>
     <div><p class="set-label" style="margin:0 0 6px">Quiet replies when you log</p><div style="display:flex;gap:6px">${seg("coachWhispers",true,coachPref("coachWhispers",true),"On")}${seg("coachWhispers",false,coachPref("coachWhispers",true),"Off")}</div>
       <p style="font-size:11px;margin:8px 0 0;line-height:15px" class="text-muted-foreground">The one-line reply after a meal, weigh-in, water or session. A topic you set to Digest or Off loses its reply too.</p></div>
@@ -11834,7 +11971,18 @@ document.addEventListener("submit",async e=>{
 });
 if(sbSess)setTimeout(()=>sbSync("boot"),800); // signed in from a previous visit: pull-merge after first paint
 // iOS can suspend/kill the app before the 3s debounce fires — flush the pending push the moment we're hidden
+// service worker: registered on every https boot so a push has somewhere to land; a fresh
+// subscription only happens from the Settings tap, never here
+if(typeof pushRegisterSW==="function")pushRegisterSW().then(()=>{if(pushOn())pushStateSend()});
+if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("message",e=>{
+  const m=e.data||{};
+  if(m.type==="coach-push")pushArrivedInApp(m);
+  else if(m.type==="coach-open"){if(m.tab&&m.tab!=="coach"&&typeof tab!=="undefined"){tab=m.tab;render()}else if(typeof coachInboxOpen==="function")coachInboxOpen()}
+});
+// opened from a notification while the app was closed: the hash names the note
+if(/^#coach:/.test(location.hash)){setTimeout(()=>{try{coachInboxOpen()}catch{}},400);history.replaceState(null,"",location.pathname+location.search)}
 document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"&&"clearAppBadge" in navigator){navigator.clearAppBadge().catch(()=>{})}
   if(document.visibilityState==="hidden"&&sbPushT){clearTimeout(sbPushT);sbPushT=null;sbSync("push")}
   if(document.visibilityState==="visible")coachSchedule("visible");
 });
