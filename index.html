@@ -1448,7 +1448,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-16.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-16.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3529,15 +3529,19 @@ function eqPick(){
     // Left off, iOS offers Take Photo / Photo Library / Choose File from this one tap, which is
     // the native way to put both on one button.
     eqInputEl.accept="image/*,.heic,.heif";
+    // More than one photo is allowed and encouraged: the console for the numbers, the brand plate
+    // for the machine class, a second shot when glare killed a field on the first. The reader is
+    // told they are the same session and combines them.
+    eqInputEl.multiple=true;
     eqInputEl.style.display="none";document.body.appendChild(eqInputEl);
-    eqInputEl.addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];
-      eqInputEl.value="";if(f)eqRead(f)});
+    eqInputEl.addEventListener("change",e=>{const fs=[...(e.target.files||[])].slice(0,EQ_MAXPHOTOS);
+      eqInputEl.value="";if(fs.length)eqRead(fs)});
   }
   eqInputEl.click();
 }
 // Console photos are mostly a small bright panel in a big dark frame, so downscale hard before
 // upload: it keeps the digits and cuts the payload by an order of magnitude.
-const EQ_MAXPX=1600, EQ_Q=0.82;
+const EQ_MAXPX=1600, EQ_Q=0.82, EQ_MAXPHOTOS=4;
 function eqShrink(file){
   return new Promise((res,rej)=>{
     const img=new Image(), url=URL.createObjectURL(file);
@@ -3555,14 +3559,17 @@ function eqShrink(file){
     img.src=url;
   });
 }
-async function eqRead(file){
-  EQ={busy:true,read:null,est:null,err:null,shot:null};
+async function eqRead(files){
+  files=Array.isArray(files)?files:[files];
+  EQ={busy:true,read:null,est:null,err:null,shot:null,shots:[],n:files.length};
   openSheet(eqSheetHTML());
   try{
-    const sh=await eqShrink(file);
-    EQ.shot=sh.dataUrl;
+    const shots=[];
+    for(const f of files){try{shots.push(await eqShrink(f))}catch(e){if(files.length===1)throw e}} // one bad file out of several is skipped, not fatal
+    if(!shots.length)throw new Error("None of those files could be opened as an image.");
+    EQ.shots=shots.map(x=>x.dataUrl);EQ.shot=EQ.shots[0];EQ.n=shots.length;
     if(!aiOn())throw new Error("Reading a console needs the AI backend switched on in Settings.");
-    const r=await callFn("equipment-photo",{imageBase64:sh.base64,mediaType:sh.mediaType});
+    const r=await callFn("equipment-photo",{images:shots.map(x=>({base64:x.base64,mediaType:x.mediaType}))});
     EQ.read=r;
     EQ.est=eqEstimate(eqToEstimator(r));
   }catch(e){EQ.err=(e&&e.message)||"Could not read that photo"}
@@ -3586,7 +3593,7 @@ function eqSheetHTML(){
     if(EQ.busy)return `<div style="padding:28px 0;text-align:center">
       <div class="fsk" style="height:12px;width:60%;margin:0 auto 10px"></div>
       <div class="fsk" style="height:12px;width:40%;margin:0 auto"></div>
-      <p style="font-size:12px;margin:14px 0 0;line-height:17px" class="text-muted-foreground">Reading the screen…</p></div>`;
+      <p style="font-size:12px;margin:14px 0 0;line-height:17px" class="text-muted-foreground">Reading ${EQ.n>1?EQ.n+" photos":"the screen"}…</p></div>`;
     if(EQ.err)return `<div style="padding:8px 0 16px">
       <p style="font-size:14px;margin:0 0 6px;line-height:20px">${esc(EQ.err)}</p>
       <p style="font-size:12px;margin:0;line-height:17px" class="text-muted-foreground">You can still log it by hand — nothing was saved.</p></div>`;
@@ -3604,11 +3611,11 @@ function eqSheetHTML(){
     ].filter(x=>x[1]);
     if(e.net==null)return `<div style="padding:8px 0 16px">
       <p style="font-size:14px;margin:0 0 6px;line-height:20px">Not enough on that screen to work from.</p>
-      <p style="font-size:12px;margin:0 0 10px;line-height:17px" class="text-muted-foreground">A time plus any one of power, speed, level or the machine's own calorie figure is enough. Try a straighter shot with less glare.</p>
+      <p style="font-size:12px;margin:0 0 10px;line-height:17px" class="text-muted-foreground">A time plus any one of power, speed, level or the machine's own calorie figure is enough. Try a straighter shot with less glare — you can pick several photos at once, and a shot of the brand plate helps identify the machine.</p>
       ${rows.length?`<div class="eq-grid">${rows.map(x=>`<div class="eq-c"><p class="eq-k">${esc(x[0])}</p><p class="eq-v tnum">${esc(x[1])}</p></div>`).join("")}</div>`:""}</div>`;
     const d=e.delta;
     return `<div style="padding:2px 0 4px">
-      <p class="eq-mach">${esc(EQ_MACHLABEL[e.machine]||"Machine")}${r.brand?" · "+esc(r.brand):""}${r.legible==="poor"?" · hard to read":""}</p>
+      <p class="eq-mach">${esc(EQ_MACHLABEL[e.machine]||"Machine")}${r.brand?" · "+esc(r.brand):""}${r.legible==="poor"?" · hard to read":""}${EQ.n>1?` · ${EQ.n} photos`:""}</p>
       <div class="eq-big"><span class="tnum">${e.net}</span><span class="eq-unit">cal</span></div>
       <p class="eq-range tnum">${e.lo}–${e.hi} cal · the range this method can honestly claim</p>
       ${d!=null?`<p class="eq-delta ${d<0?"dn":d>0?"up":""}">${d===0?"Same as the screen":(d<0?"":"+")+d+" cal vs the "+r.consoleKcal+" on screen"}</p>`:""}
@@ -3618,7 +3625,7 @@ function eqSheetHTML(){
       ${e.note?`<p class="eq-src">${esc(e.note)}</p>`:""}
       ${(r.unreadable&&r.unreadable.length)?`<p class="eq-src">Couldn't read: ${esc(r.unreadable.join(", "))} — those were left out rather than guessed.</p>`:""}
       <div style="display:flex;gap:8px;margin-top:14px">
-        <button class="haptic bg-muted" data-act="eqretake" style="flex:1;border:0;padding:12px;border-radius:12px;font-size:14px;font-weight:600;color:hsl(var(--foreground))">Another photo</button>
+        <button class="haptic bg-muted" data-act="eqretake" style="flex:1;border:0;padding:12px;border-radius:12px;font-size:14px;font-weight:600;color:hsl(var(--foreground))">${EQ.n>1?"Different photos":"Another photo"}</button>
         <button class="haptic wo-primarybtn" data-act="eqlog" style="flex:1.4;padding:12px;border-radius:12px;font-size:14px;font-weight:600">Log ${e.net} cal</button>
       </div>`;
   })();
