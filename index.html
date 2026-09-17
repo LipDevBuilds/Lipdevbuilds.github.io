@@ -1448,7 +1448,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-16.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-16.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3694,7 +3694,7 @@ function uiConfirm(title,body,opts){opts=opts||{};
 }
 function uiPrompt(title,body,value,opts){opts=opts||{};
   return new Promise(res=>dlgOpen(`<div class="dlg-wrap"><h3>${esc(title)}</h3>${body?`<p>${esc(body)}</p>`:""}
-    <input class="dlg-in" id="dlgIn" type="${opts.type||"text"}"${opts.type==="number"?' inputmode="numeric"':""} value="${esc(value==null?"":String(value))}">
+    <input class="dlg-in" id="dlgIn" type="${opts.type||"text"}"${opts.type==="number"?' inputmode="decimal" step="any"':""} value="${esc(value==null?"":String(value))}">
     <div class="dlg-row"><button class="dlg-btn sec haptic" data-act="dlgno">Cancel</button>
     <button class="dlg-btn pr haptic" data-act="dlgok">${esc(opts.ok||"Save")}</button></div></div>`,res,true));
 }
@@ -4358,7 +4358,7 @@ function fsDetailView(){
       <div class="fs-selrow"><span class="lbl">Portion</span>
         <div style="display:flex;align-items:center;gap:8px">
           <button class="sgn haptic${parseFloat(FS.amount)<0?" on":""}" data-act="sgnflip" data-f="fsAmt" aria-label="Make it negative">±</button>
-          <input class="fs-amt tnum" id="fsAmt" type="number" inputmode="decimal" step="0.1" value="${esc(FS.amount)}">
+          <input class="fs-amt tnum" id="fsAmt" type="number" inputmode="decimal" step="any" value="${esc(FS.amount)}">
           <select class="fs-unit" id="fsUnit">${units.map(u=>`<option value="${esc(u.unit)}"${u.unit===FS.unit?" selected":""}>${esc(u.label)}</option>`).join("")}</select>
         </div></div>
     </div>
@@ -7756,6 +7756,11 @@ const rbISCatItems=()=>{
   const vf=cfg&&cfg.virtualFlag;
   return RB.restaurant.components.filter(c=>!c.isModifier&&(vf?c[vf]:c.category===RB.cat));
 };
+// Quantity can be a fraction of an item (0.75 of a sandwich). Below 1 the +/- buttons move in quarters;
+// tapping the number lets you type any amount from 0.1 to 10.
+const rbQfmt=q=>String(Math.round(q*100)/100);
+const rbQstep=(q,d)=>{q=q||1;let n=d>0?(q<1?Math.min(1,q+0.25):q+1):(q<=1?q-0.25:q-1);n=Math.round(n*100)/100;return Math.min(10,Math.max(0.25,n))};
+const rbQparse=v=>{const n=parseFloat(String(v).replace(",","."));if(!isFinite(n)||n<=0)return null;return Math.min(10,Math.max(0.1,Math.round(n*100)/100))};
 const rbQx=(m,q)=>({calories:Math.round(m.calories*q),protein:Math.round(m.protein*q*10)/10,carbs:Math.round(m.carbs*q*10)/10,fat:Math.round(m.fat*q*10)/10});
 // compact snapshot of the open item sheet — ids/names only, so Edit can rebuild the exact
 // page (size, count, sauces, sides, combo) later without storing whole component objects
@@ -7798,7 +7803,7 @@ function rbSrcFromName(e){
     }
     return items.length?{t:"rbm",rid:rest.id,items}:{t:"rb-open",rid:rest.id};
   }
-  let qty=1,s2=rbDrinkLegacyName(body);const qm=s2.match(/^(\d+)[×x]\s+/);if(qm){qty=+qm[1];s2=s2.slice(qm[0].length)} // a drink logged under its old name resolves to today's row
+  let qty=1,s2=rbDrinkLegacyName(body);const qm=s2.match(/^(\d+(?:\.\d+)?)[×x]\s+/);if(qm){qty=+qm[1];s2=s2.slice(qm[0].length)} // a drink logged under its old name resolves to today's row
   const comps=R.components.filter(c=>!c.isModifier).slice().sort((a,b)=>b.name.length-a.name.length);
   // "Big Mac Meal (Fries (Large), Coca-Cola (Large))" names the MAIN item before the combo list.
   // Search that head first, or the longest match wins from the drink — and takes its size too.
@@ -7907,10 +7912,10 @@ function rbCartHTML(){
     ${n===0?`<p style="font-size:12px;color:hsl(var(--muted-foreground));padding:8px 0;margin:0;line-height:16px">No items yet — browse the menu and add items</p>`
     :`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">${RB.cart.map(it=>{const q=it.qty||1,qm=rbQx(it.macros,q);
       return `<div class="rb-cartrow"><div style="flex:1;min-width:0"><p style="font-size:14px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:20px">${esc(it.name)}</p><p style="font-size:10px;color:hsl(var(--muted-foreground));margin:0">${qm.calories} cal · ${qm.protein}P · ${qm.carbs}C · ${qm.fat}F</p></div>
-      <div style="display:flex;align-items:center;gap:6px;margin-right:4px">${q>1?`<button class="rb-step m haptic" data-act="rblinem" data-id="${it.id}">${IC_MINUS14}</button>`:""}<span class="rb-count">${q}</span>${q<10?`<button class="rb-step p haptic" data-act="rblinep" data-id="${it.id}">${IC_PLUS14}</button>`:""}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-right:4px">${q>0.25?`<button class="rb-step m haptic" data-act="rblinem" data-id="${it.id}">${IC_MINUS14}</button>`:""}<button class="rb-count haptic" data-act="rblinetype" data-id="${it.id}" aria-label="Type an amount" style="background:none;border:0;padding:0 2px;width:auto;min-width:20px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">${rbQfmt(q)}</button>${q<10?`<button class="rb-step p haptic" data-act="rblinep" data-id="${it.id}">${IC_PLUS14}</button>`:""}</div>
       <button class="rb-x haptic" style="padding:6px" data-act="rbcartrm" data-id="${it.id}">${IC_TRASH14}</button></div>`}).join("")}</div>`}
-    ${n>0?rbMealSelHTML()+(()=>{const ct=RB.cart.reduce((a,c)=>{const q=rbQx(c.macros,c.qty||1);return{calories:a.calories+q.calories,protein:a.protein+q.protein,carbs:a.carbs+q.carbs,fat:a.fat+q.fat}},{calories:0,protein:0,carbs:0,fat:0});const qn2=RB.cart.reduce((s,c)=>s+(c.qty||1),0);
-      return `<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${qn2} item${qn2!==1?"s":""} · ${ct.calories} cal${pcfBtn(ct)}</button>`})():""}
+    ${n>0?rbMealSelHTML()+(()=>{const ct=RB.cart.reduce((a,c)=>{const q=rbQx(c.macros,c.qty||1);return{calories:a.calories+q.calories,protein:a.protein+q.protein,carbs:a.carbs+q.carbs,fat:a.fat+q.fat}},{calories:0,protein:0,carbs:0,fat:0});const qs2=RB.cart.reduce((s,c)=>s+(c.qty||1),0),qn2=Number.isInteger(qs2)?String(qs2):String(RB.cart.length);
+      return `<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${qn2} item${qn2!=="1"?"s":""} · ${ct.calories} cal${pcfBtn(ct)}</button>`})():""}
   </div></div>`;
 }
 function rbTabsHTML(){
@@ -8004,8 +8009,8 @@ function rbISBodyHTML(){
           if(w)return `<div style="margin-top:12px"><p class="rb-seclabel">How many?</p><div style="display:flex;gap:8px;flex-wrap:wrap">${w.counts.map(c=>`<button class="rb-chip${RB.qty===c?" on":""} haptic" data-act="rbqtyset" data-q="${c}">${c} pc</button>`).join("")}</div></div>`;
           return `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><p class="rb-seclabel" style="margin:0">Quantity</p>
           <div style="display:flex;align-items:center;gap:6px">
-            ${RB.qty>1?`<button class="rb-step m haptic" data-act="rbqtym">${IC_MINUS14}</button>`:`<div class="rb-step m" style="opacity:.4;color:hsl(var(--muted-foreground))">${IC_MINUS14}</div>`}
-            <span class="rb-count">${RB.qty}</span>
+            ${RB.qty>0.25?`<button class="rb-step m haptic" data-act="rbqtym">${IC_MINUS14}</button>`:`<div class="rb-step m" style="opacity:.4;color:hsl(var(--muted-foreground))">${IC_MINUS14}</div>`}
+            <button class="rb-count haptic" data-act="rbqtytype" aria-label="Type an amount" style="background:none;border:0;padding:0 2px;width:auto;min-width:20px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">${rbQfmt(RB.qty)}</button>
             ${RB.qty<10?`<button class="rb-step p haptic" data-act="rbqtyp">${IC_PLUS14}</button>`:`<div class="rb-step p" style="opacity:.4">${IC_PLUS14}</div>`}
           </div></div>`})()}</div>`;
     const bcfg=rbBrandCfg();
@@ -8116,12 +8121,12 @@ function rbISFooterHTML(){
       inner=rbMealSelHTML()+(()=>{const tq=rbQx(t,RB.qty);
         return `<div style="display:flex;gap:8px"><button class="rb-cta2 haptic" data-act="rbaddcart">${IC_PLUS16}Add &amp; keep browsing</button><button class="rb-cta glow-primary haptic" data-act="rbilog" style="flex:1">${IC_BAG16}${RB.replaceId?"Update":"Log"} · ${tq.calories} cal${pcfBtn(tq)}</button></div>`})();
     }else{
-      inner=`<div style="display:flex;gap:8px"><button class="rb-cta glow-primary haptic" data-act="rbaddcart" style="flex:1">${IC_PLUS16}Add to order · ${t.calories*RB.qty} cal</button></div>`;
+      inner=`<div style="display:flex;gap:8px"><button class="rb-cta glow-primary haptic" data-act="rbaddcart" style="flex:1">${IC_PLUS16}Add to order · ${rbQx(t,RB.qty).calories} cal</button></div>`;
     }
   }else if(RB.cart.length>0){
-    const qn=RB.cart.reduce((s,c)=>s+(c.qty||1),0);
+    const qs=RB.cart.reduce((s,c)=>s+(c.qty||1),0),qn=Number.isInteger(qs)?String(qs):String(RB.cart.length); // fractions count as lines
     inner=rbMealSelHTML()+(()=>{const ct=RB.cart.reduce((a,c)=>{const q=rbQx(c.macros,c.qty||1);return{calories:a.calories+q.calories,protein:a.protein+q.protein,carbs:a.carbs+q.carbs,fat:a.fat+q.fat}},{calories:0,protein:0,carbs:0,fat:0});
-      return `<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${qn} item${qn!==1?"s":""} · ${ct.calories} cal${pcfBtn(ct)}</button>`})();
+      return `<button class="rb-cta glow-primary haptic" data-act="rbcartlog">${IC_BAG16}Log ${qn} item${qn!=="1"?"s":""} · ${ct.calories} cal${pcfBtn(ct)}</button>`})();
   }
   if(!inner){RB._foot=false;return""}
   const anim=!RB._foot;RB._foot=true;
@@ -8277,7 +8282,8 @@ function rbAction(act,el){
       if(c&&RB.sides.length<inc)RB.sides.push(c);rbRender(true);return}
     case"rbsidem":{const idx=RB.sides.map(s=>s.id).lastIndexOf(el.dataset.c);if(idx>=0)RB.sides.splice(idx,1);rbRender(true);return}
     case"rbaddcart":{if(!RB.item)return;RB.cart.push({id:newId(),name:rbBuildItemName(),macros:{...rbISTotal()},qty:RB.qty,src:rbSnapItemSrc()});RB.item=null;RB.qty=1;RB.combo=false;RB.comboSide=null;RB.comboDrink=null;RB.extras=[];RB.custom=[];RB.mods=[];RB.sides=[];rbRender();return}
-    case"rbqtyp":RB.qty=Math.min(10,RB.qty+1);rbRender(true);return;
+    case"rbqtyp":RB.qty=rbQstep(RB.qty,1);rbRender(true);return;
+    case"rbqtytype":uiPrompt("How much?","Type any amount — 0.5 for half, 0.75 for three quarters, 2 for two.",rbQfmt(RB.qty),{type:"number",ok:"Set"}).then(v=>{if(v==null)return;const n=rbQparse(v);if(n==null){toast("Enter a number above 0");return}RB.qty=n;rbRender(true)});return;
     case"rbqtyset":RB.qty=+el.dataset.q;rbRender(true);return;
     case"rbcombo":{RB.combo=el.dataset.v==="1";if(!RB.combo){RB.comboSide=null;RB.comboDrink=null}else{const m=rbMealCfg();if(m&&!RB.mealSize)RB.mealSize=m.def}rbRender(true);return}
     case"rbmsize":{RB.mealSize=el.dataset.s;rbResizeCombo();rbRender(true);return}
@@ -8316,15 +8322,16 @@ function rbAction(act,el){
       if(n<1)RB.custom.splice(at,1);else RB.custom[at]=rbCustCount(base,n);
       rbRender(true);return}
     case"rbcbextra":{const i=RB.extras.findIndex(e=>e.id===el.dataset.c);if(i>=0)RB.extras.splice(i,1);else{const c=R.components.find(x=>x.id===el.dataset.c);if(c)RB.extras.push(c)}rbRender(true);return}
-    case"rbqtym":RB.qty=Math.max(1,RB.qty-1);rbRender(true);return;
-    case"rblinep":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=Math.min(10,(it.qty||1)+1);rbRender(true);return}
-    case"rblinem":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=Math.max(1,(it.qty||1)-1);rbRender(true);return}
+    case"rbqtym":RB.qty=rbQstep(RB.qty,-1);rbRender(true);return;
+    case"rblinep":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=rbQstep(it.qty,1);rbRender(true);return}
+    case"rblinem":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(it)it.qty=rbQstep(it.qty,-1);rbRender(true);return}
+    case"rblinetype":{const it=RB.cart.find(c=>c.id===el.dataset.id);if(!it)return;uiPrompt("How much?","Type any amount — 0.5 for half, 0.75 for three quarters, 2 for two.",rbQfmt(it.qty||1),{type:"number",ok:"Set"}).then(v=>{if(v==null)return;const n=rbQparse(v);if(n==null){toast("Enter a number above 0");return}it.qty=n;rbRender(true)});return}
     case"rbilog":{if(!RB.item)return;const t=rbQx(rbISTotal(),RB.qty);
-      const lid=rbCommitEntry({foodId:"quick-add",name:`${R.name}: ${RB.qty>1?RB.qty+"\u00d7 ":""}${rbBuildItemName()}`,sv:1,servingUnit:"serving",macros:t,meal:RB.meal},rbSnapItemSrc());
+      const lid=rbCommitEntry({foodId:"quick-add",name:`${R.name}: ${RB.qty!==1?rbQfmt(RB.qty)+"\u00d7 ":""}${rbBuildItemName()}`,sv:1,servingUnit:"serving",macros:t,meal:RB.meal},rbSnapItemSrc());
       closeRB();mealOpen[RB.meal]=true;render();logFlight(lid);return}
     case"rbcartlog":{if(!RB.cart.length)return; // logs bag lines as SEPARATE entries, qty-multiplied
       let firstId=null;RB.cart.forEach((it,i)=>{const q=it.qty||1;
-        const fields={foodId:"quick-add",name:`${R.name}: ${q>1?q+"\u00d7 ":""}${it.name}`,sv:1,servingUnit:"serving",macros:rbQx(it.macros,q),meal:RB.meal};
+        const fields={foodId:"quick-add",name:`${R.name}: ${q!==1?rbQfmt(q)+"\u00d7 ":""}${it.name}`,sv:1,servingUnit:"serving",macros:rbQx(it.macros,q),meal:RB.meal};
         if(i===0)firstId=rbCommitEntry(fields,it.src||null); // an Edit that went through the bag replaces the original with line 1
         else{const id=newId();foodLog.push(Object.assign({id,date:selDate,ts:Date.now()},fields));setEntrySrc(id,it.src||null)}});
       saveLog();closeRB();mealOpen[RB.meal]=true;render();logFlight(firstId);return}
