@@ -589,6 +589,7 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .coach-say,.coach-note{position:relative}.coach-x{position:absolute;top:8px;right:-6px;background:none;border:0;padding:6px;color:hsl(var(--muted-foreground));opacity:.55;line-height:0}.coach-say .coach-x{top:6px;right:2px}
 .coach-note.out,.coach-say.out{transition:transform .2s ease,opacity .2s ease;transform:translateX(-48px);opacity:0}
 .sw-line{display:flex;align-items:center;gap:5px;background:none;border:0;padding:0 0 10px;margin-top:-4px;font-size:11px;font-weight:500;color:hsl(var(--water))}
+.coach-rev{margin-left:6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:9999px;background:hsl(var(--primary)/.18);color:hsl(var(--primary));flex:0 0 auto}
 .coach-note{padding:12px 0;border-top:.5px solid hsl(var(--border)/.4)}.coach-note.new .coach-card-t{color:hsl(var(--foreground))}.coach-note:first-of-type{border-top:0}
 .toast.coach{gap:10px}
 .navdot{position:absolute;top:2px;right:8px;width:8px;height:8px;border-radius:4px;background:hsl(var(--destructive));box-shadow:0 0 0 2px hsl(var(--background))}
@@ -1460,7 +1461,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-21.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-24.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -10151,6 +10152,11 @@ function pushStateBuild(){
     weighedToday:weights.some(w=>w.date===today),hasWeights:weights.length>0,
     streak:(typeof streaks==="function"?(streaks().f||0):0),
     yKcal:yEnt.length?Math.round(yK):null,yTarget:yEnt.length?(+profile.targetKcal||0):null,
+    rec:(()=>{const m=coachMem.inbox.find(x=>COACH_STANDING.has(x.kind));
+      if(!m)return null;
+      return{kind:m.kind,unread:m.state==="new",revised:+m.revised||0,
+        ageH:Math.round((Date.now()-m.ts)/36e5),
+        cal:(m.data&&m.data.cal)||null,protein:(m.data&&m.data.protein)||null}})(),
     topics,cap:+coachPref("coachNudgeCap",3)||3,nudgesOn:coachPref("coachNudges",true)!==false,
     quiet:{from:+q.from,to:+q.to},skipped:typeof skipHas==="function"?skipHas(today):false};
 }
@@ -10262,7 +10268,7 @@ function coachCandidates(now){
   const tod=coachDayTotals(today),entries=entriesFor(today),tgt=targetsFor(today),ex=expenditure();
   const weighedToday=weights.some(w=>w.date===today),hasWeights=weights.length>0;
   const nudgesOn=coachPref("coachNudges",true),quiet=coachQuiet(H);
-  const add=(id,kind,title,body,actions,prio,tab)=>out.push({id,kind,title,body,actions:actions||[],prio:prio||3,tab:tab||null});
+  const add=(id,kind,title,body,actions,prio,tab,data)=>out.push({id,kind,title,body,actions:actions||[],prio:prio||3,tab:tab||null,data:data||null});
   if(!coachMem.last.welcome)add("welcome","welcome","Hey, I'm your coach.","I watch your log, your weigh-ins and your training, and I'll speak up when something is worth a look — your weekly check-in, a target I'd change, the odd nudge. Tap me on any page to see what's new.",[{a:"coach:checkin",l:"Check in today"},{a:"coach:go",t:"coach",l:"Meet the coach"}],1);
   // morning brief — once a day, mornings only
   if(H>=6&&H<12&&coachMem.last.daily!==today&&!skipHas(today)&&(foodLog.length>0||hasWeights)){
@@ -10281,7 +10287,11 @@ function coachCandidates(now){
     const dc=co.suggestedCalories-ep.targetCalories,dp=co.suggestedProtein-ep.targetProtein;
     if(Math.abs(dc)>=75||Math.abs(dp)>=10){
       const why=co.targetDeficitSurplus<0?`that keeps a ${Math.abs(co.targetDeficitSurplus)} cal/day deficit against a ${co.currentTDEE} cal burn`:co.targetDeficitSurplus>0?`that's a ${co.targetDeficitSurplus} cal/day surplus on a ${co.currentTDEE} cal burn`:`that holds you at your ${co.currentTDEE} cal burn`;
-      add("macro-"+today.slice(0,8)+Math.floor(now.getDate()/3),"macro","I'd adjust your targets",`Your burn reads ${co.currentTDEE} cal (${co.confidence} confidence). I'd move you to ${co.suggestedCalories} cal and ${co.suggestedProtein}g protein — ${why}. Want me to apply it?`,[{a:"coach:apply",l:"Apply targets"},{a:"coach:snooze",h:72,l:"Not now"}],1,"coach");
+      // ONE id, forever. A target change is a standing recommendation, not a fresh event every
+      // three days: the old id was macro-<month>-<day/3>, so an unread one piled a new copy on top
+      // of itself twice a week. coachTick now updates this entry in place.
+      add("macro-standing","macro","I'd adjust your targets",`Your burn reads ${co.currentTDEE} cal (${co.confidence} confidence). I'd move you to ${co.suggestedCalories} cal and ${co.suggestedProtein}g protein — ${why}. Want me to apply it?`,[{a:"coach:apply",l:"Apply targets"},{a:"coach:snooze",h:72,l:"Not now"}],1,"coach",
+        {cal:co.suggestedCalories,protein:co.suggestedProtein,tdee:co.currentTDEE});
     }
     // the week's read, once a week, once confidence is real
     add("pace-"+coachIsoWeek(now),"pace","This week's read",co.message,[{a:"coach:go",t:"coach",l:"See the numbers"}],3,"coach");
@@ -10315,6 +10325,54 @@ function coachCandidates(now){
   return out;
 }
 // ---- memory: what was said, what you did, and backing off
+// ===== standing recommendations =====
+// Some of what the coach says is an EVENT ("lunch isn't logged") and some is a STANDING POSITION
+// ("your burn moved, I'd change your targets"). A standing position must never stack: if it is
+// still unread three days later, the honest thing is to revise that one note, not add a second
+// one beside it saying almost the same thing. That is what left recommendations unseen — the
+// inbox filled with near-copies and the real one got lost among them.
+const COACH_STANDING=new Set(["macro"]);
+// How far the advice has to MOVE before it is worth interrupting again. Below this the note is
+// quietly refreshed with the new numbers and keeps whatever read/unread state it already had, so
+// someone who reads their notes is not pestered by arithmetic noise. Someone who is NOT reading
+// them sees one note that stays current instead of a pile.
+const COACH_RESURFACE={macro:{cal:75,protein:10}};
+// Ceiling on live standing recommendations. When it is reached the oldest ALREADY-READ one is
+// folded away rather than a new one added — the user's "update if the cap is hit".
+const COACH_STANDING_CAP=3;
+function coachStandingMoved(kind,prev,next){
+  const th=COACH_RESURFACE[kind];if(!th||!next)return true;      // no threshold defined -> always speak
+  if(!prev)return true;
+  for(const k of Object.keys(th))
+    if(Math.abs((+next[k]||0)-(+prev[k]||0))>=th[k])return true;
+  return false;
+}
+// Fold a standing candidate into the note that is already there. Returns true when it was handled.
+function coachStandingFile(c,now,today){
+  if(!COACH_STANDING.has(c.kind))return false;
+  const live=coachMem.inbox.find(m=>m.kind===c.kind);
+  if(!live){
+    const others=coachMem.inbox.filter(m=>COACH_STANDING.has(m.kind));
+    if(others.length>=COACH_STANDING_CAP){
+      // at the cap: drop the oldest one that has already been read, never an unread one
+      const read=others.filter(m=>m.state!=="new").sort((a,b)=>a.ts-b.ts)[0]||others.sort((a,b)=>a.ts-b.ts)[0];
+      coachMem.inbox=coachMem.inbox.filter(m=>m!==read);
+    }
+    return false;                                               // let the normal path file it
+  }
+  const moved=coachStandingMoved(c.kind,live.data,c.data);
+  live.title=c.title;live.body=c.body;live.actions=c.actions;live.tab=c.tab;
+  live.data=c.data;live.ts=now.getTime();live.day=today;
+  if(moved){
+    // the advice really changed — say so, and put it back in front of them
+    if(live.state!=="new"){live.state="new";live.revised=(live.revised||0)+1}
+    else live.revised=(live.revised||0)+1;                       // still unread: revised in place
+    coachMem.seen[c.id]=now.getTime();
+    return "surfaced";
+  }
+  coachMem.seen[c.id]=now.getTime();
+  return true;                                                   // refreshed quietly
+}
 function coachMuted(kind,now){const u=coachMem.snooze["kind:"+kind];return u&&u>now.getTime()}
 function coachOutcome(kind,accepted){const o=coachMem.out[kind]||(coachMem.out[kind]={acc:0,dis:0,run:0});
   if(accepted){o.acc++;o.run=0}else{o.dis++;o.run++;if(o.run>=3&&COACH_NUDGE_KINDS.has(kind)){coachMem.snooze["kind:"+kind]=Date.now()+7*864e5;o.run=0}}}
@@ -10323,13 +10381,19 @@ function coachSchedule(reason){clearTimeout(coachTickT);coachTickT=setTimeout(()
 function coachTick(reason){
   if(tab==="auth"||tab==="notfound")return;
   const now=new Date();let added=0;
-  const cands=coachCandidates(now).filter(c=>coachTopicLevel(c.kind)!=="off"&&!coachMem.seen[c.id]&&!coachMuted(c.kind,now)&&!(coachMem.snooze[c.id]>now.getTime()));
+  // A standing recommendation keeps ONE id for life, so the seen-map would silence it forever —
+  // it is exempt here and handled by coachStandingFile instead.
+  const cands=coachCandidates(now).filter(c=>coachTopicLevel(c.kind)!=="off"
+    &&(COACH_STANDING.has(c.kind)||!coachMem.seen[c.id])
+    &&!coachMuted(c.kind,now)&&!(coachMem.snooze[c.id]>now.getTime()));
   const today=localDateStr(now);const nudgesToday=coachMem.inbox.filter(m=>COACH_NUDGE_KINDS.has(m.kind)&&m.day===today).length+((coachMem.rm||{})[today]||0); // removed nudges still spend the day's budget
   let budget=Math.max(0,(+coachPref("coachNudgeCap",3)||3)-nudgesToday);
   cands.sort((a,b)=>a.prio-b.prio).forEach(c=>{
     const lvl=coachTopicLevel(c.kind),quiet2=lvl==="digest";
     // a digest topic spends no budget and never arrives unread — it is filed, not delivered
     if(!quiet2&&COACH_NUDGE_KINDS.has(c.kind)){if(budget<=0)return;budget--}
+    const folded=coachStandingFile(c,now,today);
+    if(folded){if(folded==="surfaced"){added++;coachVoice(c)}return}   // revised in place, never a copy
     coachMem.seen[c.id]=now.getTime();
     if(c.kind==="daily")coachMem.last.daily=today;if(c.kind==="welcome")coachMem.last.welcome=now.getTime();
     // A nudge (meal, water, weigh-in, past break-even, protein/fat) is a notification when the app
@@ -10468,7 +10532,7 @@ function coachInboxHTML(){
   return `<div style="padding:8px 20px 24px" id="coachInbox">
     <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0 12px"><div style="display:flex;align-items:center;gap:10px">${coachAvatar(30,true)}<div><p style="font-size:16px;font-weight:700;margin:0;line-height:22px" class="text-foreground">Notifications</p><p style="font-size:11px;margin:0" class="text-muted-foreground">${list.length?`${list.length} note${list.length!==1?"s":""} from ${COACH_NAME}`:"Nothing yet"}</p></div></div>
       <div style="display:flex;gap:6px"><button class="apple-pill bg-secondary haptic" data-act="coach:checkin" style="border:0;color:hsl(var(--secondary-foreground))">Check in</button>${list.length?`<button class="apple-pill bg-secondary haptic" data-act="coach:clear" style="border:0;color:hsl(var(--secondary-foreground))">Clear</button>`:""}</div></div>
-    ${list.length?list.map(m=>`<div class="coach-note${m.state==="new"?" new":""}" data-swipe="coachnote" data-id="${m.id}"><button class="coach-x haptic" data-act="coach:remove" data-id="${m.id}" aria-label="Dismiss">${LUCIDE_C(P_X,2,13)}</button><div style="display:flex;align-items:flex-start;gap:10px;padding-right:22px"><span class="coach-row-i">${kindIcon[m.kind]||"○"}</span><div style="flex:1;min-width:0"><p class="coach-card-t">${esc(m.title)}<span class="coach-ago">${coachAgo(m.ts)}</span></p><p class="coach-card-b">${esc(m.body)}</p>
+    ${list.length?list.map(m=>`<div class="coach-note${m.state==="new"?" new":""}" data-swipe="coachnote" data-id="${m.id}"><button class="coach-x haptic" data-act="coach:remove" data-id="${m.id}" aria-label="Dismiss">${LUCIDE_C(P_X,2,13)}</button><div style="display:flex;align-items:flex-start;gap:10px;padding-right:22px"><span class="coach-row-i">${kindIcon[m.kind]||"○"}</span><div style="flex:1;min-width:0"><p class="coach-card-t">${esc(m.title)}${m.revised?`<span class="coach-rev">updated${m.revised>1?" ·"+m.revised:""}</span>`:""}<span class="coach-ago">${coachAgo(m.ts)}</span></p><p class="coach-card-b">${esc(m.body)}</p>
       ${m.state==="done"||m.state==="dismissed"||m.state==="snoozed"?`<p class="coach-state" style="margin:6px 0 0">${m.state==="done"?"Done":m.state==="snoozed"?"Snoozed":"Dismissed"}</p>`:m.actions.length?`<div class="coach-acts">${coachActionsHTML(m)}</div>`:""}</div></div></div>`).join("")
       :`<p style="font-size:12.5px;line-height:1.55;margin:0" class="text-muted-foreground">Log a meal or a weigh-in and I'll start talking. Or check in now and I'll plan today around how you feel.</p>`}
   </div>`;
