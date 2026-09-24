@@ -1461,7 +1461,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-24.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-24.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3908,13 +3908,33 @@ function estimatedMacros(food,amountStr,selectedUnit){
 // Consumes RESTAURANTS_DB (data/restaurantDatabase.ts) when embedded; empty until then.
 const fsRestaurantList=()=>typeof RESTAURANTS_DB!=="undefined"?RESTAURANTS_DB:[];
 const fsNorm=s=>s.toLowerCase().replace(/['’\-\s]/g,"");
+// Word-by-word matching, so a chain name and an item name can be typed together in any order:
+// "starbucks egg bites" = every Starbucks item with "egg" and "bite" in it; "egg bites" alone =
+// every chain's egg bites; "dunkin" alone = the whole Dunkin' menu, as before. Each typed word
+// must be found in the chain's name or the item's name. Letters are compared with accents,
+// apostrophes and spaces removed (so "eggbites", "rosatis" and "gruyere" all match), and a
+// trailing s/es is also tried without it (so "bites" finds "Egg Bite", "sandwiches" finds "Sandwich").
+const fsFold=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[’']/g,"");
+const fsSquash=s=>fsFold(s).replace(/[^a-z0-9]/g,"");
+const fsWords=q=>fsFold(q).split(/[^a-z0-9]+/).filter(Boolean);
+function fsWordVariants(w){const v=[w];if(w.length>3&&w.endsWith("s")&&!w.endsWith("ss"))v.push(w.slice(0,-1));if(/(ch|sh|ss|x|z)es$/.test(w))v.push(w.slice(0,-2));return v}
+// a short word must start a word of the name ("egg" finds Egg Bites, not vEGGies); a word of 5+
+// letters may sit anywhere, so "latte" still finds Dunkalatte and "eggbites" finds Egg Bites
+const fsHasW=(spaced,squashed,vars)=>vars.some(v=>spaced.includes(" "+v)||v.length>=5&&squashed.includes(v));
+// how many of the query's LEADING words spell (part of) this chain's name — "paris baguette croissant" -> 2
+function fsChainLead(words,rN){
+  for(let k=words.length;k>=1;k--){const j=words.slice(0,k).join("");
+    if(rN.startsWith(j)&&j.length>=3||j.length>=4&&rN.includes(j))return k}
+  return 0;
+}
 function fsMatchingRestaurants(query){
   if(query.trim().length<2)return[];
-  const q=fsNorm(query);
-  return fsRestaurantList().filter(r=>fsNorm(r.name).includes(q)||r.name.toLowerCase().includes(query.toLowerCase()));
+  const q=fsNorm(query),words=fsWords(query);
+  return fsRestaurantList().filter(r=>fsNorm(r.name).includes(q)||r.name.toLowerCase().includes(query.toLowerCase())
+    ||words.length>1&&fsChainLead(words,fsSquash(r.name))>0);
 }
 // A keystroke used to lowercase all ~10,600 chain item names and ~900 food names again. The
-// strings never change, so they are lowercased ONCE into a flat index and every later keystroke
+// strings never change, so they are folded ONCE into a flat index and every later keystroke
 // is a plain substring scan over that. Built lazily on the first search so boot is untouched,
 // and thrown away whenever the menu data changes underneath it.
 let FS_IDX=null;
@@ -3923,10 +3943,10 @@ function fsIndex(){
   if(FS_IDX)return FS_IDX;
   const rows=[];
   for(const r of fsRestaurantList()){
-    const rLow=r.name.toLowerCase(), rNorm=fsNorm(r.name);
+    const rN=fsSquash(r.name),rW=" "+fsFold(r.name).replace(/[^a-z0-9]+/g," ");
     for(const comp of r.components||[]){
       if(comp.isModifier)continue;
-      rows.push({r,rLow,rNorm,comp,cLow:comp.name.toLowerCase()});
+      rows.push({r,rN,rW,comp,cN:fsSquash(comp.name),cW:" "+fsFold(comp.name).replace(/[^a-z0-9]+/g," ")});
     }
   }
   return (FS_IDX=rows);
@@ -3937,25 +3957,40 @@ function fsIndex(){
 const FS_REST_CAP=20;
 function fsRestaurantFoodResults(query,cap){
   if(query.trim().length<2)return[];
-  const q=query.toLowerCase(),qNorm=fsNorm(query),items=[];
+  const words=fsWords(query);if(!words.length)return[];
+  const vars=words.map(fsWordVariants);
   const lim=cap==null?FS_REST_CAP:cap;
-  let total=0;
-  for(const row of fsIndex()){
-    const r=row.r, comp=row.comp;
-    const nameMatch=row.rNorm.includes(qNorm)||row.rLow.includes(q);
-    {
-      if(nameMatch||row.cLow.includes(q)){
-        total++;
-        if(items.length>=lim)continue;
-        const dsv=comp.sizeVariants&&comp.sizeVariants.length?(comp.sizeVariants.find(v=>v.sizeId===comp.defaultSizeId)||comp.sizeVariants[1]||comp.sizeVariants[0]):null; // same size the sheet opens on
-        items.push({id:`rest-${comp.id}`,name:dsv&&dsv.sizeName?`${comp.name} (${dsv.sizeName})`:comp.name,brand:r.name,servingSize:1,servingUnit:"serving",
-          macros:(dsv&&dsv.macros)||comp.macros,
-          source:"restaurant",restaurantName:r.name,restaurantColor:r.color,
-          isModularRestaurant:r.modular,restaurantId:r.id});
+  // strict: every word found. If that finds nothing and 3+ words were typed, allow one word to miss
+  // ("dunkin oat latte": oat milk is a choice on the latte, not part of its name), as long as at
+  // least one word hit the item's own name
+  const scan=miss=>{const out=[];let i=0;
+    for(const row of fsIndex()){
+      i++;let ih=0,left=miss,ok=true;
+      for(const v of vars){
+        if(fsHasW(row.cW,row.cN,v))ih++;
+        else if(!fsHasW(row.rW,row.rN,v)&&--left<0){ok=false;break}
       }
+      if(ok&&(!miss||ih>0))out.push({row,ih,i,len:row.cN.length});
     }
+    return out};
+  let hits=scan(0);
+  if(!hits.length&&vars.length>=3){
+    // the chain named up front is never the word that gets dropped
+    const lead=new Set(fsRestaurantList().filter(r=>fsChainLead(words,fsSquash(r.name))>0));
+    hits=scan(1);if(lead.size)hits=hits.filter(h=>lead.has(h.row.r));
   }
-  items.total=total;   // what a cap held back, so the UI can say so instead of quietly truncating
+  // items whose own name holds more of the typed words first; among those, the plainest name first
+  // ("Latte" before "Caramel Craze Signature Latte"); a bare chain name keeps the menu's own order
+  hits.sort((a,b)=>(b.ih-a.ih)||(a.ih?a.len-b.len:0)||(a.i-b.i));
+  const items=hits.slice(0,lim).map(({row})=>{
+    const r=row.r,comp=row.comp;
+    const dsv=comp.sizeVariants&&comp.sizeVariants.length?(comp.sizeVariants.find(v=>v.sizeId===comp.defaultSizeId)||comp.sizeVariants[1]||comp.sizeVariants[0]):null; // same size the sheet opens on
+    return{id:`rest-${comp.id}`,name:dsv&&dsv.sizeName?`${comp.name} (${dsv.sizeName})`:comp.name,brand:r.name,servingSize:1,servingUnit:"serving",
+      macros:(dsv&&dsv.macros)||comp.macros,
+      source:"restaurant",restaurantName:r.name,restaurantColor:r.color,
+      isModularRestaurant:r.modular,restaurantId:r.id};
+  });
+  items.total=hits.length;   // what a cap held back, so the UI can say so instead of quietly truncating
   return items;
 }
 // ----- 24h search cache (lib/foodSearchCache.ts, stored under the mm2. prefix) -----
