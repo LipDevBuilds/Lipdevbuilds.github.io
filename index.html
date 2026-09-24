@@ -1461,7 +1461,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-24.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-24.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2558,7 +2558,11 @@ function canCheckIn(){return daysUntilCheckIn(engineProfile())<=2&&!hasCheckedIn
 // Coach page transient state (Coach.tsx/WeightPlan.tsx useState — resets when the Coach page remounts)
 let coachShowInsights=false;                 // Coach.tsx:29 showInsights
 let wpChartMode="weight", wpZoomed=false, wpZoomOffset=0; // WeightPlan.tsx:389-391
-let wpDismissed=new Set();                   // WeightPlan.tsx:390 dismissedRecs — in-memory only, never persisted
+let wpDismissed=new Set();                   // WeightPlan.tsx:390 dismissedRecs — this page visit only
+// persisted record of implemented plan recommendations: title -> the exact advice that was implemented
+const wpSig=r=>JSON.stringify(r.action||null);
+const wpDoneHas=r=>!!(profile.wpDone&&profile.wpDone[r.title]===wpSig(r));
+function wpDoneAdd(r){profile.wpDone=Object.assign({},profile.wpDone||{},{[r.title]:wpSig(r)});save("profile",profile)}
 let wpRecActions=[];                         // visible recs of the last render (button index -> rec)
 function loggedDaysCount(since,until){return new Set(foodLog.filter(e=>e.date>=since&&e.date<=until).map(e=>e.date)).size}
 function totalsFor(date){const t=getDailyTotals(foodLog,date).totals;
@@ -9846,8 +9850,16 @@ function weightPlanSection(){
     <div data-swipe="wpnav">${wpChartMode==='weight'?wpChartSVG(chartData,'weight',wpZoomed,ep.goalWeight):wpChartSVG(mView,'macros',wpZoomed,0)}</div>
     ${wpCapped?`<p style="font-size:10px;margin:4px 0 0;text-align:center" class="text-muted-foreground">First 12 weeks of ${plan.projection.length-1} — Closer look pages the full plan</p>`:""}
     ${legend}${infoBox}</div>`;
-  // Plan Recommendations — dismissal is in-memory only (per page mount), keyed by rec title
-  const visible=plan.recommendations.filter(r=>!wpDismissed.has(r.title));
+  // Plan Recommendations. Two rules keep this card from arguing with the coach:
+  // 1. Once the coach has a confident read of your burn, IT owns calorie and protein targets (its
+  //    "I'd adjust your targets" note, built from your pace and protein settings). This card's own
+  //    "add/reduce N cal" and "set protein" advice used different rules, so applying one made the
+  //    other tell you to undo it. Those are hidden while the coach is confident.
+  // 2. An implemented recommendation is remembered (profile.wpDone, synced) and only returns if its
+  //    advice itself changes — before, it reappeared every time the page was opened.
+  const coachOwnsTargets=(()=>{const co=coachingData();return !!co&&profile.coachMode!=="manual"&&(co.confidence==="medium"||co.confidence==="high")})();
+  const visible=plan.recommendations.filter(r=>!wpDismissed.has(r.title)&&!wpDoneHas(r)
+    &&!(coachOwnsTargets&&r.action&&(r.action.type==="adjust_calories"||r.action.type==="adjust_protein")));
   wpRecActions=visible;
   const prBorder={high:'border:1px solid hsl(var(--destructive)/.3);background:hsl(var(--destructive)/.05)',
     medium:'border:1px solid hsl(var(--primary)/.3);background:hsl(var(--primary)/.05)',
@@ -10352,6 +10364,10 @@ function coachStandingFile(c,now,today){
   if(!COACH_STANDING.has(c.kind))return false;
   const live=coachMem.inbox.find(m=>m.kind===c.kind);
   if(!live){
+    // removed with ×: stays gone unless the advice moved by the resurface threshold
+    const gone=(coachMem.gone||{})[c.kind];
+    if(gone){if(!coachStandingMoved(c.kind,gone,c.data)){coachMem.seen[c.id]=now.getTime();return true}
+      delete coachMem.gone[c.kind]}
     const others=coachMem.inbox.filter(m=>COACH_STANDING.has(m.kind));
     if(others.length>=COACH_STANDING_CAP){
       // at the cap: drop the oldest one that has already been read, never an unread one
@@ -10400,7 +10416,7 @@ function coachTick(reason){
     // is CLOSED. Inside the app it is only ever the small bar: it is filed already-read so the bell
     // does not nag about it, and the one line goes through the same bar every log reply uses.
     const nudge=COACH_NUDGE_KINDS.has(c.kind)&&!quiet2;
-    coachMem.inbox.unshift({id:c.id,kind:c.kind,title:c.title,body:c.body,actions:c.actions,tab:c.tab,ts:now.getTime(),day:today,state:(quiet2||nudge)?"read":"new"});
+    coachMem.inbox.unshift({id:c.id,kind:c.kind,title:c.title,body:c.body,actions:c.actions,tab:c.tab,data:c.data||null,ts:now.getTime(),day:today,state:(quiet2||nudge)?"read":"new"}); // data: without it the next tick compared a standing note against nothing, called it "moved" and flipped it back to unread
     if(nudge){coachWhisper(c.title,c.kind)}
     else if(!quiet2){added++;coachVoice(c)}
   });
@@ -10455,6 +10471,9 @@ function coachAct(act,el){
     case"coach:remove":{if(!m)return; // × or swipe-left: the note is gone; an unanswered nudge counts as a dismissal for the back-off memory
       if((m.state==="new"||m.state==="read")&&m.actions.length)coachOutcome(m.kind,false);
       if(COACH_NUDGE_KINDS.has(m.kind)&&m.day){coachMem.rm=coachMem.rm||{};coachMem.rm[m.day]=(coachMem.rm[m.day]||0)+1}
+      // a standing recommendation (target change) keeps one id for life, so without this it was
+      // filed again on the very next tick; remember what was removed and stay quiet until it moves
+      if(COACH_STANDING.has(m.kind)){coachMem.gone=coachMem.gone||{};coachMem.gone[m.kind]=m.data||{}}
       coachMem.inbox=coachMem.inbox.filter(x=>x.id!==id);coachSave();
       const node=el.closest(".coach-note,.coach-say");const fin=()=>{renderNav();coachBellRefresh();coachInboxRefresh();if(tab==="coach")coachHeroRefresh()};
       if(node){node.classList.add("out");setTimeout(fin,200)}else fin();return}
@@ -12038,6 +12057,7 @@ document.addEventListener("click",e=>{
   }
   else if(act==="wpimpl"){ // WeightPlan.tsx:714-719 + Coach.tsx:44-85 handleImplementRecommendation
     const rec=wpRecActions[+el.dataset.i];if(!rec||!rec.action)return;
+    wpDoneAdd(rec); // remembered across visits, not just this one
     const a=rec.action;
     if(a.type==="go_workout"){wpDismissed.add(rec.title);tab="workout";render();return}
     if(a.type==="diet_break"){ // write pending payload, go to Calendar (Calendar owns the confirm UI)
