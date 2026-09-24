@@ -1461,7 +1461,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-24.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-24.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -11630,7 +11630,7 @@ document.addEventListener("click",e=>{
       setEntrySrc(id,{t:"qa"});saveLog();closeSheet();mealOpen[qaMeal]=true;render();logFlight(id);
     }
   }
-  else if(act.startsWith("coach:")){coachAct(act,el)}
+  else if(act.startsWith("coach:")||act.startsWith("push:")){coachAct(act,el)} // push:on/off/quiet live in coachAct too — they were never routed, so those buttons did nothing
   else if(act==="mealtoggle"){ // MealSection.tsx:170,203-211 — animate height/opacity in place, no re-render
     const m=el.dataset.meal||el.dataset.k;const k=m;
     const items=entriesFor(selDate).filter(x=>x.meal===m);
