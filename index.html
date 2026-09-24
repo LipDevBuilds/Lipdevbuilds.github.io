@@ -1461,7 +1461,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-24.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-24.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1582,8 +1582,8 @@ const allFoods=()=>REAL_FOODS.concat(GROCERY_FOODS,custom);
 // safe to ship in the client — server access is gated by RLS and the edge functions.
 // The real MacroMind backend (matches the app source's VITE_SUPABASE_URL/KEY —
 // the anon key is the public client key, safe to ship; data is guarded by RLS).
-const BAKED_URL="https://sjwmpeajngxyjcdfazxl.supabase.co";
-const BAKED_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqd21wZWFqbmd4eWpjZGZhenhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3MTI4MzIsImV4cCI6MjA5MDI4ODgzMn0.BrRRylSKn76GzKgd4g-bZq4PqGdJvcIBjVtrkw_5_os";
+const BAKED_URL="https://zamsrqlfvdtyrvzykkua.supabase.co";
+const BAKED_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphbXNycWxmdmR0eXJ2enlra3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2OTI1MzIsImV4cCI6MjEwNTI2ODUzMn0.N5lqSCvP7CJHz4i5TnGq_pv90BZ65kan6MCXqE8yL7o";
 const sbUrl=()=>profile.supabaseUrl||BAKED_URL;
 const sbKey=()=>profile.supabaseKey||BAKED_KEY;
 const aiOn=()=>!!(sbUrl()&&sbKey());
@@ -11835,7 +11835,7 @@ document.addEventListener("click",e=>{
       callFn("parse-workout",{notes:s.notes.trim(),elapsedSeconds:woElapsed})
         .then(a=>{if(done)return;done=true;(a&&Array.isArray(a.exercises))?finish(a):localTry()})
         .catch(()=>{if(!done){done=true;localTry()}});
-      setTimeout(()=>{if(!done){done=true;localTry()}},6000);
+      setTimeout(()=>{if(!done){done=true;localTry()}},15000); // the AI parser takes 4-6 s; 6 s fell back to the local parser most of the time
     }else setTimeout(localTry,400);
   }
   else if(act==="woedit"){ // Workout.tsx:148-152 editWorkout — stopwatch NOT restarted
