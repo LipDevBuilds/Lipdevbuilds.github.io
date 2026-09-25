@@ -308,6 +308,7 @@ select.input{appearance:none;-webkit-appearance:none}
 .lf-gain{position:fixed;z-index:61;pointer-events:none;font-size:12px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;color:hsl(var(--warning));text-shadow:0 0 10px hsl(var(--warning)/.55);animation:lf-gain 1.15s cubic-bezier(.2,.8,.2,1) forwards}
 @keyframes lf-gain{0%{opacity:0;transform:translateY(6px) scale(.9)}22%{opacity:1;transform:translateY(-6px) scale(1)}100%{opacity:0;transform:translateY(-30px) scale(1)}}
 .cal-pb{position:absolute;top:0;bottom:0;overflow:hidden;background:hsl(var(--warning)/.38);background-image:repeating-linear-gradient(115deg,hsl(var(--warning)/.30) 0 3px,transparent 3px 7px);box-shadow:inset 2px 0 0 hsl(var(--warning)/.95)} /* the inset edge is where your target sat BEFORE the workout */
+.cal-bx{position:absolute;top:0;bottom:0;background:hsl(var(--warning)/.22);background-image:repeating-linear-gradient(115deg,hsl(var(--warning)/.34) 0 3px,transparent 3px 7px);box-shadow:inset -2px 0 0 hsl(var(--muted-foreground)/.55)} /* today's workout pushing the break-even out */
 .cal-pb.fire{animation:pb-grow .95s cubic-bezier(.2,.8,.2,1) both;transform-origin:left center}
 @keyframes pb-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .cal-pb>i{display:none}
@@ -1461,7 +1462,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-24.7"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-24.8"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2158,12 +2159,15 @@ function habitualDailyBurn(date){
   const tot=workouts.filter(w=>w.date>=s0&&w.date<e0).reduce((x,w)=>x+(+w.totalCaloriesBurned||0),0);
   return tot/BURN_HABIT_DAYS;
 }
-function burnPayback(date){
-  if(!paybackOn())return 0;
+// Today's burn beyond your usual training. These calories were really burned, so the day's
+// break-even (what you burn) always includes them — the Settings toggle only decides whether
+// the day's calorie TARGET is raised by the same amount.
+function dayExtraBurn(date){
   const today=dayWorkoutBurn(date);
   if(!(today>0))return 0;
   return Math.max(0,Math.min(BURN_PAYBACK_CAP,Math.round(today-habitualDailyBurn(date))));
 }
+function burnPayback(date){return paybackOn()?dayExtraBurn(date):0}
 // What logging a further `kcal` today would add — used to preview a session before it is saved.
 function paybackIfAdded(date,kcal){
   if(!paybackOn())return 0;
@@ -2715,6 +2719,7 @@ function calorieProgress(current,target,opts){
   opts=opts||{};
   const burn=Math.max(0,Math.round(opts.burn||0)),goal=opts.goal||"maintain",pb=Math.max(0,Math.round(opts.pb||0));
   const wo=Math.max(0,Math.round(opts.wo||0)); // today's logged workout burn, before the payback discount
+  const extra=Math.max(0,Math.round(opts.extra||0)),baseBurn=burn-extra; // what today's workouts added to the burn
   const percentage=(current/target)*100, isOver=current>target, overBy=current-target;
   const hasBurn=burn>0&&Math.abs(burn-target)>target*0.03;
   const gaugeMax=Math.max(target,burn,current)*1.06;
@@ -2728,6 +2733,7 @@ function calorieProgress(current,target,opts){
   if(pb>0){bar+=`<div class="cal-pb${burnAnim?" fire":""}" style="left:${X(base)}%;width:${(X(target)-X(base)).toFixed(2)}%"><i></i></div>`;
     // name it on the bar: the slice is calories you EARNED, and it sits between the old target and the new one
 } // the header already says "earned"; here it just needs a number
+  if(hasBurn&&extra>0)bar+=`<div class="cal-bx" style="left:${X(baseBurn)}%;width:${(X(burn)-X(baseBurn)).toFixed(2)}%"></div>`;
   bar+=`<div class="bar-anim bg-primary" style="position:absolute;top:0;bottom:0;left:0;border-radius:9999px 0 0 9999px;width:${X(capA)}%"></div>`;
   if(current>target)bar+=`<div class="bg-warning" style="position:absolute;top:0;bottom:0;left:${X(target)}%;width:${(X(capB)-X(target)).toFixed(2)}%"></div>`;
   if(current>Math.max(target,burn))bar+=`<div style="position:absolute;top:0;bottom:0;left:${X(Math.max(target,burn))}%;width:${(X(current)-X(Math.max(target,burn))).toFixed(2)}%;background:hsl(var(--destructive))"></div>`;
@@ -2767,12 +2773,18 @@ function calorieProgress(current,target,opts){
       <p style="font-size:14px;margin:2px 0 0;line-height:19px" class="text-muted-foreground tnum">${under} cal${pb>0?` · <span class="text-warning" style="font-weight:590" data-roll="calearn" data-rollp="+" data-rollv="${pb}">+${pb} earned</span>`:wo>0?` · ${wo} burned · not added`:""}</p>
     </div>
     ${bar}
+    ${(()=>{const tk=c=>`<i style="display:inline-block;width:2px;height:11px;border-radius:1px;background:${c};vertical-align:-1px;margin-right:5px"></i>`;
+      const fl=v=>`<span class="text-warning" style="font-weight:590">+${v}</span>`;
+      return `<div class="tnum" style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;line-height:16px;margin-top:6px">
+        <span class="text-muted-foreground">${tk('hsl(var(--primary))')}Target <b class="text-foreground" style="font-weight:590">${target}</b>${pb>0?` <span style="opacity:.8">(${target-pb} ${fl(pb)} earned)</span>`:""}</span>
+        ${hasBurn?`<span class="text-muted-foreground">${tk('hsl(var(--muted-foreground)/.55)')}Burn <b class="text-foreground" style="font-weight:590">${burn}</b>${extra>0?` <span style="opacity:.8">(${baseBurn} ${fl(extra)} workout)</span>`:""}</span>`:""}</div>`})()}
     <p style="font-size:12px;margin:8px 0 0;font-weight:400;line-height:16px" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("Calories you earned from today's workouts. Nothing is padded or shaved: the figure added is what today burned beyond your habitual daily training, because your break-even already includes that habit and adding it a second time would inflate the target.")}`:wo>0?` · ${wo} cal burned today, not added${tipI("Adding workout burn to your daily target is switched off in Settings → Activity, so today's session shows as a number but does not widen what you can eat.")}`:""}</p>
     ${lee&&current>target?`<p style="font-size:12px;margin:3px 0 0;font-weight:400;line-height:16px" class="${leeCls}">${lee}</p>`:""}
   </div>`;
 }
 // DeficitVisual.tsx — Target header + confidence chip, gauge with TDEE/Target markers, three pills
-function deficitVisual(consumed,target,tdee,confidence){
+function deficitVisual(consumed,target,tdee,confidence,extra){
+  extra=Math.max(0,Math.round(extra||0));
   const plannedDeficit=tdee-target, currentDeficit=tdee-consumed, remaining=target-consumed;
   const isDeficit=currentDeficit>0, isSurplus=currentDeficit<0, onTrack=remaining>0;
   const weeklyChange=(currentDeficit*7)/3500;                       // lbs/week — DeficitVisual.tsx:25
@@ -2799,7 +2811,8 @@ function deficitVisual(consumed,target,tdee,confidence){
       <p style="font-size:15px;margin:0;line-height:20px;min-width:0;font-weight:400" class="text-foreground">${trendIco} On pace for a <b class="${paceCls}" style="font-weight:590">${Math.abs(Math.round(currentDeficit))} cal ${word}</b> today <span class="text-muted-foreground">· plan: ${planWord}</span>${tipI("Your deficit is the gap between what you burn in a day and what you eat. Eating under your burn loses weight; over it gains. Green means today is tracking near YOUR plan — not just any loss.")}</p>
       <span style="font-size:11px;font-weight:510;padding:3px 8px;border-radius:9999px;flex-shrink:0;${chip}" data-tip="How well the app knows your true daily burn. It starts from a formula and learns from your actual weigh-ins and food logs — confidence rises with consistent logging.">${confidence} confidence</span>
     </div>
-    <p style="font-size:12px;margin:6px 0 0;line-height:16px" class="text-muted-foreground">If every day looked like today: ${weeklyChange>0?"\u2212":"+"}${Math.abs(weeklyChange).toFixed(1)} lb/wk${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
+    <p style="font-size:12px;margin:6px 0 0;line-height:16px" class="text-muted-foreground tnum">${Math.round(tdee)} burned${extra>0?` (${Math.round(tdee)-extra} + <span class="text-warning" style="font-weight:590">${extra} workout</span>)`:""} − ${Math.round(consumed)} eaten = ${Math.abs(Math.round(currentDeficit))} ${word}</p>
+    <p style="font-size:12px;margin:4px 0 0;line-height:16px" class="text-muted-foreground">If every day looked like today: ${weeklyChange>0?"\u2212":"+"}${Math.abs(weeklyChange).toFixed(1)} lb/wk${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
   </div>`;
 }
 // MacroRing.tsx (size=76, r=34, stroke 5); colors — Index.tsx:232-234
@@ -3089,6 +3102,9 @@ function homePage(){
   const targets={calories:G.kcal,protein:G.p,carbs:G.c,fat:G.f};
   const pbToday=burnPayback(selDate);
   const ex=expenditure();
+  // the day's break-even: your usual daily burn plus what today's workouts added beyond your habit
+  // (before this, a workout raised the target but not the burn, so the deficit never moved)
+  const dayBurn=ex.tdee?ex.tdee+dayExtraBurn(selDate):ex.tdee;
   const dayWaterMl=waterOn(selDate),dayWaterAuto=waterAutoOn(selDate),dayWaterManual=waterManualOn(selDate);
   const dayWo=workouts.filter(w=>w.date===selDate);
   const dayEvents=eventsOn(selDate);
@@ -3161,9 +3177,9 @@ function homePage(){
       <p class="apple-section" style="margin:0">Nutrition</p>
       <button data-act="viewmode" class="haptic" style="font-size:13px;font-weight:510;padding:4px 8px;margin:-4px;background:none;border:0;line-height:18px;color:hsl(var(--muted-foreground))">Show ${viewMode==='consumed'?'remaining':'eaten'}</button>
     </div>
-    ${skipHas(selDate)?skipCardHTML(totals):calorieProgress(totals.calories,targets.calories,{burn:ex.tdee,goal:profile.goal,pb:pbToday,wo:dayWorkoutBurn(selDate)})}
+    ${skipHas(selDate)?skipCardHTML(totals):calorieProgress(totals.calories,targets.calories,{burn:dayBurn,extra:dayBurn-ex.tdee,goal:profile.goal,pb:pbToday,wo:dayWorkoutBurn(selDate)})}
     ${shiftOn&&targets.calories!==baseCals&&!pbToday?`<p style="font-size:10px;font-weight:500;margin:4px 0 0;text-align:center" class="text-primary">${targets.calories>baseCals?'↑ Training day':'↓ Rest day'} — adjusted from ${baseCals}</p>`:''}
-    ${skipHas(selDate)?"":deficitVisual(totals.calories,targets.calories,ex.tdee,ex.confidence)}
+    ${skipHas(selDate)?"":deficitVisual(totals.calories,targets.calories,dayBurn,ex.confidence,dayBurn-ex.tdee)}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${macroBars}</div>
   </div>
   <div class="anim" style="animation-delay:.18s;margin-top:20px">${waterTracker(dayWaterMl,waterGoal(),true,true,dayWaterAuto,dayWaterManual)}</div>
@@ -10325,7 +10341,8 @@ function coachCandidates(now){
     if(H>=13&&H<16&&noMeal("lunch")&&(entries.length||st.f>0))add("meal-lunch-"+today,"meal","Lunch isn't logged yet","Want me to open the log? Logging it while it's fresh is the whole game.",[{a:"coach:addfood",m:"lunch",l:"Log lunch"},{a:"coach:dismiss",l:"Skipped it"}],3);
     if(H>=19&&H<22&&noMeal("dinner")&&(entries.length||st.f>0))add("meal-dinner-"+today,"meal","Dinner isn't logged yet","Get it in before the day closes so tomorrow's brief is right.",[{a:"coach:addfood",m:"dinner",l:"Log dinner"},{a:"coach:dismiss",l:"Skipped it"}],3);
     const wg=waterGoal(),wml=waterOn(today);if(H>=15&&H<20&&wg>0&&entries.length&&wml<wg*0.4)add("water-"+today,"water","Water is behind",`You're at ${Math.round(wml/wg*100)}% of today's water. A glass now beats catching up at ten.`,[{a:"coach:go",t:"home",l:"Log water"}],4);
-    if(H>=18&&ep.goal==="cut"&&ex.tdee&&tod.calories>ex.tdee+50)add("over-"+today,"over","Past break-even today",`${Math.round(tod.calories-ex.tdee)} cal past your ${ex.tdee} cal burn. One day doesn't move the trend — a 20-minute walk covers most of it, and tomorrow's brief resets.`,[],4);
+    const beToday=ex.tdee?ex.tdee+dayExtraBurn(today):0; // today's workout counts toward what you burned
+    if(H>=18&&ep.goal==="cut"&&beToday&&tod.calories>beToday+50)add("over-"+today,"over","Past break-even today",`${Math.round(tod.calories-beToday)} cal past your ${beToday} cal burn. One day doesn't move the trend — a 20-minute walk covers most of it, and tomorrow's brief resets.`,[],4);
   }
   // praise — earned, not scheduled
   [3,7,14,21,30,50,100].forEach(n=>{if(st.f===n)add("streak-f-"+n,"streak",`${n} days logged in a row`,n>=14?"That's real consistency — and it's exactly the data I coach from. Keep it rolling.":"Consistency beats perfection. That's the data I coach from.",[],2)});
