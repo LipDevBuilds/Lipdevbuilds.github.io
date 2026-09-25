@@ -1462,7 +1462,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-24.8"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-24.9"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -2733,7 +2733,6 @@ function calorieProgress(current,target,opts){
   if(pb>0){bar+=`<div class="cal-pb${burnAnim?" fire":""}" style="left:${X(base)}%;width:${(X(target)-X(base)).toFixed(2)}%"><i></i></div>`;
     // name it on the bar: the slice is calories you EARNED, and it sits between the old target and the new one
 } // the header already says "earned"; here it just needs a number
-  if(hasBurn&&extra>0)bar+=`<div class="cal-bx" style="left:${X(baseBurn)}%;width:${(X(burn)-X(baseBurn)).toFixed(2)}%"></div>`;
   bar+=`<div class="bar-anim bg-primary" style="position:absolute;top:0;bottom:0;left:0;border-radius:9999px 0 0 9999px;width:${X(capA)}%"></div>`;
   if(current>target)bar+=`<div class="bg-warning" style="position:absolute;top:0;bottom:0;left:${X(target)}%;width:${(X(capB)-X(target)).toFixed(2)}%"></div>`;
   if(current>Math.max(target,burn))bar+=`<div style="position:absolute;top:0;bottom:0;left:${X(Math.max(target,burn))}%;width:${(X(current)-X(Math.max(target,burn))).toFixed(2)}%;background:hsl(var(--destructive))"></div>`;
@@ -2770,15 +2769,17 @@ function calorieProgress(current,target,opts){
     <div style="margin-bottom:14px">
       <p style="font-size:13px;font-weight:510;margin:0 0 2px;line-height:18px" class="text-muted-foreground">${heroLbl}${tipI("The bar is your whole day: blue is what you've eaten, the flame-tinted slice is extra calories earned from today's workouts, and the shaded band up to Break-even is your cushion — on a cut you can drift into it and still lose weight; on a bulk you need to eat past break-even to gain. Break-even is your daily burn.")}</p>
       <p class="sfr ${heroCls}" style="font-size:52px;font-weight:700;letter-spacing:-1.4px;line-height:56px;margin:0;font-variant-numeric:tabular-nums" data-roll="calhero" data-rollp="${isOver?"+":""}" data-rollv="${heroN}">${isOver?"+":""}${heroN}</p>
-      <p style="font-size:14px;margin:2px 0 0;line-height:19px" class="text-muted-foreground tnum">${under} cal${pb>0?` · <span class="text-warning" style="font-weight:590" data-roll="calearn" data-rollp="+" data-rollv="${pb}">+${pb} earned</span>`:wo>0?` · ${wo} burned · not added`:""}</p>
+      <p style="font-size:14px;margin:2px 0 0;line-height:19px" class="text-muted-foreground tnum">${under} cal</p>
     </div>
     ${bar}
     ${(()=>{const tk=c=>`<i style="display:inline-block;width:2px;height:11px;border-radius:1px;background:${c};vertical-align:-1px;margin-right:5px"></i>`;
       const fl=v=>`<span class="text-warning" style="font-weight:590">+${v}</span>`;
       return `<div class="tnum" style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;line-height:16px;margin-top:6px">
-        <span class="text-muted-foreground">${tk('hsl(var(--primary))')}Target <b class="text-foreground" style="font-weight:590">${target}</b>${pb>0?` <span style="opacity:.8">(${target-pb} ${fl(pb)} earned)</span>`:""}</span>
-        ${hasBurn?`<span class="text-muted-foreground">${tk('hsl(var(--muted-foreground)/.55)')}Burn <b class="text-foreground" style="font-weight:590">${burn}</b>${extra>0?` <span style="opacity:.8">(${baseBurn} ${fl(extra)} workout)</span>`:""}</span>`:""}</div>`})()}
-    <p style="font-size:12px;margin:8px 0 0;font-weight:400;line-height:16px" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal${pb>0?` · includes +${pb} from workouts${tipI("Calories you earned from today's workouts. Nothing is padded or shaved: the figure added is what today burned beyond your habitual daily training, because your break-even already includes that habit and adding it a second time would inflate the target.")}`:wo>0?` · ${wo} cal burned today, not added${tipI("Adding workout burn to your daily target is switched off in Settings → Activity, so today's session shows as a number but does not widen what you can eat.")}`:""}</p>
+        <span class="text-muted-foreground">${tk('hsl(var(--primary))')}Target <b class="text-foreground" style="font-weight:590">${target}</b></span>
+        ${hasBurn?`<span class="text-muted-foreground">${tk('hsl(var(--muted-foreground)/.55)')}Burn <b class="text-foreground" style="font-weight:590">${burn}</b></span>`:""}</div>
+      ${pb>0?`<p class="text-muted-foreground tnum" style="font-size:12px;line-height:16px;margin:4px 0 0"><span class="text-warning" style="font-weight:590">■</span> Both include your ${fl(pb)} workout${tipI("Today's workout is added to what you burned and to what you can eat. Only the part beyond your usual daily training counts, because your daily burn already includes that habit. The orange piece on the bar is this extra room.")}</p>`
+        :extra>0?`<p class="text-muted-foreground tnum" style="font-size:12px;line-height:16px;margin:4px 0 0">Burn includes your ${fl(extra)} workout · not added to your target${tipI("Adding workout burn to your daily target is switched off in Settings → Activity.")}</p>`:""}`})()}
+    <p style="font-size:12px;margin:8px 0 0;font-weight:400;line-height:16px" class="${isOver?'text-over':'text-muted-foreground'}">${Math.round(percentage)}% of ${target} cal</p>
     ${lee&&current>target?`<p style="font-size:12px;margin:3px 0 0;font-weight:400;line-height:16px" class="${leeCls}">${lee}</p>`:""}
   </div>`;
 }
@@ -2811,7 +2812,7 @@ function deficitVisual(consumed,target,tdee,confidence,extra){
       <p style="font-size:15px;margin:0;line-height:20px;min-width:0;font-weight:400" class="text-foreground">${trendIco} On pace for a <b class="${paceCls}" style="font-weight:590">${Math.abs(Math.round(currentDeficit))} cal ${word}</b> today <span class="text-muted-foreground">· plan: ${planWord}</span>${tipI("Your deficit is the gap between what you burn in a day and what you eat. Eating under your burn loses weight; over it gains. Green means today is tracking near YOUR plan — not just any loss.")}</p>
       <span style="font-size:11px;font-weight:510;padding:3px 8px;border-radius:9999px;flex-shrink:0;${chip}" data-tip="How well the app knows your true daily burn. It starts from a formula and learns from your actual weigh-ins and food logs — confidence rises with consistent logging.">${confidence} confidence</span>
     </div>
-    <p style="font-size:12px;margin:6px 0 0;line-height:16px" class="text-muted-foreground tnum">${Math.round(tdee)} burned${extra>0?` (${Math.round(tdee)-extra} + <span class="text-warning" style="font-weight:590">${extra} workout</span>)`:""} − ${Math.round(consumed)} eaten = ${Math.abs(Math.round(currentDeficit))} ${word}</p>
+    <p style="font-size:12px;margin:6px 0 0;line-height:16px" class="text-muted-foreground tnum">${Math.round(tdee)} burned − ${Math.round(consumed)} eaten = ${Math.abs(Math.round(currentDeficit))} ${word}</p>
     <p style="font-size:12px;margin:4px 0 0;line-height:16px" class="text-muted-foreground">If every day looked like today: ${weeklyChange>0?"\u2212":"+"}${Math.abs(weeklyChange).toFixed(1)} lb/wk${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
   </div>`;
 }
@@ -10173,11 +10174,11 @@ function pushStateBuild(){
   return{day:today,tz,ts:Date.now(),
     meals:[...new Set(ent.map(e=>e.meal))],entries:ent.length,
     kcal:Math.round(ent.reduce((a,e)=>a+(+e.macros.calories||0),0)),
-    targetKcal:+profile.targetKcal||0,
+    targetKcal:targetsFor(today).kcal||0,
     waterMl:Math.round(waterOn(today)),waterGoalMl:Math.round(waterGoal()||0),
     weighedToday:weights.some(w=>w.date===today),hasWeights:weights.length>0,
     streak:(typeof streaks==="function"?(streaks().f||0):0),
-    yKcal:yEnt.length?Math.round(yK):null,yTarget:yEnt.length?(+profile.targetKcal||0):null,
+    yKcal:yEnt.length?Math.round(yK):null,yTarget:yEnt.length?(targetsFor(y).kcal||0):null,
     rec:(()=>{const m=coachMem.inbox.find(x=>COACH_STANDING.has(x.kind));
       if(!m)return null;
       return{kind:m.kind,unread:m.state==="new",revised:+m.revised||0,
@@ -10734,10 +10735,10 @@ function calendarPage(){
       ${mealRows}
       <div style="margin-top:12px;padding-top:12px;border-top:.5px solid hsl(var(--border)/.5)">
         <div style="display:flex;justify-content:space-between;font-size:10px;color:hsl(var(--muted-foreground))">
-          <span>vs Target: ${profile.targetKcal} cal</span>
-          <span style="color:hsl(var(--${(()=>{const d=totals.kcal-profile.targetKcal,t=+profile.targetKcal||1;
+          <span>vs Target: ${targetsFor(calSel).kcal} cal</span>
+          <span style="color:hsl(var(--${(()=>{const t=targetsFor(calSel).kcal||1,d=totals.kcal-t;
             // green = within ±10% of target; big misses in EITHER direction are amber — under-eating isn't a win on a coached plan
-            return Math.abs(d)<=t*0.10?"success":"warning"})()}));font-weight:600" data-tip="How this day landed against its calorie target. Within about 10% either way shows green. Far under is amber too — the plan already builds in your deficit, so big under-shoots cost energy and muscle, not extra progress.">${totals.kcal>profile.targetKcal?"+":""}${Math.round(totals.kcal-profile.targetKcal)} cal</span>
+            return Math.abs(d)<=t*0.10?"success":"warning"})()}));font-weight:600" data-tip="How this day landed against its calorie target. Within about 10% either way shows green. Far under is amber too — the plan already builds in your deficit, so big under-shoots cost energy and muscle, not extra progress.">${totals.kcal>targetsFor(calSel).kcal?"+":""}${Math.round(totals.kcal-targetsFor(calSel).kcal)} cal</span>
         </div>
       </div>
     </div>`
@@ -10790,7 +10791,7 @@ function calendarPage(){
     ${isFuture&&dayEvents.length===0?`<div class="apple-card p-4" style="border:.5px solid hsl(var(--primary)/.2)">
       <p style="font-size:14px;font-weight:600;margin:0 0 4px;line-height:20px">Daily Targets</p>
       <p class="muted" style="font-size:12px;margin:0 0 8px;line-height:16px">What you should eat this day based on your plan:</p>
-      ${tile4(profile.targetKcal,profile.targetP,profile.targetC,profile.targetF)}
+      ${(()=>{const g=targetsFor(calSel);return tile4(g.kcal,g.p,g.c,g.f)})()}
     </div>`:""}
     ${isFuture&&dayEvents.some(e=>e.macroTargets)?`<div class="apple-card p-4" style="border:.5px solid hsl(45,93%,47%,.3)">
       <p style="font-size:14px;font-weight:600;margin:0 0 4px;line-height:20px">Adjusted Targets</p>
