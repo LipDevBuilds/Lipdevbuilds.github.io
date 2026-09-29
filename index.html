@@ -590,6 +590,17 @@ input[type=range].rng{accent-color:hsl(var(--primary));flex:1}
 .coach-say,.coach-note{position:relative}.coach-x{position:absolute;top:8px;right:-6px;background:none;border:0;padding:6px;color:hsl(var(--muted-foreground));opacity:.55;line-height:0}.coach-say .coach-x{top:6px;right:2px}
 .coach-note.out,.coach-say.out{transition:transform .2s ease,opacity .2s ease;transform:translateX(-48px);opacity:0}
 .sw-line{display:flex;align-items:center;gap:5px;background:none;border:0;padding:0 0 10px;margin-top:-4px;font-size:11px;font-weight:500;color:hsl(var(--water))}
+.mrow.bd-open .mrow-what{display:none}
+.mrow-what{font-size:11px;margin:2px 0 0;line-height:15px;color:hsl(var(--label-3));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pace-strip{display:flex;align-items:flex-start;gap:8px;margin:8px 0 0;padding-top:8px;
+  border-top:.5px solid hsl(var(--border)/.45)}
+.pace-dot{width:7px;height:7px;border-radius:9999px;flex:0 0 auto;margin-top:5px}
+.pace-dot.on{background:hsl(var(--success,142 71% 45%))}
+.pace-dot.near{background:hsl(var(--warning,38 92% 50%))}
+.pace-dot.off{background:hsl(var(--destructive))}
+.pace-dot.wait{background:hsl(var(--muted-foreground))}
+.pace-txt{font-size:12px;margin:0;line-height:16px;color:hsl(var(--muted-foreground))}
+.pace-txt b{color:hsl(var(--foreground));font-weight:600}
 .coach-rev{margin-left:6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:9999px;background:hsl(var(--primary)/.18);color:hsl(var(--primary));flex:0 0 auto}
 .coach-note{padding:12px 0;border-top:.5px solid hsl(var(--border)/.4)}.coach-note.new .coach-card-t{color:hsl(var(--foreground))}.coach-note:first-of-type{border-top:0}
 .toast.coach{gap:10px}
@@ -1462,7 +1473,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-29.5"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-29.6"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1517,7 +1528,9 @@ let woDate=localDateStr();   // the day the Workout tab is logging to; today unl
 let tab="home", selDate=localDateStr(), woView="dashboard", pendingWorkout=null, woElapsed=0, woError=null, woShowHistory=false; // routing is URL-driven only (App.tsx) — no persisted last-tab
 let qlogPending=null, qlogText="", qlogRec=null; // AI quick-log: draft text, preview object, live speech-recognition handle
 // Dashboard page state (Index.tsx:40-42 + WaterTracker unit) — resets when Home remounts
-let viewMode="consumed", showInsights=false, waterUnit="ml";
+// Insights start OPEN. Everything in that section is read-only fact — burn, streak, balance —
+// and a chevron between you and your own numbers earns nothing. The toggle still collapses it.
+let viewMode="consumed", showInsights=true, waterUnit="ml";
 const MEALS=["breakfast","lunch","dinner","snack"];
 const MEAL_LABELS={breakfast:"Breakfast",lunch:"Lunch",dinner:"Dinner",snack:"Snacks"};
 // ----- Published-figure overlay (crawl round, Sept 2026) -----
@@ -2814,7 +2827,47 @@ function deficitVisual(consumed,target,tdee,confidence,extra){
     </div>
     <p style="font-size:12px;margin:6px 0 0;line-height:16px" class="text-muted-foreground tnum">${Math.round(tdee)} burned − ${Math.round(consumed)} eaten = ${Math.abs(Math.round(currentDeficit))} ${word}</p>
     <p style="font-size:12px;margin:4px 0 0;line-height:16px" class="text-muted-foreground">If every day looked like today: ${weeklyChange>0?"\u2212":"+"}${Math.abs(weeklyChange).toFixed(1)} lb/wk${tipI("Extrapolates today's eating over a whole week. Early in the day this runs high — you haven't eaten your remaining calories yet. Your real trend lives in the Weight card and Progress page.")}</p>
+    ${paceStripHTML()}
   </div>`;
+}
+// The one thing the whole app is for: is this working, and when do you arrive. It sat behind
+// nothing at all before — the line above it is a HYPOTHETICAL ("if every day looked like today"),
+// which is not the same as what the scale has actually been doing. This is the real read, on the
+// home screen, with no tap.
+function paceStripHTML(){
+  const pr=(typeof paceRead==="function")?paceRead():null;
+  if(!pr)return "";
+  const u=profile.weightUnit==="lbs"?"lb":"kg";
+  if(!pr.ready){
+    const bits=[];
+    if(pr.needDays)bits.push(`${pr.needDays} more logged ${pr.needDays===1?"day":"days"}`);
+    if(pr.needWeighIns)bits.push(`${pr.needWeighIns} more ${pr.needWeighIns===1?"weigh-in":"weigh-ins"}`);
+    if(!bits.length)return "";
+    return `<div class="pace-strip"><span class="pace-dot wait"></span>
+      <p class="pace-txt">Reading your pace — ${esc(bits.join(" and "))} to go.</p></div>`;
+  }
+  const rate=n=>`${n>0?"+":"\u2212"}${Math.abs(n).toFixed(2)} ${u}/wk`;
+  // The plan itself can contradict the goal — a target sitting ABOVE your burn is a gaining plan,
+  // and if the goal is to lose then no amount of adherence gets you there. That is worth saying
+  // before anything about pace, because it is the plan that is wrong, not the week.
+  const goingUp=pr.planned>0.05, goingDown=pr.planned<-0.05;
+  const wantDown=pr.goalWeight!=null&&pr.goalWeight<pr.currentWeight;
+  const wantUp=pr.goalWeight!=null&&pr.goalWeight>pr.currentWeight;
+  if((wantDown&&goingUp)||(wantUp&&goingDown))
+    return `<div class="pace-strip"><span class="pace-dot off"></span>
+      <p class="pace-txt"><b>Your target works against your goal</b> \u00b7 ${pr.target} cal is ${Math.abs(pr.target-pr.tdee)} ${pr.target>pr.tdee?"above":"below"} your ${pr.tdee} burn, which plans ${rate(pr.planned)} while you're aiming to ${wantDown?"lose":"gain"}.</p></div>`;
+  // on/off track is about DIRECTION and SIZE against the plan, not about hitting it exactly
+  const gap=Math.abs(pr.observed-pr.planned);
+  const cls=pr.towardGoal===false?"off":gap<=0.25?"on":"near";
+  const word=pr.towardGoal===false?"Going the wrong way":cls==="on"?"On track":"Behind plan";
+  const eta=pr.weeksAtObserved!=null&&pr.towardGoal!==false
+    ? ` \u00b7 goal in ~${pr.weeksAtObserved} ${pr.weeksAtObserved===1?"week":"weeks"}` : "";
+  const why=pr.reason==="adherence"
+    ? ` \u00b7 ${Math.abs(pr.adherence)} cal ${pr.adherence>0?"over":"under"} target`
+    : pr.reason==="model"&&pr.correction
+    ? ` \u00b7 burn read corrected ${pr.correction>0?"+":""}${pr.correction}` : "";
+  return `<div class="pace-strip"><span class="pace-dot ${cls}"></span>
+    <p class="pace-txt"><b>${word}</b> \u00b7 <span class="tnum">${rate(pr.observed)}</span> vs plan <span class="tnum">${rate(pr.planned)}</span>${eta}${why}</p></div>`;
 }
 // MacroRing.tsx (size=76, r=34, stroke 5); colors — Index.tsx:232-234
 function macroRing(current,target,label,color){
@@ -3503,6 +3556,7 @@ function mealSection(m){
         ${bd?`<button class="rowbtn mrow-l haptic" data-act="ebreak" data-id="${e.id}" aria-expanded="${bo?"true":"false"}">`:`<div class="mrow-l">`}
           <p class="mrow-name">${esc(e.name)}</p>
           <p class="mrow-sub tnum">${svLabel(e)}${e.macros.calories} cal · ${e.macros.protein}P · ${e.macros.carbs}C · ${e.macros.fat}F${bd?` · <span class="mrow-n">${bd.length} items</span>`:""}${wtag(wml)}</p>
+          ${bd&&!bo?`<p class="mrow-what">${esc(bd.slice(0,3).map(l=>l.name).join(", "))}${bd.length>3?` +${bd.length-3} more`:""}</p>`:""}
         ${bd?`</button><button class="mrow-chev haptic${bo?"":" closed"}" data-act="ebreak" data-id="${e.id}" aria-label="Show what was in it">${IC_CHEVDOWN18}</button>`:`</div>`}
         <button class="mrow-menu haptic" data-act="emenu" data-id="${e.id}">${IC_MORE18}</button>
         <div class="mrow-tray"><button class="haptic" data-act="edup" data-id="${e.id}" aria-label="Duplicate">${IC_COPY15}</button><button class="haptic del" data-act="edel" data-id="${e.id}" aria-label="Delete">${IC_TRASH15}</button></div>
@@ -9478,6 +9532,110 @@ function buildInsights(weeklyChange,weeklyAvg,profile,adherence,expenditure,ener
   return insights;
 }
 // useCoaching.ts:128-161 — the coaching object; null until (7d intake data OR >=2 weigh-ins)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// PACE — is this actually working, and if not, whose fault is it?
+//
+// The burn estimate already adapts: it solves TDEE from what you ate against what the scale did.
+// But a correct TDEE is not the same as being on track, and nothing was closing the loop on the
+// thing that actually matters — arriving at the goal.
+//
+// The trap in doing this naively is double-counting. TDEE is already fitted from the same weight
+// data, so "you're losing slower than planned, therefore eat less" would punish you twice for one
+// signal — and would punish you for a bad WEEK of eating by permanently lowering your target.
+//
+// So the miss is decomposed into two causes that need opposite responses:
+//
+//   planned    = the rate your chosen target was supposed to produce
+//   expected   = the rate your ACTUAL intake should have produced, given the current burn estimate
+//   observed   = what the scale actually did (trended, so it is not water noise)
+//
+//   observed - expected  =  MODEL error. You ate what you ate and the scale disagreed with the
+//                           maths. That is the burn estimate being wrong, and it is the only part
+//                           that may move your target.
+//   intake  - target     =  ADHERENCE. That is not a modelling error and must never move your
+//                           target: silently lowering calories because someone ate over is how a
+//                           tracker turns a bad week into a spiral.
+//
+// Only the model error becomes a correction, it is capped, and it needs enough data to be real.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+const PACE_CFG={
+  WINDOW_DAYS:21,        // long enough for the trend to outrun water, short enough to be current
+  MIN_DAYS:10,           // days of logged intake before any of this is worth saying
+  MIN_WEIGHINS:4,        // weigh-ins inside the window before the scale is evidence
+  NOISE_LB_WK:0.25,      // a weekly-rate miss smaller than this is noise, not a signal
+  MAX_CORRECTION:200,    // cal/day. A model this wrong should be re-fitted, not patched over
+  CORRECTION_GAIN:0.5,   // apply half the implied correction — the TDEE fit is already moving
+  ADHERENCE_CAL:100,     // intake this far from target is a behaviour story, not a model one
+};
+// The read. Returns null until there is enough to say anything honest.
+function paceRead(){
+  const ep=engineProfile(),tr=trended()||[];
+  const unit=profile.weightUnit==='lbs'?CAL_PER_LB:CAL_PER_KG;
+  const end=localDateStr(),start=dateOffset(end,-PACE_CFG.WINDOW_DAYS);
+  // intake over the window, skipped days excluded — they are not evidence about eating
+  const daily={};
+  for(const e of foodLog){
+    if(e.date<start||e.date>end)continue;
+    if(typeof skipHas==='function'&&skipHas(e.date))continue;
+    daily[e.date]=(daily[e.date]||0)+(+e.macros.calories||0);
+  }
+  const days=Object.keys(daily).length;
+  const wins=tr.filter(w=>w.date>=start&&w.date<=end);
+  // Someone with one weigh-in gets told what is missing rather than nothing at all — silence
+  // reads as "the coach has no opinion", when the truth is "weigh in twice more and it will".
+  if(tr.length<2)
+    return{ready:false,days,weighIns:wins.length,
+      needDays:Math.max(0,PACE_CFG.MIN_DAYS-days),needWeighIns:Math.max(1,PACE_CFG.MIN_WEIGHINS-wins.length)};
+  if(days<PACE_CFG.MIN_DAYS||wins.length<PACE_CFG.MIN_WEIGHINS)
+    return{ready:false,days,weighIns:wins.length,
+      needDays:Math.max(0,PACE_CFG.MIN_DAYS-days),needWeighIns:Math.max(0,PACE_CFG.MIN_WEIGHINS-wins.length)};
+  const avgIntake=Object.values(daily).reduce((a,b)=>a+b,0)/days;
+  const tdee=expenditure().tdee, target=+ep.targetCalories||0;
+  // observed: the trend line across the window, not first-and-last raw weights
+  const a=wins[0],b=wins[wins.length-1];
+  const span=Math.max(1,daysBetween(a.date,b.date));
+  const observed=(((b.trend||b.weight)-(a.trend||a.weight))/span)*7;
+  const planned=((target-tdee)*7)/unit;          // what the chosen target was supposed to do
+  const expected=((avgIntake-tdee)*7)/unit;      // what the actual eating should have done
+  const modelErr=observed-expected;              // scale vs maths -> the burn estimate is off
+  const adherence=avgIntake-target;              // behaviour, never a target change
+  // a model error means the true burn is not what we think: losing faster than the eating explains
+  // means the real burn is HIGHER, so the daily correction is signed accordingly
+  let correction=0,reason=null;
+  if(Math.abs(modelErr)>=PACE_CFG.NOISE_LB_WK){
+    const implied=-(modelErr*unit)/7;            // cal/day the burn estimate appears to be out by
+    correction=Math.round(Math.max(-PACE_CFG.MAX_CORRECTION,
+      Math.min(PACE_CFG.MAX_CORRECTION,implied*PACE_CFG.CORRECTION_GAIN)));
+    reason='model';
+  }else if(Math.abs(adherence)>=PACE_CFG.ADHERENCE_CAL){
+    reason='adherence';                          // named, but deliberately NOT corrected
+  }
+  // where this lands, at the rate actually happening
+  const cur=tr[tr.length-1], curW=cur.trend||cur.weight;
+  const goalW=+ep.goalWeight||0;
+  const weeksAt=r=>(goalW&&Math.abs(r)>0.05)?Math.abs(curW-goalW)/Math.abs(r):null;
+  const towardGoal=goalW?((goalW<curW&&observed<0)||(goalW>curW&&observed>0)):null;
+  return{ready:true,days,weighIns:wins.length,avgIntake:Math.round(avgIntake),
+    tdee,target,observed:+observed.toFixed(2),planned:+planned.toFixed(2),
+    expected:+expected.toFixed(2),modelErr:+modelErr.toFixed(2),
+    adherence:Math.round(adherence),correction,reason,
+    suggestedTDEE:tdee+correction,
+    weeksAtObserved:weeksAt(observed)?Math.round(weeksAt(observed)):null,
+    weeksAtPlanned:weeksAt(planned)?Math.round(weeksAt(planned)):null,
+    towardGoal,goalWeight:goalW||null,currentWeight:+curW.toFixed(1)};
+}
+// One line a person can act on, in their own terms.
+function paceSentence(pr){
+  if(!pr)return null;
+  if(!pr.ready)return `I need ${pr.needDays?`${pr.needDays} more logged ${pr.needDays===1?'day':'days'}`:''}${pr.needDays&&pr.needWeighIns?' and ':''}${pr.needWeighIns?`${pr.needWeighIns} more ${pr.needWeighIns===1?'weigh-in':'weigh-ins'}`:''} before I can read your pace.`;
+  const u=profile.weightUnit==='lbs'?'lb':'kg';
+  const rate=n=>`${n>0?'+':''}${n.toFixed(2)} ${u}/wk`;
+  if(pr.reason==='model')
+    return `You're moving ${rate(pr.observed)} where your eating says ${rate(pr.expected)} — so my burn read was ${pr.correction<0?'high':'low'}. I'd move you ${pr.correction>0?'+':''}${pr.correction} cal.`;
+  if(pr.reason==='adherence')
+    return `The maths is holding — you're ${Math.abs(pr.adherence)} cal ${pr.adherence>0?'over':'under'} target on average, and the scale agrees. Close that and the pace follows.`;
+  return `On track: ${rate(pr.observed)} against a planned ${rate(pr.planned)}.`;
+}
 function coachingData(){
   const ep=engineProfile();
   const weeklyAvg=getWeeklyAverage(foodLog);
@@ -9488,14 +9646,23 @@ function coachingData(){
   const weeklyChange=getWeightChangeRate(tr,14);
   const adh=adherenceScore(weeklyAvg.calories,ep.targetCalories);
   const wcb=workoutCalsBurnedPerDay(workouts);
-  const st=generateTargets(ex.tdee,ep);
+  // The live correction. Where the scale and the eating disagree by more than noise, the burn
+  // estimate is the thing that is wrong, and the targets are rebuilt on the corrected figure
+  // instead of on a number the last three weeks have already disproved. Adherence misses are
+  // deliberately NOT corrected for — see PACE_CFG.
+  const pr=paceRead();
+  const useTDEE=(pr&&pr.ready&&pr.reason==='model')?pr.suggestedTDEE:ex.tdee;
+  const st=generateTargets(useTDEE,ep);
   const insights=buildInsights(weeklyChange,weeklyAvg,ep,adh,{currentTDEE:ex.tdee,confidence:ex.confidence},eb,wcb,weeklyFrequency(workouts),avgCalsBurned(workouts));
   const message=buildMessage(ep.goal,weeklyChange,adh,ep.weightChangeRate,profile.coachMode);
   let weeks;
   if(ep.goalWeight&&tr.length>0){
-    weeks=Math.round(Math.abs(tr[tr.length-1].weight-ep.goalWeight)/(Math.abs(weeklyChange)||0.25));
+    // the honest arrival date is the one your CURRENT rate gives, not the one the plan promised
+    weeks=(pr&&pr.ready&&pr.weeksAtObserved!=null)?pr.weeksAtObserved
+      :Math.round(Math.abs(tr[tr.length-1].weight-ep.goalWeight)/(Math.abs(weeklyChange)||0.25));
   }
-  return{currentTDEE:ex.tdee,confidence:ex.confidence,
+  return{currentTDEE:useTDEE,rawTDEE:ex.tdee,pace:pr,paceLine:paceSentence(pr),
+    paceCorrection:(pr&&pr.ready)?pr.correction:0,confidence:ex.confidence,
     suggestedCalories:st.calories,suggestedProtein:st.protein,suggestedCarbs:st.carbs,suggestedFat:st.fat,
     weeklyWeightChange:weeklyChange,message,adherenceScore:adh,weeklyAvgCalories:weeklyAvg.calories,
     targetDeficitSurplus:st.calories-ex.tdee,estimatedWeeksToGoal:weeks,insights,weeklyAvg,energyBalance:eb};
@@ -10234,11 +10401,12 @@ function coachCandidates(now){
       // ONE id, forever. A target change is a standing recommendation, not a fresh event every
       // three days: the old id was macro-<month>-<day/3>, so an unread one piled a new copy on top
       // of itself twice a week. coachTick now updates this entry in place.
-      add("macro-standing","macro","I'd adjust your targets",`Your burn reads ${co.currentTDEE} cal (${co.confidence} confidence). I'd move you to ${co.suggestedCalories} cal and ${co.suggestedProtein}g protein — ${why}. Want me to apply it?`,[{a:"coach:apply",l:"Apply targets"},{a:"coach:snooze",h:72,l:"Not now"}],1,"coach",
+      add("macro-standing","macro","I'd adjust your targets",`${co.paceCorrection?`Three weeks of scale and log disagree with my burn read, so I've corrected it ${co.paceCorrection>0?"+":""}${co.paceCorrection}. `:""}Your burn reads ${co.currentTDEE} cal (${co.confidence} confidence). I'd move you to ${co.suggestedCalories} cal and ${co.suggestedProtein}g protein — ${why}. Want me to apply it?`,[{a:"coach:apply",l:"Apply targets"},{a:"coach:snooze",h:72,l:"Not now"}],1,"coach",
         {cal:co.suggestedCalories,protein:co.suggestedProtein,tdee:co.currentTDEE});
     }
     // the week's read, once a week, once confidence is real
-    add("pace-"+coachIsoWeek(now),"pace","This week's read",co.message,[{a:"coach:go",t:"coach",l:"See the numbers"}],3,"coach");
+    add("pace-"+coachIsoWeek(now),"pace","This week's read",
+      (co.paceLine?co.paceLine+" ":"")+co.message,[{a:"coach:go",t:"coach",l:"See the numbers"}],3,"coach");
     // protein trend
     const wa=co.weeklyAvg;if(wa&&wa.protein>0&&ep.targetProtein&&wa.protein<ep.targetProtein*0.8&&st.f>=4)
       add("protein-"+coachIsoWeek(now),"macrolow","Protein is running low",`You're averaging ${Math.round(wa.protein)}g against a ${ep.targetProtein}g target. Front-load it: ${Math.round(ep.targetProtein*0.3)}g at breakfast makes the rest of the day easy.`,[{a:"coach:addfood",m:"breakfast",l:"Plan breakfast"}],2);
@@ -11246,7 +11414,7 @@ function renderTransition(){
 function render(){
   closePMenu();renderNav();
   // Index remounts reset viewMode/showInsights/water unit like fresh React state (Index.tsx:40-42)
-  if(tab==="home"&&renderedTab!=="home"){viewMode="consumed";showInsights=false;waterUnit="ml";selDate=localDateStr()}
+  if(tab==="home"&&renderedTab!=="home"){viewMode="consumed";showInsights=true;waterUnit="ml";selDate=localDateStr()}
   // FoodLog remounts re-seed activeMeal by time of day and reset per-meal expand state (FoodLog.tsx:49, MealSection.tsx:143);
   // each page holds its own useState(localDateStr()) so the selected day never leaks across tabs (Index.tsx:28, FoodLog.tsx:42)
   if(tab==="food"&&renderedTab!=="food"){activeMeal=mealByTime();mealOpen={};mealPrevN={};selDate=localDateStr()}
@@ -11614,6 +11782,7 @@ document.addEventListener("click",e=>{
     const row=el.closest(".mrow");const w=row&&row.nextElementSibling;if(w&&w.classList.contains("mbd-w"))w.classList.toggle("open",open);
     const ch=row&&row.querySelector(".mrow-chev");if(ch)ch.classList.toggle("closed",!open);
     const b=row&&row.querySelector('[data-act="ebreak"].rowbtn');if(b)b.setAttribute("aria-expanded",open?"true":"false");
+    if(row)row.classList.toggle("bd-open",open);   // hides the one-line summary; the full list is showing
   }
   else if(act==="copydaysheet"){openCopyDay()}
   else if(act==="cfdshift"){ // FoodLog.tsx:101-105 — step ±1 day without limit
@@ -12175,6 +12344,13 @@ if(sbSess)setTimeout(()=>sbSync("boot"),800); // signed in from a previous visit
 // iOS can suspend/kill the app before the 3s debounce fires — flush the pending push the moment we're hidden
 // service worker: registered on every https boot so a push has somewhere to land; a fresh
 // subscription only happens from the Settings tap, never here
+// Warm the search indexes once the app is idle, so the first keystroke never pays to build them.
+// requestIdleCallback where it exists (not Safari on older iOS), a timeout everywhere else.
+(function(){
+  const warm=()=>{try{if(typeof foodIndex==="function")foodIndex();if(typeof fsIndex==="function")fsIndex()}catch(e){}};
+  if(typeof requestIdleCallback==="function")requestIdleCallback(warm,{timeout:4000});
+  else setTimeout(warm,1200);
+})();
 if(typeof pushRegisterSW==="function")pushRegisterSW().then(()=>{if(pushOn())pushStateSend()});
 if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("message",e=>{
   const m=e.data||{};
