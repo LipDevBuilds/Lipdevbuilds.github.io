@@ -1473,7 +1473,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-09-30.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-09-30.2"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -3345,6 +3345,35 @@ function rbDrinkRowByName(R,name){ // a chain's own drink row by its logged name
     const h=R.components.find(x=>x.name.toLowerCase()===base&&x.sizeVariants);if(h){const lab=mm?mm[2].toLowerCase():null;const v=lab?h.sizeVariants.find(y=>String(y.sizeName).toLowerCase()===lab||y.sizeId===rbSlug(lab)):null;return{c:h,v:v||(lab?null:h.sizeVariants.find(y=>y.sizeId===h.defaultSizeId)||null)}}
     const p=R.components.find(x=>x.name.replace(RB_SIZE_SUFFIX,"").toLowerCase()===base);return p?{c:p,v:null}:null};
   return tryOne(name)||tryOne(rbDrinkLegacyName(name))}
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// AN ENTRY WHOSE MENU ROW NO LONGER EXISTS
+//
+// A logged entry stores the component id it was built from. A menu re-harvest rewrites those ids:
+// Taco Bell's "Mtn Dew Baja Blast (Medium)" was px-tacobell-9, one row per size; it is now
+// tb-mtn-dew-baja-blast with small/medium/large size variants, and nothing connects the two. The
+// entry's own calories are stored on the entry and never move, but its breakdown went blank and
+// re-logging it came back empty, because the id resolved to nothing.
+//
+// sizeAlias covers the merges we knew about. This is the net under it: read the row back off the
+// name the entry still carries, and take the size from its own "(Medium)" label. Exact id first,
+// then the alias list, then the name — a fallback, never the first answer.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+function rbResolveCid(R,cid,e){
+  let c=(R.components||[]).find(x=>x.id===cid),sz=null;
+  if(!c){const a=(R.components||[]).find(x=>x.sizeAlias&&x.sizeAlias.includes(cid));
+    if(a){c=a;sz=rbAliasSize(a,cid)}}
+  if(!c&&e&&e.name){
+    // "Taco Bell: Mtn Dew Baja Blast (Medium)" -> the row, then the size
+    let nm=String(e.name).replace(/^[^:]+:\s*/,"").replace(/\s+(Meal|Combo|Basket)\s*\(.*$/i,"").replace(/\s+\+.*$/,"").replace(/\s+w\/.*$/,"").trim();
+    c=rbLegacyRow((R.components||[]).filter(x=>!x.isModifier),nm);
+    if(c&&c.sizeVariants&&c.sizeVariants.length){
+      const lab=(/\(([^()]*)\)\s*$/.exec(nm)||[])[1];
+      const v=lab?c.sizeVariants.find(v=>String(v.sizeName).toLowerCase()===String(lab).toLowerCase()):null;
+      sz=(v||c.sizeVariants.find(v=>v.sizeId===c.defaultSizeId)||{}).sizeId||null;
+    }
+  }
+  return c?{c,sz}:null;
+}
 function entryPieces(e){ // every itemizable piece of a logged row as {name,m,cat,k}: the drop-down shows them, smart water reads them
   const s=entrySrc[e.id]||(e.foodId==="quick-add"?rbSrcFromName(e):null);if(!s||!s.rid)return null;
   const R=rbEntry(s.rid);if(!R)return null;
@@ -3356,7 +3385,7 @@ function entryPieces(e){ // every itemizable piece of a logged row as {name,m,ca
     const hit=rbDrinkRowByName(R,name);return hit?(hit.v||hit.c).macros:null};
   if(s.t==="rbi"){
     let c=byId(s.cid),sz=s.sizeId;
-    if(!c){c=R.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c)sz=rbAliasSize(c,s.cid)}
+    if(!c){const hit=rbResolveCid(R,s.cid,e);if(hit){c=hit.c;sz=hit.sz||s.sizeId}}
     if(!c)return null;
     const q=s.qty||1,v=sz&&c.sizeVariants?c.sizeVariants.find(x=>x.sizeId===sz):null;
     push(`${v&&v.sizeName?v.sizeName+" ":""}${c.name}`,(v||c).macros,q,c.category);
@@ -3403,13 +3432,19 @@ function entryPieces(e){ // every itemizable piece of a logged row as {name,m,ca
   return lines;
 }
 function entryBreakdown(e){
-  const lines=entryPieces(e);if(!lines||lines.length<2)return null;
+  // One piece is not a breakdown — unless it does not add up. A Starbucks latte logged with two
+  // pumps of vanilla resolves to the latte alone now that syrups are catalogue options rather than
+  // menu rows, and 40 cal of syrup had nowhere to go: no second line, so no drop-down, so the row
+  // quietly claimed the latte was the whole of it. The length test moved BELOW the remainder, so a
+  // single piece that leaves calories unexplained still opens and still says so. A single piece that
+  // does add up shows nothing, which is right — there is nothing to break down.
+  const lines=entryPieces(e);if(!lines||!lines.length)return null;
   // pieces must add up to the row: anything the snapshot could not itemize (legacy names, edited totals) shows as one honest remainder line
   const sum=lines.reduce((a,l)=>({calories:a.calories+l.m.calories,protein:a.protein+l.m.protein,carbs:a.carbs+l.m.carbs,fat:a.fat+l.m.fat}),{calories:0,protein:0,carbs:0,fat:0});
   const dc=e.macros.calories-sum.calories;
   if(Math.abs(dc)>Math.max(5,e.macros.calories*0.02)&&!lines.some(l=>l.adj))lines.push({name:(dc<0||Math.abs(dc)<=e.macros.calories*0.05)?"Menu changed since logged":"Not itemized", // a few percent either way is a menu that moved, not a piece we missed
       m:M4({calories:dc,protein:e.macros.protein-sum.protein,carbs:e.macros.carbs-sum.carbs,fat:e.macros.fat-sum.fat}),adj:true}); // a negative gap can only mean the menu data moved after this was logged
-  return lines;
+  return lines.length>=2?lines:null;
 }
 const macroLine=m=>`${m.calories} cal · ${Math.round(m.protein)}P · ${Math.round(m.carbs)}C · ${Math.round(m.fat)}F`;
 // ===== the log flight: a new entry travels from the Log button into its meal =====
@@ -5848,9 +5883,12 @@ const RB_NOSTAR=/drink|beverage|dessert|treat|snack|bakery|donut|cookie|custard|
 const ABS_LO=0.7, ABS_HI=1.4;     // default/base ratio that means "this restates the item"
 function rbNormalizeAbsolute(rid,key,secs,item){
   if(!item||!secs)return secs;
+  const norm=x=>String(x).toLowerCase().replace(/[®™©]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+  // These two do not need the item's own figure, so they run even for a row that publishes none
+  rbFixNoOption(secs,norm);
+  rbFixLadder(secs);
   const base=item.macros&&item.macros.calories;
   if(!base)return secs;
-  const norm=x=>String(x).toLowerCase().replace(/[®™©]/g,"").replace(/[^a-z0-9]+/g," ").trim();
   for(const sec of Object.keys(secs)){
     const rows=secs[sec];if(!Array.isArray(rows))continue;
     const oneOf=rows.filter(r=>Array.isArray(r)&&/1/.test(String(r[5]||"")));
@@ -5871,13 +5909,60 @@ function rbNormalizeAbsolute(rid,key,secs,item){
       for(let i=1;i<=4;i++)r[i]=+((+r[i]||0)-dz[i]).toFixed(2);
     }
   }
-  rbFixNoOption(secs,norm);
   return secs;
 }
 // "No X" priced exactly like "X" is its own fault, in any section, restating or not: Dunkin' had
 // "Whipped Cream 60" beside "No Whipped Cream 60", so declining the cream ADDED its calories.
 // Only one of the pair can be right. Where X is what the item already comes with, X changes
 // nothing and declining it gives the calories back; otherwise X adds and declining is free.
+// A LIGHT / PLAIN / EXTRA LADDER CANNOT BE FLAT
+//
+// Panera's 19 iced-coffee and frozen-java rows listed "Light Steamed Milk Foam", "Steamed Milk Foam"
+// and "Extra Steamed Milk Foam" at the SAME figure, and that figure was NEGATIVE: -60 or -80. So
+// asking for extra foam took 80 calories off the drink, and asking for light foam took exactly the
+// same off. One number — what the foam is worth — had been written onto all three rows.
+//
+// The drink as listed comes with the foam, so the ladder the app uses everywhere applies: the plain
+// row is the drink as it arrives and adds nothing, Light takes half of the foam off, and Extra puts a
+// second portion on. Nothing is invented — the portion is the chain's own figure, and only its sign
+// and share change.
+function rbFixLadder(secs){
+  for(const sec of Object.keys(secs||{})){
+    const rows=secs[sec];if(!Array.isArray(rows))continue;
+    const byName={};rows.forEach(r=>{if(Array.isArray(r))byName[String(r[0])]=r});
+    for(const nm of Object.keys(byName)){
+      const m=/^Light\s+(.+)$/i.exec(nm);if(!m)continue;
+      const light=byName[nm],plain=byName[m[1]],extra=byName["Extra "+m[1]];
+      if(!plain||!extra)continue;
+      if(/\?/.test(String(plain[5]||"")))continue;              // not-known stays not-known
+      const val=i=>[+light[i]||0,+plain[i]||0,+extra[i]||0];
+      let flat=true,allZero=true;
+      for(let i=1;i<=4;i++){const [a,b,c]=val(i);if(a!==b||b!==c){flat=false;break}if(b)allZero=false}
+      if(!flat||allZero)continue;
+      if((+plain[1]||0)>0)continue;                             // only the "this is what comes off" shape
+      for(let i=1;i<=4;i++){
+        const v=+plain[i]||0;                                   // v <= 0: what taking it off is worth
+        light[i]=+(v/2).toFixed(2);                             // half of it off
+        plain[i]=0;                                             // as the drink arrives
+        extra[i]=+(-v).toFixed(2);                              // a second portion on
+      }
+    }
+    // An "Extra X" that is a byte-for-byte copy of "X" is not an extra portion, it is the same row
+    // twice: Panera's Salad Stuffers list Light Tuna Salad 80, Tuna Salad 320 and Extra Tuna Salad
+    // 320, while its Salads list the coherent 160 / 320 / 640 for the same scoop. Only corrected
+    // where rounding cannot explain the tie — all four figures identical and the portion 50 cal or
+    // more — so a 20 cal balsamic glaze whose extra also rounds to 20 is left as the chain wrote it.
+    for(const nm of Object.keys(byName)){
+      const m=/^Extra\s+(.+)$/i.exec(nm);if(!m)continue;
+      const extra=byName[nm],plain=byName[m[1]];if(!plain)continue;
+      if(/\?/.test(String(plain[5]||""))||/\?/.test(String(extra[5]||"")))continue;
+      if((+plain[1]||0)<50)continue;
+      let same=true;for(let i=1;i<=4;i++)if((+extra[i]||0)!==(+plain[i]||0)){same=false;break}
+      if(!same)continue;
+      for(let i=1;i<=4;i++)extra[i]=+(2*(+plain[i]||0)).toFixed(2);
+    }
+  }
+}
 function rbFixNoOption(secs,norm){
   for(const sec of Object.keys(secs||{})){
     const rows=secs[sec];if(!Array.isArray(rows))continue;
@@ -8054,7 +8139,7 @@ function rbOpenEdit(e,s){
     RB.custom=s.custom&&s.custom.length?s.custom.map(rbCustByName).filter(Boolean):[];
   }else{ // item sheet
     let c=byId(s.cid),aliasSz=null;
-    if(!c){c=RB.restaurant.components.find(x=>x.sizeAlias&&x.sizeAlias.includes(s.cid));if(c)aliasSz=rbAliasSize(c,s.cid)}
+    if(!c){const hit=rbResolveCid(RB.restaurant,s.cid,e);if(hit){c=hit.c;aliasSz=hit.sz}}
     if(!c){closeRB();openQuickAdd(e.meal,e);return} // item left the menu — fall back to number editing
     RB.cat=c.category;RB.subcat=c.subcategory||null;RB.item=c;
     RB.sizeId=aliasSz||s.sizeId||(c.sizeVariants?c.defaultSizeId:undefined);RB.qty=s.qty||1;RB.cut=s.cut==="wedge"?"wedge":"party";
@@ -12568,6 +12653,32 @@ document.querySelector(".app-content").addEventListener("scroll",closePMenu,{pas
     }catch(e){toast(String((e&&e.message)||e))}
   });
   setTimeout(ask,400);
+})();
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SIZE VARIANTS IN SIZE ORDER
+//
+// 50 menu rows listed their sizes largest-first: Panera's Pumpkin Spice Latte offered
+// "Large 420, Regular 340", and its soups "Bread Bowl, Cup, Bowl". The size chips render in array
+// order, so the biggest cup sat where the smallest belongs. No total changes — every figure is
+// looked up by sizeId — but the chooser reads backwards, which is how a large gets tapped for a
+// regular.
+//
+// Sorted by the chain's own calories ascending, which for every row here is also the size order.
+// Rows whose "sizes" are really CHOICES are left alone (Chick-fil-A puts a meal's meat in the same
+// field: "W/ Nuggets", "W/ Sausage" — a choice has no order to be wrong about), and so are rows
+// carrying a sizeAlias, because that list maps a logged id by its POSITION in this array.
+(function(){
+  const SZW=/^(x-?small|small|sm|medium|med|md|large|lg|x-?large|regular|reg|kids?|mini|short|tall|grande|venti|trenta|single|double|triple|cup|bowl|bread bowl|half|whole|family|party|value|junior|jr|\d+\s*(oz|pc|piece|inch|"|count|ct)s?)\b/i;
+  let n=0;
+  for(const R of (typeof RESTAURANTS_DB!=="undefined"?RESTAURANTS_DB:[]))for(const c of R.components||[]){
+    const vs=c.sizeVariants;
+    if(!Array.isArray(vs)||vs.length<2||c.sizeAlias)continue;
+    if(!vs.every(v=>v&&v.macros&&SZW.test(String(v.sizeName||"").trim())))continue;
+    let asc=true;for(let i=1;i<vs.length;i++)if((+vs[i].macros.calories||0)<(+vs[i-1].macros.calories||0)){asc=false;break}
+    if(asc)continue;
+    vs.sort((a,b)=>(+a.macros.calories||0)-(+b.macros.calories||0));n++;
+  }
+  if(n&&typeof console!=="undefined"&&console.debug)console.debug("size variants reordered:",n);
 })();
 const bootRoute=ROUTES[location.hash.slice(1)||"/"];
 if(location.hash&&!bootRoute)tab="notfound";else if(bootRoute)tab=bootRoute;
