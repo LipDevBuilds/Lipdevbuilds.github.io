@@ -50,7 +50,8 @@ const litAfter=(name)=>{const i=idx.indexOf(`const ${name}=`);if(i<0)return null
 const cvIdx=idx.indexOf('{"id":"culvers"');
 if(cvIdx<0)throw new Error("index.html has no Culver's restaurant object");
 const baked=JSON.parse(braceSlice(idx,cvIdx));
-const bakedMods=litAfter("RB_MODS_CV")||{};
+// Culver's loads from chains/culvers.json (rebuilt 2026-10-01), so its option lists are RB_MODS_CHAINS.culvers; the old RB_MODS_CV table no longer exists
+const bakedMods=((litAfter("RB_MODS_CHAINS")||{}).culvers)||litAfter("RB_MODS_CV")||{};
 const bakedNote=litAfter("CV_SEC_NOTE")||{};
 const bakedCap=litAfter("CV_SEC_CAP")||{};
 const prevFeed=(()=>{try{return JSON.parse(fs.readFileSync(OUT,"utf8"))}catch{return null}})();
@@ -221,10 +222,9 @@ for(const it of live.items||[]){
         skipped.push(`${it.name}: calories moved ${hit.macros.calories} -> ${it.macros.calories} but the chain publishes no macros for it now`);
     }else set.push({id:hit.id,was:hit.macros,macros:it.macros});
   }
-  // a section set the bake does not carry at all
-  if(!bakedMods["@"+it.name]&&!bakedMods["@"+hit.name]){
-    const rows=secRows(it);if(Object.keys(rows).length)mods["@"+it.name]=rows;
-  }
+  // (2026-10-01) An item the bake already has keeps the bake's option list: Culver's menu is baked from its own
+  // ordering screen and guide (chains/culvers.json), and a harvested list is keyed by the site's name, which
+  // would not find the baked item. Option lists come with ADDED items only.
 }
 
 // Only an item a FEED added can a feed retire. A baked item was researched by hand and carries
