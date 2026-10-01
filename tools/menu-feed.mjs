@@ -174,7 +174,11 @@ const secRows=(it)=>{
 
 matchedByName.length=0;                 // the tally pass above was a dry run; report the real one
 for(const it of live.items||[]){
-  if(SKIP_CATS.has(it.cat)){skipped.push(`${it.name}: "${it.cat}" is the chain's combo, which the builder already offers`);continue}
+  if(SKIP_CATS.has(it.cat)){
+    // still count it as SEEN: the bake carries these rows now, and leaving them out of seenKeys
+    // listed all 21 Value Baskets as baked items the harvest never named, which is noise
+    seenKeys.add(exact(it.name));seenKeys.add(cvKey(it.name));
+    skipped.push(`${it.name}: "${it.cat}" is the chain's combo, which the builder already offers`);continue}
   if(!it.macros||it.cal==null){skipped.push(`${it.name}: no calories published`);continue}
   const key=exact(it.name);seenKeys.add(key);seenKeys.add(cvKey(it.name));
   const m=lookupItem(it.name,it.cal);const hit=m&&m.c;
