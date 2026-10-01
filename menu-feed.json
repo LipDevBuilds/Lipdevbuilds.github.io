@@ -1,0 +1,1379 @@
+{
+ "v": 1,
+ "generated": "2026-10-01T02:13:58.929Z",
+ "source": {
+  "chain": "culvers",
+  "harvested": "2026-10-01T01:56:37.846Z",
+  "menu": "https://www.culvers.com/menu",
+  "nutrition": "https://www.nutritionix.com/culvers/menu/premium"
+ },
+ "health": {
+  "healthy": true,
+  "categories": 12,
+  "items": 110,
+  "harvestErrors": 1,
+  "emptyCategories": [
+   "lemon-ice"
+  ],
+  "offMenuEmitted": 0
+ },
+ "chains": {
+  "culvers": {
+   "catMap": {
+    "butterburgers": "burgers",
+    "fresh-frozen-custard": "custard",
+    "chicken": "sandwiches",
+    "seafood": "seafood",
+    "sides": "sides",
+    "sandwiches": "sandwiches"
+   },
+   "add": [
+    {
+     "id": "cu-live-pumpkin-smores-concrete-mixer",
+     "name": "Pumpkin S'mores Concrete Mixer®",
+     "category": "custard",
+     "macros": {
+      "calories": 820,
+      "protein": 16,
+      "carbs": 101,
+      "fat": 51,
+      "sodium": 290
+     },
+     "sizeVariants": [
+      {
+       "sizeId": "mini",
+       "sizeName": "Mini",
+       "macros": {
+        "calories": 380,
+        "protein": 7,
+        "carbs": 47,
+        "fat": 24,
+        "sodium": 140
+       }
+      },
+      {
+       "sizeId": "small",
+       "sizeName": "Small",
+       "macros": {
+        "calories": 630,
+        "protein": 0,
+        "carbs": 0,
+        "fat": 0
+       }
+      },
+      {
+       "sizeId": "medium",
+       "sizeName": "Medium",
+       "macros": {
+        "calories": 820,
+        "protein": 16,
+        "carbs": 101,
+        "fat": 51,
+        "sodium": 290
+       }
+      },
+      {
+       "sizeId": "large",
+       "sizeName": "Large",
+       "macros": {
+        "calories": 940,
+        "protein": 0,
+        "carbs": 0,
+        "fat": 0
+       }
+      }
+     ],
+     "defaultSizeId": "medium"
+    },
+    {
+     "id": "cu-live-salted-caramel-pumpkin-concrete-mixer",
+     "name": "Salted Caramel Pumpkin Concrete Mixer®",
+     "category": "custard",
+     "macros": {
+      "calories": 970,
+      "protein": 16,
+      "carbs": 115,
+      "fat": 50,
+      "sodium": 520
+     },
+     "sizeVariants": [
+      {
+       "sizeId": "mini",
+       "sizeName": "Mini",
+       "macros": {
+        "calories": 450,
+        "protein": 0,
+        "carbs": 0,
+        "fat": 0
+       }
+      },
+      {
+       "sizeId": "small",
+       "sizeName": "Small",
+       "macros": {
+        "calories": 780,
+        "protein": 12,
+        "carbs": 96,
+        "fat": 39,
+        "sodium": 470
+       }
+      },
+      {
+       "sizeId": "medium",
+       "sizeName": "Medium",
+       "macros": {
+        "calories": 970,
+        "protein": 16,
+        "carbs": 115,
+        "fat": 50,
+        "sodium": 520
+       }
+      },
+      {
+       "sizeId": "large",
+       "sizeName": "Large",
+       "macros": {
+        "calories": 1090,
+        "protein": 0,
+        "carbs": 0,
+        "fat": 0
+       }
+      }
+     ],
+     "defaultSizeId": "medium"
+    },
+    {
+     "id": "cu-live-pumpkin-spice-shake",
+     "name": "Pumpkin Spice Shake",
+     "category": "custard",
+     "macros": {
+      "calories": 800,
+      "protein": 15,
+      "carbs": 90,
+      "fat": 45,
+      "sodium": 300
+     },
+     "sizeVariants": [
+      {
+       "sizeId": "small",
+       "sizeName": "Small",
+       "macros": {
+        "calories": 630,
+        "protein": 11,
+        "carbs": 73,
+        "fat": 34,
+        "sodium": 250
+       }
+      },
+      {
+       "sizeId": "medium",
+       "sizeName": "Medium",
+       "macros": {
+        "calories": 800,
+        "protein": 15,
+        "carbs": 90,
+        "fat": 45,
+        "sodium": 300
+       }
+      },
+      {
+       "sizeId": "large",
+       "sizeName": "Large",
+       "macros": {
+        "calories": 1090,
+        "protein": 0,
+        "carbs": 0,
+        "fat": 0
+       }
+      }
+     ],
+     "defaultSizeId": "medium"
+    },
+    {
+     "id": "cu-live-fanta-orange-float",
+     "name": "Fanta® Orange Float",
+     "category": "custard",
+     "macros": {
+      "calories": 480,
+      "protein": 6,
+      "carbs": 74,
+      "fat": 19,
+      "sodium": 130
+     },
+     "sizeVariants": [
+      {
+       "sizeId": "small",
+       "sizeName": "Small",
+       "macros": {
+        "calories": 430,
+        "protein": 6,
+        "carbs": 61,
+        "fat": 19,
+        "sodium": 115
+       }
+      },
+      {
+       "sizeId": "medium",
+       "sizeName": "Medium",
+       "macros": {
+        "calories": 480,
+        "protein": 6,
+        "carbs": 74,
+        "fat": 19,
+        "sodium": 130
+       }
+      },
+      {
+       "sizeId": "large",
+       "sizeName": "Large",
+       "macros": {
+        "calories": 510,
+        "protein": 6,
+        "carbs": 81,
+        "fat": 19,
+        "sodium": 135
+       }
+      }
+     ],
+     "defaultSizeId": "medium"
+    },
+    {
+     "id": "cu-live-cocacola-float",
+     "name": "Coca-Cola® Float",
+     "category": "custard",
+     "macros": {
+      "calories": 470,
+      "protein": 6,
+      "carbs": 75,
+      "fat": 19,
+      "sodium": 130
+     },
+     "sizeVariants": [
+      {
+       "sizeId": "small",
+       "sizeName": "Small",
+       "macros": {
+        "calories": 420,
+        "protein": 6,
+        "carbs": 62,
+        "fat": 19,
+        "sodium": 115
+       }
+      },
+      {
+       "sizeId": "medium",
+       "sizeName": "Medium",
+       "macros": {
+        "calories": 470,
+        "protein": 6,
+        "carbs": 75,
+        "fat": 19,
+        "sodium": 130
+       }
+      },
+      {
+       "sizeId": "large",
+       "sizeName": "Large",
+       "macros": {
+        "calories": 500,
+        "protein": 6,
+        "carbs": 82,
+        "fat": 19,
+        "sodium": 135
+       }
+      }
+     ],
+     "defaultSizeId": "medium"
+    },
+    {
+     "id": "cu-live-handpacked-pint",
+     "name": "Handpacked Pint",
+     "category": "custard",
+     "macros": {
+      "calories": 780,
+      "protein": 0,
+      "carbs": 0,
+      "fat": 0
+     },
+     "calOnly": true
+    },
+    {
+     "id": "cu-live-fried-pickles",
+     "name": "Fried Pickles",
+     "category": "sides",
+     "macros": {
+      "calories": 350,
+      "protein": 5,
+      "carbs": 41,
+      "fat": 19,
+      "sodium": 910
+     }
+    },
+    {
+     "id": "cu-live-pork-loin",
+     "name": "Pork Loin",
+     "category": "sandwiches",
+     "macros": {
+      "calories": 580,
+      "protein": 31,
+      "carbs": 68,
+      "fat": 20,
+      "sodium": 990
+     }
+    },
+    {
+     "id": "cu-live-harvest-veggie-burger",
+     "name": "Harvest Veggie Burger",
+     "category": "sandwiches",
+     "macros": {
+      "calories": 610,
+      "protein": 19,
+      "carbs": 74,
+      "fat": 26
+     }
+    },
+    {
+     "id": "cu-live-grilled-cheese",
+     "name": "Grilled Cheese",
+     "category": "sandwiches",
+     "macros": {
+      "calories": 360,
+      "protein": 14,
+      "carbs": 39,
+      "fat": 16,
+      "sodium": 800
+     }
+    }
+   ],
+   "set": [
+    {
+     "id": "cu-cod",
+     "was": {
+      "calories": 599,
+      "protein": 27,
+      "carbs": 48,
+      "fat": 34,
+      "sodium": 858
+     },
+     "macros": {
+      "calories": 600,
+      "protein": 23,
+      "carbs": 55,
+      "fat": 34,
+      "sodium": 890
+     }
+    },
+    {
+     "id": "cu-broccoli-side",
+     "was": {
+      "calories": 60,
+      "protein": 4,
+      "carbs": 11,
+      "fat": 1,
+      "sodium": 60
+     },
+     "macros": {
+      "calories": 40,
+      "protein": 3,
+      "carbs": 7,
+      "fat": 0,
+      "sodium": 40
+     }
+    },
+    {
+     "id": "cu-side-salad",
+     "was": {
+      "calories": 60,
+      "protein": 3,
+      "carbs": 12,
+      "fat": 0,
+      "sodium": 50
+     },
+     "macros": {
+      "calories": 50,
+      "protein": 3,
+      "carbs": 5,
+      "fat": 2.5,
+      "sodium": 100
+     }
+    },
+    {
+     "id": "cu-reuben",
+     "was": {
+      "calories": 670,
+      "protein": 37,
+      "carbs": 49,
+      "fat": 34,
+      "sodium": 1880
+     },
+     "macros": {
+      "calories": 660,
+      "protein": 37,
+      "carbs": 47,
+      "fat": 36
+     }
+    }
+   ],
+   "off": [],
+   "mods": {
+    "@Pumpkin S'mores Concrete Mixer®": {
+     "Size": [
+      [
+       "Mini",
+       380,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Small",
+       630,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Medium",
+       820,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "Large",
+       940,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ]
+    },
+    "@Salted Caramel Pumpkin Concrete Mixer®": {
+     "Size": [
+      [
+       "Mini",
+       450,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Small",
+       780,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Medium",
+       970,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "Large",
+       1090,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ]
+    },
+    "@Pumpkin Spice Shake": {
+     "Size": [
+      [
+       "Small",
+       630,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Medium",
+       800,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "Large",
+       1090,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ],
+     "Included Flavor": [
+      [
+       "Pumpkin",
+       0,
+       0,
+       0,
+       0,
+       "1d"
+      ]
+     ]
+    },
+    "@Fanta® Orange Float": {
+     "Size": [
+      [
+       "Small",
+       430,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Medium",
+       480,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "Large",
+       510,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ]
+    },
+    "@Coca-Cola® Float": {
+     "Size": [
+      [
+       "Small",
+       420,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Medium",
+       470,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "Large",
+       500,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ]
+    },
+    "@Handpacked Pint": {
+     "Flavor": [
+      [
+       "Vanilla",
+       780,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Chocolate",
+       770,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ]
+    },
+    "@Fried Pickles": {
+     "Dipping Sauce": [
+      [
+       "No Sauce",
+       0,
+       0,
+       0,
+       0,
+       "1?"
+      ],
+      [
+       "Brewpub Sauce",
+       270,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Culver’s Signature Sauce",
+       260,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Buttermilk Ranch",
+       180,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Honey Mustard",
+       130,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Sweet Baby Ray's BBQ",
+       110,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Ken's Bleu Cheese",
+       200,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Buffalo Sauce",
+       5,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Dell Terra Marinara",
+       40,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Ken's Boom Boom Sauce",
+       310,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Tartar Sauce",
+       360,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Heinz® Dip & Squeeze® Ketchup",
+       30,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ]
+    },
+    "@Pork Loin": {
+     "Bun": [
+      [
+       "Lightly Toasted Buttered Kaiser Bun",
+       0,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "Lightly Toasted Buttered Brioche Bun",
+       20,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Gluten Free Hamburger Bun (Packaged Separately)",
+       -10,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "No Bun",
+       -220,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ],
+     "Cheese": [
+      [
+       "No Cheese",
+       0,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "American Cheese",
+       70,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Cheddar Cheese",
+       80,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Swiss Cheese",
+       80,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ],
+     "Toppings": [
+      [
+       "Plain (No Toppings)",
+       0,
+       0,
+       0,
+       0,
+       "a?"
+      ],
+      [
+       "The Works (Pickles, Ketchup, Mustard, Raw Onions)",
+       20,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "The Works, No Onion (Pickles, Ketchup, Mustard)",
+       15,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Ketchup",
+       15,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Mustard",
+       5,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Pickles",
+       0,
+       0,
+       0,
+       0,
+       "a?"
+      ],
+      [
+       "Raw Onions",
+       5,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Lettuce",
+       0,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Mayo",
+       100,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Tomato",
+       5,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Mushrooms",
+       60,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Grilled Onions",
+       20,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Thick Cut Bacon",
+       100,
+       0,
+       0,
+       0,
+       "a"
+      ],
+      [
+       "Jalapeños",
+       0,
+       0,
+       0,
+       0,
+       "a"
+      ]
+     ]
+    },
+    "@Harvest Veggie Burger": {
+     "Bun": [
+      [
+       "Lightly Toasted Buttered Kaiser Bun",
+       0,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "Lightly Toasted Buttered Brioche Bun",
+       20,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Gluten Free Hamburger Bun (Packaged Separately)",
+       -10,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "No Bun",
+       -220,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ],
+     "Cheese": [
+      [
+       "No Cheese",
+       0,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "American Cheese",
+       70,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Cheddar Cheese",
+       80,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Swiss Cheese",
+       80,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ],
+     "Toppings": [
+      [
+       "Pickles",
+       0,
+       0,
+       0,
+       0,
+       "r"
+      ],
+      [
+       "Mayo",
+       -100,
+       0,
+       0,
+       0,
+       "r"
+      ],
+      [
+       "Raw Onions",
+       -5,
+       0,
+       0,
+       0,
+       "r"
+      ],
+      [
+       "Lettuce",
+       0,
+       0,
+       0,
+       0,
+       "r"
+      ],
+      [
+       "Tomato",
+       -5,
+       0,
+       0,
+       0,
+       "r"
+      ],
+      [
+       "Ketchup",
+       15,
+       0,
+       0,
+       0
+      ],
+      [
+       "Mustard",
+       0,
+       0,
+       0,
+       0
+      ],
+      [
+       "Thick Cut Bacon",
+       100,
+       0,
+       0,
+       0
+      ],
+      [
+       "Mushrooms",
+       60,
+       0,
+       0,
+       0
+      ],
+      [
+       "Grilled Onions",
+       20,
+       0,
+       0,
+       0
+      ],
+      [
+       "Jalapeños",
+       0,
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "@Grilled Cheese": {
+     "Cheese": [
+      [
+       "American Cheese",
+       0,
+       0,
+       0,
+       0,
+       "1d"
+      ],
+      [
+       "Cheddar Cheese",
+       90,
+       0,
+       0,
+       0,
+       "1"
+      ],
+      [
+       "Swiss Cheese",
+       90,
+       0,
+       0,
+       0,
+       "1"
+      ]
+     ],
+     "Toppings": [
+      [
+       "Thick Cut Bacon",
+       100,
+       0,
+       0,
+       0
+      ],
+      [
+       "Tomato",
+       5,
+       0,
+       0,
+       0
+      ],
+      [
+       "Ketchup",
+       15,
+       0,
+       0,
+       0
+      ],
+      [
+       "Mustard",
+       0,
+       0,
+       0,
+       0
+      ],
+      [
+       "Pickles",
+       0,
+       0,
+       0,
+       0
+      ],
+      [
+       "Raw Onions",
+       5,
+       0,
+       0,
+       0
+      ],
+      [
+       "Lettuce",
+       0,
+       0,
+       0,
+       0
+      ],
+      [
+       "Mayo",
+       100,
+       0,
+       0,
+       0
+      ],
+      [
+       "Mushrooms",
+       60,
+       0,
+       0,
+       0
+      ],
+      [
+       "Grilled Onions",
+       20,
+       0,
+       0,
+       0
+      ],
+      [
+       "Jalapeños",
+       0,
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "notes": {
+    "@Handpacked Pint|Flavor": "Select a flavor",
+    "@Pork Loin|Toppings": "Select your toppings",
+    "@Grilled Cheese|Toppings": "Select your toppings"
+   },
+   "caps": {
+    "@Pork Loin|Toppings": 11
+   }
+  }
+ },
+ "needsReview": [
+  {
+   "name": "Concrete Mixer®",
+   "cat": "fresh-frozen-custard",
+   "cal": 820,
+   "macros": {
+    "calories": 820,
+    "protein": 15,
+    "carbs": 82,
+    "fat": 48,
+    "sodium": 220
+   },
+   "why": "nearly matches \"Concrete Mixer (Regular, w/ Mix-in)\""
+  },
+  {
+   "name": "Shake",
+   "cat": "fresh-frozen-custard",
+   "cal": 740,
+   "macros": {
+    "calories": 740,
+    "protein": 15,
+    "carbs": 74,
+    "fat": 45,
+    "sodium": 220
+   },
+   "why": "\"Shake\" is too short a name to add without a look"
+  },
+  {
+   "name": "Malt",
+   "cat": "fresh-frozen-custard",
+   "cal": 800,
+   "macros": {
+    "calories": 800,
+    "protein": 16,
+    "carbs": 86,
+    "fat": 45,
+    "sodium": 260
+   },
+   "why": "\"Malt\" is too short a name to add without a look"
+  },
+  {
+   "name": "Cranberry Bacon Bleu Salad",
+   "cat": "salads",
+   "cal": 260,
+   "macros": {
+    "calories": 260,
+    "protein": 0,
+    "carbs": 0,
+    "fat": 0
+   },
+   "why": "nearly matches \"Cranberry Bacon Bleu Salad w/ Grilled Chicken\""
+  },
+  {
+   "name": "Garden Fresco Salad",
+   "cat": "salads",
+   "cal": 200,
+   "macros": {
+    "calories": 200,
+    "protein": 0,
+    "carbs": 0,
+    "fat": 0
+   },
+   "why": "nearly matches \"Garden Fresco Salad w/ Grilled Chicken\""
+  },
+  {
+   "name": "Corn Dog",
+   "cat": "sandwiches",
+   "cal": 240,
+   "macros": {
+    "calories": 240,
+    "protein": 6,
+    "carbs": 23,
+    "fat": 14,
+    "sodium": 500
+   },
+   "why": "\"Corn Dog\" is too short a name to add without a look"
+  }
+ ],
+ "unmatchedBaked": [
+  "Bacon Deluxe (Single)",
+  "Bacon Deluxe (Double)",
+  "Colby Jack Pub Burger (Single)",
+  "Colby Jack Pub Burger (Double)",
+  "Crispy Chicken Sandwich",
+  "Spicy Crispy Chicken Sandwich",
+  "Grilled Chicken Sandwich",
+  "Beef Pot Roast Sandwich",
+  "Pork Tenderloin Sandwich",
+  "Strawberry Fields Salad w/ Grilled Chicken",
+  "Cranberry Bacon Bleu Salad w/ Grilled Chicken",
+  "Garden Fresco Salad w/ Grilled Chicken",
+  "Pretzel Bites w/ Cheese",
+  "Green Beans",
+  "3pc Butterfly Jumbo Shrimp (Side)",
+  "Beef Pot Roast Dinner",
+  "Fried Chicken Dinner (2pc)",
+  "Broccoli Cheese Soup",
+  "Chicken Noodle Soup",
+  "Wisconsin Cheese Soup",
+  "Boston Clam Chowder Soup",
+  "Potato with Bacon Soup",
+  "Stuffed Green Pepper Soup",
+  "Tomato Florentine Soup",
+  "Vegetable Beef Soup",
+  "Wild & Brown Rice w/ Chicken Soup",
+  "Vanilla Custard (1 Scoop Dish)",
+  "Vanilla Custard (2 Scoop Dish)",
+  "Chocolate Custard (1 Scoop Dish)",
+  "Chocolate Custard (2 Scoop Dish)",
+  "Cake Cone (Single)",
+  "Waffle Cone (Single)",
+  "Vanilla Shake (Regular)",
+  "Chocolate Shake (Regular)",
+  "Vanilla Malt (Regular)",
+  "Concrete Mixer (Regular, w/ Mix-in)",
+  "Turtle Sundae (2 Scoop)",
+  "Caramel Cashew Sundae (2 Scoop)"
+ ],
+ "matchedByName": [
+  "The Culver's® Bacon Deluxe -> Bacon Deluxe (Single)",
+  "Turtle Sundae -> Turtle Sundae (2 Scoop)",
+  "Caramel Cashew Sundae -> Caramel Cashew Sundae (2 Scoop)",
+  "Crispy Chicken -> Crispy Chicken Sandwich",
+  "Spicy Crispy Chicken -> Spicy Crispy Chicken Sandwich",
+  "Grilled Chicken -> Grilled Chicken Sandwich",
+  "Pretzel Bites -> Pretzel Bites w/ Cheese",
+  "3 pc Butterfly Jumbo Shrimp -> Butterfly Jumbo Shrimp (6pc)",
+  "Beef Pot Roast -> Beef Pot Roast Sandwich (over Beef Pot Roast Dinner)"
+ ],
+ "skipped": [
+  "Smoked Cheddar CurderBurger Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "ButterBurger® Cheese Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "ButterBurger® Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "The Culver's® Deluxe Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "The Culver's® Bacon Deluxe Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Mushroom & Swiss Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Sourdough Melt Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Wisconsin Swiss Melt Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Original Chicken Tenders Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Buffalo Chicken Tenders Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Butterfly Jumbo Shrimp Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Crispy Chicken Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Spicy Crispy Chicken Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Grilled Chicken Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "North Atlantic Cod Sandwich Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Beef Pot Roast Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Grilled Reuben Melt Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Pork Loin Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Harvest Veggie Burger Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Grilled Cheese Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "Corn Dog Value Basket: \"value-baskets\" is the chain's combo, which the builder already offers",
+  "ButterBurger Cheese (Single): left alone — our row is one serving of \"ButterBurger® Cheese\", which the chain lists with several size options",
+  "ButterBurger (Single): left alone — our row is one serving of \"ButterBurger®\", which the chain lists with several size options",
+  "Culver's Deluxe (Single): left alone — our row is one serving of \"The Culver's® Deluxe\", which the chain lists with several size options",
+  "Bacon Deluxe (Single): left alone — \"The Culver's® Bacon Deluxe\" only matches it by name, not exactly",
+  "Mushroom & Swiss (Single): left alone — our row is one serving of \"Mushroom & Swiss\", which the chain lists with several size options",
+  "Sourdough Melt (Single): left alone — our row is one serving of \"Sourdough Melt\", which the chain lists with several size options",
+  "Wisconsin Swiss Melt (Single): left alone — our row is one serving of \"Wisconsin Swiss Melt\", which the chain lists with several size options",
+  "Flavor of the Day Dish: no calories published",
+  "Turtle Sundae (2 Scoop): left alone — \"Turtle Sundae\" only matches it by name, not exactly",
+  "Caramel Cashew Sundae (2 Scoop): left alone — \"Caramel Cashew Sundae\" only matches it by name, not exactly",
+  "Culver's Root Beer Float: left alone — our row is one serving of \"Culver's® Root Beer Float\", which the chain lists with several size options",
+  "Original Chicken Tenders (3pc): left alone — our row is one serving of \"Original Chicken Tenders\", which the chain lists with several size options",
+  "Buffalo Chicken Tenders (3pc): left alone — our row is one serving of \"Buffalo Chicken Tenders\", which the chain lists with several size options",
+  "Crispy Chicken Sandwich: left alone — \"Crispy Chicken\" only matches it by name, not exactly",
+  "Spicy Crispy Chicken Sandwich: left alone — \"Spicy Crispy Chicken\" only matches it by name, not exactly",
+  "Grilled Chicken Sandwich: left alone — \"Grilled Chicken\" only matches it by name, not exactly",
+  "North Atlantic Cod Dinner (2pc): left alone — our row is one serving of \"North Atlantic Cod Dinner\", which the chain lists with several size options",
+  "Butterfly Jumbo Shrimp Dinner (6pc): left alone — our row is one serving of \"Butterfly Jumbo Shrimp Dinner\", which the chain lists with several size options",
+  "Butterfly Jumbo Shrimp (6pc): left alone — our row is one serving of \"Butterfly Jumbo Shrimp\", which the chain lists with several size options",
+  "Wisconsin Cheese Curds: left alone — our row is one serving of \"Wisconsin Cheese Curds\", which the chain lists with several size options",
+  "Crinkle Cut Fries (Small): left alone — our row is one serving of \"Crinkle Cut Fries\", which the chain lists with several size options",
+  "Onion Rings: left alone — our row is one serving of \"Onion Rings\", which the chain lists with several size options",
+  "Pretzel Bites w/ Cheese: left alone — \"Pretzel Bites\" only matches it by name, not exactly",
+  "George's Chili: left alone — our row is one serving of \"George's® Chili\", which the chain lists with several size options",
+  "Chili Cheddar Fries: left alone — our row is one serving of \"Chili Cheddar Fries\", which the chain lists with several size options",
+  "Mashed Potatoes & Gravy: left alone — our row is one serving of \"Mashed Potatoes & Gravy\", which the chain lists with several size options",
+  "Coleslaw: left alone — our row is one serving of \"Coleslaw\", which the chain lists with several size options",
+  "Applesauce: calories moved 70 -> 50 but the chain publishes no macros for it now",
+  "Butterfly Jumbo Shrimp (6pc): left alone — \"3 pc Butterfly Jumbo Shrimp\" only matches it by name, not exactly",
+  "Single ButterBurger® Cheese Kids' Meal: \"kids-meals\" is the chain's combo, which the builder already offers",
+  "Single ButterBurger® Kids' Meal: \"kids-meals\" is the chain's combo, which the builder already offers",
+  "2 pc Original Chicken Tenders Kids' Meal: \"kids-meals\" is the chain's combo, which the builder already offers",
+  "2 pc Buffalo Chicken Tenders Kids' Meal: \"kids-meals\" is the chain's combo, which the builder already offers",
+  "Grilled Cheese Kids' Meal: \"kids-meals\" is the chain's combo, which the builder already offers",
+  "Corn Dog Kids' Meal: \"kids-meals\" is the chain's combo, which the builder already offers",
+  "Fountain Drink: category \"drinks\" maps to nothing the app has",
+  "Fresh Brewed Iced Tea: category \"drinks\" maps to nothing the app has",
+  "White Milk: category \"drinks\" maps to nothing the app has",
+  "Chocolate Milk: category \"drinks\" maps to nothing the app has",
+  "Apple Juice: category \"drinks\" maps to nothing the app has",
+  "Signature Roast Coffee: category \"drinks\" maps to nothing the app has",
+  "Bottled Water: category \"drinks\" maps to nothing the app has",
+  "Chicken Cashew Salad: calories moved 620 -> 300 but the chain publishes no macros for it now",
+  "Beef Pot Roast Sandwich: left alone — \"Beef Pot Roast\" only matches it by name, not exactly",
+  "Wisconsin Cheddar Cheese Sauce: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Heinz® Dip & Squeeze® Ketchup: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Culver’s® Signature Sauce: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Buttermilk Ranch: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Marinara: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Sweet Baby Ray's® BBQ: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Honey Mustard: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Buffalo Sauce: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Ken's® Boom Boom Sauce: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Tartar Sauce: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Ken’s® Blue Cheese: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Culver’s® Vinaigrette: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Cocktail Sauce: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Ken’s® Raspberry Vinaigrette: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Horseradish: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Hot Sauce: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Malt Vinegar: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Mayo: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Yellow Mustard: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Salt: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Pepper: \"sauces-and-dressings\" is the chain's combo, which the builder already offers",
+  "Butter: \"sauces-and-dressings\" is the chain's combo, which the builder already offers"
+ ]
+}

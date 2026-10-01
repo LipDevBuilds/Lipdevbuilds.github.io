@@ -1,0 +1,122 @@
+# Keeps the app's menu current without a redeploy.
+#
+# This file is the SOURCE of the workflow; the copy that actually runs lives in the website repo at
+# .github/workflows/menu-feed.yml, alongside the index.html it reads and the menu-feed.json it
+# writes. It is deployed there the same way index.html is. It needs no secret: the website repo is
+# public, so the built-in GITHUB_TOKEN can commit to it, and the app fetches the feed from its own
+# origin.
+#
+# What a run does:
+#   1. reads Culver's own menu (every category, every item, their option structure)
+#   2. reads the macros Culver's publishes through the Nutritionix menu its site links to
+#   3. diffs that against what is baked into index.html
+#   4. commits menu-feed.json if, and only if, something changed
+#
+# What a run will NOT do: delete an item, mark anything off-menu on an unhealthy harvest, or
+# overwrite a researched figure with one read off a different serving. Those rules live in
+# menu-feed.mjs, which is where to look if a run does something surprising.
+name: menu feed
+
+on:
+  schedule:
+    # 07:11 UTC daily — an odd minute on purpose, because minute 0 is when every scheduled job
+    # on GitHub fires at once and runs get queued behind each other.
+    - cron: "11 7 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Harvest and diff, but commit nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: menu-feed
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Read Culver's own menu
+        run: node tools/culvers-harvest.mjs --out tools/culvers-live.json
+
+      - name: Diff it against what the app has baked in
+        run: node tools/menu-feed.mjs --live tools/culvers-live.json --index index.html --out menu-feed.json
+
+      # the harvest is the evidence for whatever the feed says; keep it even when nothing changed
+      - name: Keep the harvest for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: culvers-harvest
+          path: tools/culvers-live.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Culver's menu feed"
+            if [ -f menu-feed.json ]; then
+              node -e '
+                const d=require("./menu-feed.json");const c=(d.chains||{}).culvers||{};
+                const n=o=>Array.isArray(o)?o.length:Object.keys(o||{}).length;
+                console.log("| | |\n|---|---|");
+                console.log(`| harvested | ${d.source&&d.source.harvested||"?"} |`);
+                console.log(`| healthy | ${d.health&&d.health.healthy} (${d.health&&d.health.items} items, ${d.health&&d.health.categories} categories) |`);
+                console.log(`| new items | ${n(c.add)} |`);
+                console.log(`| revised figures | ${n(c.set)} |`);
+                console.log(`| off menu | ${n(c.off)} |`);
+                console.log(`| option sets | ${n(c.mods)} |`);
+                console.log(`| needs a human look | ${n(d.needsReview)} |`);
+                if(n(c.add))console.log("\n**New:** "+c.add.map(a=>a.name).join(", "));
+                if(n(c.off))console.log("\n**Off menu:** "+c.off.join(", "));
+                if(n(d.needsReview))console.log("\n**Review:** "+d.needsReview.map(r=>`${r.name} — ${r.why}`).join("; "));
+              '
+            else
+              echo "no feed was written — the harvest failed, and the app keeps the feed it already has"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit the feed if it changed
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          set -eu
+          git config user.name  "menu-feed"
+          git config user.email "menu-feed@users.noreply.github.com"
+          if git diff --quiet -- menu-feed.json; then
+            echo "menu-feed.json unchanged — nothing to commit"
+            exit 0
+          fi
+          node -e '
+            const fs=require("fs");const d=require("./menu-feed.json");
+            const c=(d.chains||{}).culvers||{};
+            const n=o=>Array.isArray(o)?o.length:Object.keys(o||{}).length;
+            const bits=[];
+            if(n(c.add))bits.push(`+${n(c.add)} new`);
+            if(n(c.set))bits.push(`${n(c.set)} revised`);
+            if(n(c.off))bits.push(`${n(c.off)} off menu`);
+            const names=(c.add||[]).map(a=>a.name).slice(0,4).join(", ");
+            fs.writeFileSync("/tmp/msg",
+              `Culver's menu feed: ${bits.join(", ")||"no item changes"}\n\n`+
+              (names?`New: ${names}${(c.add||[]).length>4?" …":""}\n`:"")+
+              `Harvested ${d.source&&d.source.harvested}. ${n(d.needsReview)} item(s) flagged for a human look.\n`);
+          '
+          git add menu-feed.json
+          git commit -F /tmp/msg
+          for i in 1 2 3 4; do
+            git push && break
+            echo "push failed, retrying"; sleep $((2 ** i))
+            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          done
