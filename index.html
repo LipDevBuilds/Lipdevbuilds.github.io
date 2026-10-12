@@ -1282,6 +1282,37 @@ let water=load("water",{});        // {date:[ml,...]} per-add events; undo pops 
 const waterManualOn=d=>(water[d]||[]).reduce((a,b)=>a+b,0);
 const waterOn=d=>waterManualOn(d)+waterAutoOn(d); // hand-logged glasses + the water inside what was logged (smart water)
 let workouts=load("workouts",[]);  // real WorkoutSession[]: {id,date,name,startTime,endTime,duration,exercises[{id,exerciseName,muscleGroup,category,sets[{id,weight,reps}],caloriesBurned}],totalCaloriesBurned,category,muscleGroups[],notes}
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// WHAT THE WORKOUT TABLE CANNOT CARRY
+//
+// workout_log has columns for a workout's shape but none for how its burn was arrived at:
+// `aiEstimated` (was this a guess), `estBase` (the raw estimate a later correction is measured
+// against, which is the whole input to the burn calibration) and `equipment` (what the machine's
+// screen said and what we made of it, kept so a correction can be audited). The sync dropped all
+// three, so a workout coming back from another device read as measured when it was estimated, could
+// teach the calibration nothing, and had lost the trail behind a machine reading.
+//
+// Nothing can be added to that table from here, and the app already answers exactly this shape of
+// problem: entry_src rides along inside the synced JSON keys. workout_meta does the same.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+const WO_META_KEYS=["aiEstimated","estBase","equipment"];
+let woMeta=load("workout_meta",{});
+function saveWorkouts(){
+  const live=new Set(workouts.map(w=>w.id));
+  for(const k of Object.keys(woMeta))if(!live.has(k))delete woMeta[k];   // never grows unbounded
+  for(const w of workouts){
+    const m={};for(const k of WO_META_KEYS)if(w[k]!==undefined)m[k]=w[k];
+    if(Object.keys(m).length)woMeta[w.id]=m;else delete woMeta[w.id];
+  }
+  save("workout_meta",woMeta);
+  save("workouts",workouts);
+}
+function woMetaApply(){ // after a pull: give the rows back what the table could not carry
+  let ch=false;
+  for(const w of workouts){const m=woMeta[w.id];if(!m)continue;
+    for(const k of WO_META_KEYS)if(m[k]!==undefined&&w[k]===undefined){w[k]=m[k];ch=true}}
+  if(ch)save0("workouts",workouts);
+}
 // custom FoodItem objects — same shape as defaults plus isCustom:true (useNutrition custom_foods rows);
 // normalize legacy rows that predate the flag so search tags them source 'custom'
 let custom=(load("custom",[])||[]).filter(Boolean).map(f=>f.isCustom?f:{...f,isCustom:true});
@@ -1326,7 +1357,7 @@ const SB_BLOCKED_MSG=()=>sbInViewer()
   ?"Network blocked here — sync runs when the app is opened outside the claude.ai viewer"
   :"Can't reach the sync server — check your connection; if it persists, the backend may be paused (supabase.com/dashboard)";
 let syncState={state:sbSess?"idle":"signedout",msg:"",at:load("last_sync",0)};
-const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","rest_days","skip_days","manual_steps","manual_active_calories","burn_cal","rb_extra","portion_memory","entry_src","coach_mem"];
+const SYNC_JSON_KEYS=["profile","water","checkins","favorites","custom","workout_meta","rest_days","skip_days","manual_steps","manual_active_calories","burn_cal","rb_extra","portion_memory","entry_src","coach_mem"];
 function sbSetSync(state,msg){const was=syncState.state;syncState.state=state;syncState.msg=msg||"";
   if(state==="ok"){syncState.at=Date.now();save0("last_sync",syncState.at)}
   if(state==="error"&&was!=="error"&&typeof toast==="function")toast("Sync problem — see Settings"); // silent sync failure = silent data loss
@@ -1431,7 +1462,11 @@ async function sbSync(reason){
         custom=(load("custom",[])||[]).filter(Boolean).map(f=>f.isCustom?f:{...f,isCustom:true});
         restDays=load("rest_days",[]);skipDays=load("skip_days",[]);burnCal=load("burn_cal",{});rbExtra=load("rb_extra",{});portionMem=load("portion_memory",{});
         manualSteps=load("manual_steps",{});manualActiveCals=load("manual_active_calories",{});
-        entrySrc=load("entry_src",{});
+        entrySrc=load("entry_src",{});woMeta=load("workout_meta",{});woMetaApply();
+        // now that the snapshots are loaded, give the rows that came from another device their
+        // portion back; the label reads amt and the table cannot carry it
+        {let fixed=false;foodLog.forEach(e=>{const a=syncAmtFor(e);if(a!=null){e.amt=a;fixed=true}});
+         if(fixed)save0("food_log",foodLog);}
         if(typeof coachMem!=="undefined"){coachMem=load("coach_mem",coachMem);["inbox","seen","snooze","out","daily","last","voice"].forEach(k=>{if(!coachMem[k])coachMem[k]=k==="inbox"||k==="daily"?[]:{}})}
       }
     }
@@ -1473,7 +1508,7 @@ async function sbRecover(email){
   const redir=/^https?:/.test(location.origin||"")?"?redirect_to="+encodeURIComponent(location.origin+location.pathname):"";
   return sbAuth("recover"+redir,{email});
 }
-const BUILD="2026-10-01.3"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
+const BUILD="2026-10-12.1"; // bumped every deploy — shown in Settings so a stale cached build is identifiable from a screenshot
 function diagLine(){ // build + viewport facts (Settings fine print) — reads the values iOS actually reports on-device
   try{
     const d=document.createElement("div");
@@ -1595,6 +1630,29 @@ const groceryNorm=c=>String(c==null?"":c).replace(/\D/g,"").replace(/^0+/,"");
 function groceryByBarcode(code){const c=groceryNorm(code);return c?(GROCERY_BY_CODE.get(c)||null):null}
 
 const allFoods=()=>REAL_FOODS.concat(GROCERY_FOODS,custom);
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// HOW AN ENTRY WAS BUILT
+//
+// Re-log reads entrySrc. A food that came from an ONLINE search — USDA FoodData Central, Open Food
+// Facts, an AI estimate — cannot be found again by its id, because it only ever existed in that one
+// search result: allFoods() is the local shelf and nothing else. So its own figures have to be
+// snapshotted onto the entry, or Re-log has nothing to rebuild from and drops you into Quick Add
+// with the numbers as the only thing left.
+//
+// That is exactly what happened to every USDA food logged with the "+" on a search row: it logged
+// perfectly, read perfectly in the day, and re-logged as a bare quick entry. The detail sheet's
+// Log button took a snapshot; the + button, the barcode scanner and Repeat yesterday did not. Every
+// path that logs a food now goes through here, so there is one place to get this right.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+const foodSnapSrc=f=>(!f||allFoods().some(x=>x.id===f.id))?null
+  :{t:"fss",f:{id:f.id,name:f.name,brand:f.brand,servingSize:f.servingSize,servingUnit:f.servingUnit,
+      macros:f.macros,source:f.source}};   // source rides along so the USDA badge survives a re-log
+function pushFoodEntry(f,fields){ // push FIRST, then record: setEntrySrc prunes ids with no entry
+  const id=fields.id||newId();
+  foodLog.push(Object.assign({},fields,{id}));
+  setEntrySrc(id,foodSnapSrc(f));
+  return id;
+}
 // ===== optional AI backend (Supabase edge functions; fail-soft, never a blocker) =====
 // Built-in defaults for this install; Settings values override. The publishable key is
 // safe to ship in the client — server access is gated by RLS and the edge functions.
@@ -2274,6 +2332,24 @@ function getAvailableUnits(food) {
 
 // ----- src/hooks/useNutrition.ts:226-237 — macro rounding at log time -----
 // amount<=0 or non-finite is rejected. fiber/sodium stay undefined when absent.
+// The food_log table has no column for `amt` — the amount in the unit the user actually typed — so a
+// row arriving from another device carries only `servings`. The portion label on every row reads
+// amt, so an entry logged as "150 g" came back from a sync reading "1.5 g": the calories were right
+// and the portion beside them was nonsense. getServingMultiplier is linear in the amount in every
+// one of its branches, so one call with amount=1 inverts it exactly — no second copy of the unit
+// conversions to drift out of step. The food comes from the local shelf, or from the entry's own
+// snapshot when it was an online one.
+function syncAmtFor(e){
+  if(!e||!e.servingUnit||e.servingUnit==="serving")return null;
+  if(e.amt!=null)return null;                       // the local row already knows
+  const snap=(entrySrc[e.id]||{}).f;
+  const f=allFoods().find(x=>x.id===e.foodId)||snap;
+  if(!f||!f.servingUnit)return null;
+  const per=getServingMultiplier(f,1,e.servingUnit);
+  if(!per||!isFinite(per))return null;
+  const amt=(+e.sv||0)/per;
+  return isFinite(amt)&&amt!==0?Math.round(amt*100)/100:null;
+}
 function logFoodMacros(food, amount, unit) {
   // A negative amount is a correction — half a serving logged back OFF the day. Only zero and
   // nonsense are rejected now; the sign is the user's to choose.
@@ -3354,7 +3430,8 @@ function rbFountainByFlavor(R,name){
   const mm=/^(.*?) \(([^()]*)\)\s*$/.exec(String(name));
   const bare=(mm?mm[1]:String(name)).trim(),lab=mm?mm[2].trim():null;
   const nz=x=>String(x).toLowerCase().replace(/[®™©]/g,"").replace(/[^a-z0-9]+/g," ").trim();
-  const want=new Set([nz(bare),nz(typeof rbDrinkLegacyName==="function"?rbDrinkLegacyName(bare):bare)]);
+  const lg=x=>typeof rbDrinkLegacyName==="function"?rbDrinkLegacyName(x):x;
+  const want=new Set([nz(bare),nz(lg(bare))]);
   want.delete("");
   if(!want.size)return null;
   const cat=RB_MODS[R.id]||{};
@@ -3364,7 +3441,11 @@ function rbFountainByFlavor(R,name){
     for(const sk of Object.keys(secs)){
       if(!/flavo(u)?rs?|type/i.test(sk))continue;
       const rows=secs[sk];if(!Array.isArray(rows))continue;
-      const row=rows.find(r=>Array.isArray(r)&&want.has(nz(r[0])));
+      // The rename map has to work BOTH ways. Culver's branded its root beer "Signature Root
+      // Beer" for a while and has since gone back to "Culver's Root Beer", so the map now turns
+      // today's spelling into yesterday's. Comparing each flavour row through the same map as the
+      // name under test makes the match direction-free: either side may be the older spelling.
+      const row=rows.find(r=>Array.isArray(r)&&(want.has(nz(r[0]))||want.has(nz(lg(r[0])))));
       if(!row)continue;
       const v=lab&&c.sizeVariants?c.sizeVariants.find(x=>String(x.sizeName).toLowerCase()===lab.toLowerCase()):null;
       const base=(v||c).macros||{};
@@ -4798,7 +4879,8 @@ async function scanGo(){
 function scanFound(food){ // FoodLog.tsx:196-199 — close scanner, log 1 serving to the active meal
   closeScanner();
   const r=logFoodMacros(food,1,"serving");if(!r)return;
-  foodLog.push({id:newId(),foodId:food.id,name:food.name,sv:r.servings,servingUnit:"serving",
+  // a scanned barcode is usually an online product, so it needs its snapshot like any other
+  pushFoodEntry(food,{foodId:food.id,name:food.name,sv:r.servings,servingUnit:"serving",
     macros:r.macros,meal:activeMeal,date:selDate,ts:Date.now()});
   saveLog();render();
 }
@@ -8186,8 +8268,17 @@ function rbSrcFromName(e){
   // "Big Mac Meal (Fries (Large), Coca-Cola (Large))" names the MAIN item before the combo list.
   // Search that head first, or the longest match wins from the drink — and takes its size too.
   const head=(/^([\s\S]*?)\s+Meal\s*\(/.exec(s2)||[])[1]||s2,headLow=head.toLowerCase();
-  const item=comps.find(c=>headLow.includes(c.name.toLowerCase()))||comps.find(c=>s2.toLowerCase().includes(c.name.toLowerCase()));
-  if(!item)return{t:"rb-open",rid:rest.id};
+  let item=comps.find(c=>headLow.includes(c.name.toLowerCase()))||comps.find(c=>s2.toLowerCase().includes(c.name.toLowerCase()));
+  if(!item){
+    // No row by that name any more — but the chain may have folded it into one row plus a flavour
+    // list. "Culver's: Culver's Root Beer (Medium)" logged before that change names nothing on the
+    // menu today; Fountain Drink (Medium) with Flavor = Culver's Root Beer is the same drink, at the
+    // same calories, and resolving it gives the entry its piece and its re-log back.
+    const fb=rbFountainByFlavor(R,s2);
+    if(fb)return{t:"rbi",rid:rest.id,cid:fb.c.id,sizeId:(fb.v&&fb.v.sizeId)||fb.c.defaultSizeId,qty:1,
+      mods:[],sides:[],extras:[],custom:fb.flavor?[fb.flavor]:[]};
+    return{t:"rb-open",rid:rest.id};
+  }
   const scope=headLow.includes(item.name.toLowerCase())?headLow:low;
   let sizeId;
   if(item.sizeVariants){const sv=item.sizeVariants.find(v=>v.sizeName&&scope.includes(String(v.sizeName).toLowerCase()));if(sv)sizeId=sv.sizeId}
@@ -11235,16 +11326,29 @@ function handleDietBreakConfirm(repeat){ // Calendar.tsx:62-85 — concrete even
 
 // ===== SAVED MEALS (SavedMeals.tsx + useMealTemplates.ts 1:1) =====
 let tplEditing=null; // inline-rename state {id,name}
-function saveTemplate(name,entries){ // useMealTemplates.ts:30-48 — only invoked by the rename path (the real app has no creation UI)
-  const templateEntries=entries.map(e=>({foodId:e.foodId,name:e.name,sv:e.sv,servingUnit:e.servingUnit,macros:e.macros,meal:e.meal}));
+function saveTemplate(name,entries){ // useMealTemplates.ts:30-48
+  // HOW each row was built travels with the template, and so does the amount it was logged at.
+  // applyTemplate has always read e.src — nothing was ever putting it there, so applying a saved
+  // meal gave rows with no provenance at all: a restaurant meal that could not be re-opened and an
+  // online food that came back as bare numbers. Same failure as the "+" button, one step further on.
+  const templateEntries=entries.map(e=>{
+    const src=e.src||entrySrc[e.id]||undefined;
+    return{foodId:e.foodId,name:e.name,sv:e.sv,servingUnit:e.servingUnit,amt:e.amt,
+      macros:e.macros,meal:e.meal,...(src?{src}:{})};
+  });
   const tpl={id:(window.crypto&&crypto.randomUUID)?crypto.randomUUID():newId(),name,entries:templateEntries,createdAt:Date.now()};
   mealTemplates.unshift(tpl); // newest-first
   save("mealtemplates",mealTemplates);
   return tpl;
 }
 function applyTemplate(template,date,mealOverride){ // useMealTemplates.ts:55-63 — fresh id/date/timestamp, meal override
-  return template.entries.map(e=>{const {src,...rest}=e;const id=newId();if(src)entrySrc[id]=src; // committed with the next saveLog/setEntrySrc
+  const out=template.entries.map(e=>{const {src,...rest}=e;const id=newId();
+    // assigned directly rather than through setEntrySrc: the entry does not exist in foodLog yet,
+    // and setEntrySrc prunes any id it cannot find there
+    if(src)entrySrc[id]=src;
     return {...rest,id,date,ts:Date.now(),meal:mealOverride||e.meal}});
+  if(out.some(x=>entrySrc[x.id]))save("entry_src",entrySrc);
+  return out;
 }
 function confirmTplRename(){ // SavedMeals.tsx:35-51 — delete + re-save, so createdAt refreshes (jumps to top)
   const inp=$("#tplRename");if(!tplEditing||!inp)return;
@@ -11898,7 +12002,7 @@ document.addEventListener("click",e=>{
     const memOk=mem&&getAvailableUnits(f).some(u=>u.unit===mem.unit);
     const amt=memOk?mem.a:1,unit=memOk?mem.unit:"serving";
     const r=logFoodMacros(f,amt,unit);if(!r)return;
-    foodLog.push({id:newId(),foodId:f.id,name:f.name,sv:r.servings,servingUnit:unit,amt:unit==="serving"?undefined:amt,
+    pushFoodEntry(f,{foodId:f.id,name:f.name,sv:r.servings,servingUnit:unit,amt:unit==="serving"?undefined:amt,
       macros:r.macros,meal:FS.meal,date:selDate,ts:Date.now()});
     saveLog();toast(`Logged '${f.name}'${memOk&&(amt!==1||unit!=="serving")?` · ${amt} ${unit}`:""}`);
     if(FS.view==="main"&&!FS.selected){ // refresh content only — never rebuild the input mid-typing
@@ -11925,8 +12029,7 @@ document.addEventListener("click",e=>{
     const a=parseFloat(FS.amount)||1;
     const r=logFoodMacros(f,a,FS.unit); // useNutrition.ts:226-237 — rejects amount<=0, fiber/sodium stay undefined
     if(!r)return;
-    // foods that came from online search can't be re-found by id later — keep a snapshot so Edit still works
-    const fsSnap=allFoods().some(x=>x.id===f.id)?null:{t:"fss",f:{id:f.id,name:f.name,brand:f.brand,servingSize:f.servingSize,servingUnit:f.servingUnit,macros:f.macros}};
+    const fsSnap=foodSnapSrc(f);   // one definition of the snapshot, shared with + and the scanner
     const fe=FS.replaceId&&foodLog.find(x=>x.id===FS.replaceId);
     if(fe){ // Edit mode: update the original entry in place — same id, same day, same position
       Object.assign(fe,{foodId:f.id,name:f.name,sv:r.servings,servingUnit:FS.unit,amt:FS.unit==="serving"?undefined:a,macros:r.macros,meal:FS.meal});
@@ -11947,9 +12050,14 @@ document.addEventListener("click",e=>{
   }
   else if(act==="fsrepeaty"){ // one tap re-logs yesterday's whole meal for today
     const ym=fsYesterdayMeal(FS.meal);if(!ym)return;
-    ym.entries.forEach(e=>foodLog.push({id:newId(),foodId:e.foodId,name:e.name,sv:e.sv,servingUnit:e.servingUnit,
-      macros:Object.assign({},e.macros),meal:FS.meal,date:selDate,ts:Date.now()}));
-    saveLog();toast(`Repeated ${ym.n} item${ym.n>1?"s":""} · +${ym.cal} cal`);fsRender();render();
+    // a repeat is a COPY of yesterday's entries, so it inherits how each of them was built —
+    // without this, repeating a McDonald's meal gave rows that could not be re-opened at all
+    ym.entries.forEach(e=>{const nid=newId();
+      foodLog.push({id:nid,foodId:e.foodId,name:e.name,sv:e.sv,servingUnit:e.servingUnit,amt:e.amt,
+        macros:Object.assign({},e.macros),meal:FS.meal,date:selDate,ts:Date.now()});
+      if(entrySrc[e.id])entrySrc[nid]=entrySrc[e.id]});
+    saveLog();save("entry_src",entrySrc);
+    toast(`Repeated ${ym.n} item${ym.n>1?"s":""} · +${ym.cal} cal`);fsRender();render();
   }
   else if(act==="fsamt"){ // quick portion chips in the detail view
     FS.amount=el.dataset.v;
@@ -12259,7 +12367,7 @@ document.addEventListener("click",e=>{
       totalCaloriesBurned:woEst.kcal, // modelled from the session you logged, not a flat rate — see estimateSessionBurn
       estBase:woEst.raw,aiEstimated:true, // "(est.)" until you correct it; a correction teaches the real burn
       category,muscleGroups:mg.length?mg:["full_body"],notes:(s?s.notes:"").trim()});
-    save("workouts",workouts);localStorage.removeItem("active_workout_session");
+    saveWorkouts();localStorage.removeItem("active_workout_session");
     const gained=burnPayback(woDay())-pb0,burnt=workouts[workouts.length-1].totalCaloriesBurned;
     logFrom=el.getBoundingClientRect();
     pendingWorkout=null;woError=null;woElapsed=0;woView="dashboard";
@@ -12269,7 +12377,7 @@ document.addEventListener("click",e=>{
   }
   else if(act==="wodel"){ // useWorkouts.deleteWorkout — per-row delete, no toast
     const i=workouts.findIndex(w=>w.id===el.dataset.id);
-    if(i>=0){sbTomb("workout_log",el.dataset.id);workouts.splice(i,1);save("workouts",workouts);render()}
+    if(i>=0){sbTomb("workout_log",el.dataset.id);workouts.splice(i,1);saveWorkouts();render()}
   }
   else if(act==="wohist"){woShowHistory=!woShowHistory;render()}
   else if(act==="qlog"){ // quick log: parse the description, estimate a personalized burn, show editable preview
@@ -12305,7 +12413,7 @@ document.addEventListener("click",e=>{
       startTime:Date.now()-q.mins*60000,endTime:Date.now(),duration:q.mins,
       exercises:q.exercises,totalCaloriesBurned:val,category:q.category,muscleGroups:q.muscleGroups,
       notes:q.text,aiEstimated:!edited,estBase:q.est.raw});
-    save("workouts",workouts);
+    saveWorkouts();
     const gained=burnPayback(woDay())-pb0;
     logFrom=el.getBoundingClientRect();
     qlogPending=null;qlogText="";
@@ -12337,7 +12445,7 @@ document.addEventListener("click",e=>{
     const w=workouts.find(x=>x.id===el.dataset.id);if(!w)return;
     const next=dayShift(w.date,Number(el.dataset.d)||0);
     if(next>localDateStr())return;
-    w.date=next;save("workouts",workouts);
+    w.date=next;saveWorkouts();
     toast("Moved to "+dayLabelOf(next));render();
   }
   else if(act==="eqphoto"){eqPick()}
@@ -12355,7 +12463,7 @@ document.addEventListener("click",e=>{
       // what the screen claimed and what we made of it, kept so a later correction can be audited
       equipment:{machine:e.machine,brand:(r&&r.brand)||null,basis:e.basis,
         consoleKcal:e.consoleKcal,net:e.net,lo:e.lo,hi:e.hi,src:e.src,read:r||null}});
-    save("workouts",workouts);
+    saveWorkouts();
     const gained=burnPayback(woDay())-pb0;
     logFrom=el.getBoundingClientRect();
     closeSheet();EQ={busy:false,read:null,est:null,err:null,shot:null};
@@ -12388,7 +12496,7 @@ document.addEventListener("click",e=>{
         learnBurn(hit?hit.key:(w2.category==="cardio"?"general":"lift"),w2.estBase,n); // a tracked lift still teaches "lift"
       }
       w2.totalCaloriesBurned=n;w2.aiEstimated=false;
-      save("workouts",workouts);toast("Updated to "+n+" cal");render();
+      saveWorkouts();toast("Updated to "+n+" cal");render();
     });
   }
   else if(act==="goprog"){tab="progress";render()}
